@@ -26,7 +26,8 @@
                 <a href="#contacts">Контакты</a>
             </nav>
             <div class="nav-controls">
-                <button class="btn-icon-auth" id="auth-toggle-btn" aria-label="Личный кабинет">
+                <button type="button" class="btn-icon-auth" id="auth-toggle-btn" aria-label="Личный кабинет"
+                    onclick="if(window.SkyrexAuth){ if(SkyrexAuth.currentUser) SkyrexAuth.openProfileModal(); else SkyrexAuth.openAuthModal(); }">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -418,9 +419,9 @@
 
     <!-- Application Logic Scripts -->
     <script src="auth.js"></script>
-    <script src="bot_db.js"></script>
     <script src="chat_bot.js"></script>
     <script src="app.js"></script>
 </body>
+
 
 </html>

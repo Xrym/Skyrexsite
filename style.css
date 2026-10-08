@@ -953,20 +953,24 @@ nav a:hover::after {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.75);
     backdrop-filter: blur(10px);
-    z-index: 1001;
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 99999;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.4s ease;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 16px;
 }
 
 .modal-overlay.active {
     opacity: 1;
-    pointer-events: all;
+    visibility: visible;
+    pointer-events: auto;
 }
 
 .modal {
@@ -978,13 +982,18 @@ nav a:hover::after {
     max-width: 500px;
     padding: 36px;
     transform: scale(0.9);
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
+    pointer-events: auto;
+    max-height: 90vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .modal-overlay.active .modal {
     transform: scale(1);
 }
+
 
 .modal-close-btn {
     position: absolute;
@@ -1949,6 +1958,16 @@ footer {
     justify-content: center;
     position: relative;
     transition: var(--transition-smooth);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    z-index: 105;
+}
+
+.btn-icon-auth svg,
+.btn-icon-auth span {
+    pointer-events: none;
 }
 
 .btn-icon-auth:hover {
@@ -1957,6 +1976,7 @@ footer {
     transform: translateY(-2px);
     box-shadow: var(--shadow-cyan);
 }
+
 
 .auth-status-dot {
     position: absolute;

@@ -418,34 +418,63 @@ const SkyrexAuth = {
     },
 
     openAuthModal() {
-        this.dom.authModal.classList.add("active");
-        this.dom.loginForm.reset();
-        this.dom.registerForm.reset();
-        this.dom.loginError.textContent = "";
-        this.dom.registerError.textContent = "";
-        this.dom.verifyError.textContent = "";
-        this.dom.registerVerifyStep.style.display = "none";
-        this.dom.registerInputStep.style.display = "block";
-        switchAuthTab('login');
+        if (!this.dom || !this.dom.authModal) {
+            this.setupDOM();
+        }
+        const modal = this.dom.authModal || document.getElementById("auth-modal");
+        if (modal) {
+            modal.classList.add("active");
+            modal.style.visibility = "visible";
+            modal.style.opacity = "1";
+            modal.style.pointerEvents = "auto";
+        }
+        if (this.dom.loginForm) this.dom.loginForm.reset();
+        if (this.dom.registerForm) this.dom.registerForm.reset();
+        if (this.dom.loginError) this.dom.loginError.textContent = "";
+        if (this.dom.registerError) this.dom.registerError.textContent = "";
+        if (this.dom.verifyError) this.dom.verifyError.textContent = "";
+        if (this.dom.registerVerifyStep) this.dom.registerVerifyStep.style.display = "none";
+        if (this.dom.registerInputStep) this.dom.registerInputStep.style.display = "block";
+        if (typeof switchAuthTab === "function") switchAuthTab('login');
     },
 
     closeAuthModal() {
-        this.dom.authModal.classList.remove("active");
+        const modal = (this.dom && this.dom.authModal) || document.getElementById("auth-modal");
+        if (modal) {
+            modal.classList.remove("active");
+            modal.style.visibility = "hidden";
+            modal.style.opacity = "0";
+            modal.style.pointerEvents = "none";
+        }
     },
 
     openProfileModal() {
         if (!this.currentUser) return;
-        this.dom.profileModal.classList.add("active");
+        if (!this.dom || !this.dom.profileModal) {
+            this.setupDOM();
+        }
+        const modal = this.dom.profileModal || document.getElementById("profile-modal");
+        if (modal) {
+            modal.classList.add("active");
+            modal.style.visibility = "visible";
+            modal.style.opacity = "1";
+            modal.style.pointerEvents = "auto";
+        }
         this.updateProfileUI();
-
-        // Start countdown timer
         this.startCountdown();
     },
 
     closeProfileModal() {
-        this.dom.profileModal.classList.remove("active");
+        const modal = (this.dom && this.dom.profileModal) || document.getElementById("profile-modal");
+        if (modal) {
+            modal.classList.remove("active");
+            modal.style.visibility = "hidden";
+            modal.style.opacity = "0";
+            modal.style.pointerEvents = "none";
+        }
         this.stopCountdown();
     },
+
 
     updateProfileUI() {
         if (!this.currentUser) return;
@@ -594,6 +623,9 @@ function switchAuthTab(tab) {
 }
 
 // Auto init on load
-document.addEventListener("DOMContentLoaded", () => {
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => SkyrexAuth.init());
+} else {
     SkyrexAuth.init();
-});
+}
+
