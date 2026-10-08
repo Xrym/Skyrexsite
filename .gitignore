@@ -32,3 +32,5 @@ Desktop.ini
 deploy.py
 test_*.py
 check_*.py
+scratch/
+archive_scrapers/*.bak
