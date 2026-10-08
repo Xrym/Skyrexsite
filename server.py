@@ -650,17 +650,11 @@ async def handle_auth_subscribe(request):
 
 async def handle_chat(request):
     try:
-        # Check authorization token
+        # Check authorization token (optional during free beta)
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
-        current_user = get_user_by_token(token)
-        
-        if not current_user:
-            return web.json_response({
-                "response": "🔒 <b>Требуется авторизация</b><br>"
-                            "Пожалуйста, войдите в аккаунт или зарегистрируйтесь, чтобы общаться с ИИ-ассистентом Skyrex."
-            }, status=401)
-            
+        current_user = get_user_by_token(token) if token else None
+
         data = await request.json()
         message = data.get("message", "").strip()
         history = data.get("history", [])

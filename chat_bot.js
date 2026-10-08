@@ -51,28 +51,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function syncChatLockState() {
         const lockOverlay = document.getElementById("chat-lock-overlay");
-        if (!lockOverlay) return;
-
-        const isPremium = checkSubscription();
-        const isLoggedIn = typeof SkyrexAuth !== "undefined" && SkyrexAuth.currentUser;
-
-        if (isPremium) {
+        if (lockOverlay) {
             lockOverlay.classList.remove("active");
-        } else {
-            lockOverlay.classList.add("active");
-
-            const lockAuthBtn = document.getElementById("lock-auth-btn");
-            const lockPayBtn = document.getElementById("lock-pay-btn");
-
-            if (lockAuthBtn && lockPayBtn) {
-                if (isLoggedIn) {
-                    lockAuthBtn.style.display = "none";
-                    lockPayBtn.style.display = "block";
-                } else {
-                    lockAuthBtn.style.display = "block";
-                    lockPayBtn.style.display = "none";
-                }
-            }
+            lockOverlay.style.display = "none";
         }
     }
 
@@ -189,14 +170,6 @@ document.addEventListener("DOMContentLoaded", () => {
         // Append user message
         appendMessage("user", query);
         chatInput.value = "";
-
-        // Check if user is locked on premium page
-        if (isChatPage && !checkSubscription()) {
-            setTimeout(() => {
-                appendMessage("bot", "🔒 <b>Доступ ограничен</b><br>Для общения в Premium-чате активируйте подписку или войдите в аккаунт.");
-            }, 500);
-            return;
-        }
 
         // Show typing animation
         showTyping(true);

@@ -21,7 +21,7 @@
             </a>
             <nav id="main-nav">
                 <a href="#hero">AI Помощник</a>
-                <a href="chat.html" id="nav-chat-link">Premium Чат</a>
+                <a href="chat.html" id="nav-chat-link">Чат-Консультант</a>
                 <a href="#about">О нас</a>
                 <a href="#contacts">Контакты</a>
             </nav>
@@ -52,25 +52,17 @@
 
 
 
-                    <!-- Subscription status card embedded directly in Hero -->
+                    <!-- Free Beta status card embedded directly in Hero -->
                     <div class="info-card sub-card hero-sub-card" id="subscription-status-card">
-                        <h3>Статус Premium функций</h3>
+                        <h3>Статус доступа: <span style="color: var(--accent-cyan);">Бесплатно</span></h3>
                         <div class="sub-status-container">
-                            <div class="sub-badge" id="sub-badge">Базовый</div>
-                            <p class="sub-desc" id="sub-status-desc">Премиальные функции (оценка, подбор и б/у сборки)
-                                заблокированы.</p>
+                            <div class="sub-badge active-premium" id="sub-badge" style="background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan);">Полный доступ</div>
+                            <p class="sub-desc" id="sub-status-desc">Все функции ИИ-консультанта, подбор сборок и анализ цен доступны бесплатно.</p>
                         </div>
-                        <button class="btn btn-primary btn-glowing" id="sub-action-btn" style="width: 100%;">
-                            Активировать Premium (390 ₽)
-                        </button>
                         <a href="chat.html" class="btn btn-primary btn-glowing" id="sub-chat-link"
-                            style="display: none; width: 100%; text-align: center; text-decoration: none; margin-top: 10px; padding: 12px 24px; border-radius: 12px;">
-                            Открыть Premium Чат 🚀
+                            style="width: 100%; text-align: center; text-decoration: none; margin-top: 10px; padding: 12px 24px; border-radius: 12px; display: inline-block;">
+                            Открыть полный чат на весь экран 🚀
                         </a>
-                        <button class="btn-text" id="sub-reset-btn"
-                            style="display: none; margin-top: 10px; width: 100%;">
-                            Сбросить подписку (для тестов)
-                        </button>
                         <button class="btn-text" id="admin-panel-btn"
                             style="margin-top: 10px; width: 100%; font-size: 11px; opacity: 0.6;">
                             Панель Администратора (/admin)
@@ -396,18 +388,11 @@
             </div>
 
             <div class="profile-subscription-card">
-                <h4>Статус подписки SkyRex Bot</h4>
+                <h4>Тарифный план</h4>
                 <div class="profile-sub-status-box">
-                    <span class="sub-badge" id="profile-sub-badge">Базовый</span>
-                    <p id="profile-sub-expires" style="color: var(--text-secondary);">Подписка не активна</p>
+                    <span class="sub-badge active-premium" id="profile-sub-badge" style="background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan);">Бесплатный доступ</span>
+                    <p id="profile-sub-expires" style="color: var(--text-secondary);">Все функции ассистента активны</p>
                 </div>
-                <div class="profile-sub-time-remaining" id="profile-sub-time-remaining"
-                    style="display:none; color: var(--accent-cyan); font-size: 13px; font-weight: 600; margin-top: 8px;">
-                </div>
-                <button class="btn btn-primary btn-glowing" id="profile-sub-action-btn"
-                    style="width: 100%; margin-top: 15px;">
-                    Активировать Premium (390 ₽)
-                </button>
             </div>
 
             <div class="profile-actions">

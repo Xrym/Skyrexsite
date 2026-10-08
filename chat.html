@@ -21,7 +21,7 @@
             </a>
             <nav id="main-nav">
                 <a href="index.html">Главная</a>
-                <a href="chat.html" class="active" id="nav-chat-link">Premium Чат</a>
+                <a href="chat.html" class="active" id="nav-chat-link">Чат-Консультант</a>
                 <a href="index.html#about">О нас</a>
                 <a href="index.html#contacts">Контакты</a>
             </nav>
@@ -44,7 +44,7 @@
         <section class="hero" id="hero">
             <div class="container hero-grid">
                 <div class="hero-content">
-                    <span class="hero-tagline">Доступ открыт • Premium</span>
+                    <span class="hero-tagline">Бесплатный доступ</span>
                     <h1>Чат с ассистентом <span class="gradient-text">SKYREX AI</span></h1>
                     <p>Здесь вам доступны все возможности искусственного интеллекта: расчет сборок ПК под любой бюджет,
                         актуальные розничные цены из Ситилинк с официальной гарантией и живые консультации эксперта.</p>
@@ -61,57 +61,17 @@
                             Вернуться на главную
                         </a>
                     </div>
-
-                    <!-- Subscription status card -->
-                    <div class="info-card sub-card hero-sub-card" id="subscription-status-card">
-                        <h3>Статус Premium функций</h3>
-                        <div class="sub-status-container">
-                            <div class="sub-badge" id="sub-badge">Базовый</div>
-                            <p class="sub-desc" id="sub-status-desc">Премиальные функции (оценка, подбор и б/у сборки)
-                                заблокированы.</p>
-                        </div>
-                        <button class="btn btn-primary btn-glowing" id="sub-action-btn" style="width: 100%;">
-                            Активировать Premium (390 ₽)
-                        </button>
-                        <button class="btn-text" id="sub-reset-btn"
-                            style="display: none; margin-top: 10px; width: 100%;">
-                            Сбросить подписку (для тестов)
-                        </button>
-                        <button class="btn-text" id="admin-panel-btn"
-                            style="margin-top: 10px; width: 100%; font-size: 11px; opacity: 0.6;">
-                            Панель Администратора (/admin)
-                        </button>
-                    </div>
                 </div>
 
                 <!-- Chat Window (Right side of Hero) -->
                 <div class="chat-window" style="position: relative;">
-                    <!-- Chat Lock Overlay (for unsubscribed users) -->
-                    <div class="chat-lock-overlay" id="chat-lock-overlay">
-                        <div class="chat-lock-content">
-                            <div class="chat-lock-icon">🔒</div>
-                            <h3>Доступ ограничен</h3>
-                            <p>Premium чат доступен только зарегистрированным пользователям с активной подпиской SkyRex
-                                Premium.</p>
-                            <div class="chat-lock-actions">
-                                <button class="btn btn-primary btn-glowing" id="lock-auth-btn">Войти /
-                                    Зарегистрироваться</button>
-                                <button class="btn btn-primary btn-glowing" id="lock-pay-btn"
-                                    style="display: none;">Активировать Premium (390 ₽)</button>
-                                <a href="index.html" class="btn btn-secondary"
-                                    style="text-align: center; text-decoration: none; padding: 12px 24px; border-radius: 12px; display: inline-block;">На
-                                    главную</a>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="chat-header">
                         <div class="chat-avatar">
                             <div class="avatar-icon">🤖</div>
                             <div class="online-indicator"></div>
                         </div>
                         <div class="chat-user-info">
-                            <span class="chat-bot-name">SkyRex Premium Бот</span>
+                            <span class="chat-bot-name">SkyRex Бот</span>
                             <span class="chat-bot-status">В сети</span>
                         </div>
                         <button class="chat-clear-btn" id="chat-clear-btn" title="Очистить историю чата">
@@ -372,18 +332,11 @@
             </div>
 
             <div class="profile-subscription-card">
-                <h4>Статус подписки SkyRex Bot</h4>
+                <h4>Тарифный план</h4>
                 <div class="profile-sub-status-box">
-                    <span class="sub-badge" id="profile-sub-badge">Базовый</span>
-                    <p id="profile-sub-expires" style="color: var(--text-secondary);">Подписка не активна</p>
+                    <span class="sub-badge active-premium" id="profile-sub-badge" style="background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan);">Бесплатный доступ</span>
+                    <p id="profile-sub-expires" style="color: var(--text-secondary);">Все функции ассистента активны</p>
                 </div>
-                <div class="profile-sub-time-remaining" id="profile-sub-time-remaining"
-                    style="display:none; color: var(--accent-cyan); font-size: 13px; font-weight: 600; margin-top: 8px;">
-                </div>
-                <button class="btn btn-primary btn-glowing" id="profile-sub-action-btn"
-                    style="width: 100%; margin-top: 15px;">
-                    Активировать Premium (390 ₽)
-                </button>
             </div>
 
             <div class="profile-actions">

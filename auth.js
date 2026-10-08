@@ -80,10 +80,9 @@ const SkyrexAuth = {
         }
     },
 
-    // Check if the current user has premium access
+    // Check if the current user has premium access (all free for now)
     isSubscribed() {
-        this.validateActiveSubscription();
-        return Boolean(this.currentUser && this.currentUser.subscribed);
+        return true;
     },
 
     getToken() {
@@ -489,28 +488,21 @@ const SkyrexAuth = {
 
     updateProfileUI() {
         if (!this.currentUser) return;
-        this.dom.profileEmailDisplay.textContent = this.currentUser.email;
-        this.dom.profileRoleDisplay.textContent = this.currentUser.role === "admin" ? "Администратор" : "Пользователь";
+        if (this.dom.profileEmailDisplay) this.dom.profileEmailDisplay.textContent = this.currentUser.email;
+        if (this.dom.profileRoleDisplay) this.dom.profileRoleDisplay.textContent = this.currentUser.role === "admin" ? "Администратор" : "Пользователь";
 
-        const subscribed = this.isSubscribed();
-        if (subscribed) {
-            this.dom.profileSubBadge.textContent = "Premium";
+        if (this.dom.profileSubBadge) {
+            this.dom.profileSubBadge.textContent = "Бесплатный доступ";
             this.dom.profileSubBadge.className = "sub-badge premium";
-
-            const expiresDate = new Date(this.currentUser.subscriptionExpires);
-            const formattedDate = expiresDate.toLocaleString('ru-RU', {
-                day: '2-digit', month: '2-digit', year: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-            });
-            this.dom.profileSubExpires.textContent = `Активна до: ${formattedDate}`;
-            this.dom.profileSubTimeRemaining.style.display = "block";
-            this.dom.profileSubActionBtn.textContent = "Продлить подписку";
-        } else {
-            this.dom.profileSubBadge.textContent = "Базовый";
-            this.dom.profileSubBadge.className = "sub-badge";
-            this.dom.profileSubExpires.textContent = "Подписка не активна";
+        }
+        if (this.dom.profileSubExpires) {
+            this.dom.profileSubExpires.textContent = "Все функции активны";
+        }
+        if (this.dom.profileSubTimeRemaining) {
             this.dom.profileSubTimeRemaining.style.display = "none";
-            this.dom.profileSubActionBtn.textContent = "Активировать Premium (390 ₽)";
+        }
+        if (this.dom.profileSubActionBtn) {
+            this.dom.profileSubActionBtn.style.display = "none";
         }
     },
 
@@ -556,54 +548,40 @@ const SkyrexAuth = {
             const subResetBtn = document.getElementById("sub-reset-btn");
 
             const isPremium = this.isSubscribed();
-            if (subBadge && subStatusDesc && subActionBtn && subResetBtn) {
-                if (isPremium) {
-                    subBadge.textContent = "Premium";
-                    subBadge.className = "sub-badge premium";
-
-                    const expiresDate = new Date(this.currentUser.subscriptionExpires);
-                    const formattedDate = expiresDate.toLocaleDateString('ru-RU');
-                    subStatusDesc.textContent = `Премиальные функции разблокированы. Активны до: ${formattedDate}.`;
-                    subActionBtn.style.display = "none";
-                    subResetBtn.style.display = "block";
-                } else {
-                    subBadge.textContent = "Базовый";
-                    subBadge.className = "sub-badge";
-                    subStatusDesc.textContent = "Премиальные функции (оценка, подбор и б/у сборки) заблокированы.";
-                    subActionBtn.style.display = "block";
-                    subResetBtn.style.display = "none";
-                }
+            if (subBadge && subStatusDesc) {
+                subBadge.textContent = "Полный доступ";
+                subBadge.className = "sub-badge premium";
+                subStatusDesc.textContent = "Все функции ИИ-консультанта и подбора ПК активны.";
+                if (subActionBtn) subActionBtn.style.display = "none";
+                if (subResetBtn) subResetBtn.style.display = "none";
             }
 
             const subChatLink = document.getElementById("sub-chat-link");
             if (subChatLink) {
-                subChatLink.style.display = isPremium ? "flex" : "none";
+                subChatLink.style.display = "inline-block";
             }
 
-            // Sync global compatibility subscription variable for simple scripts
-            localStorage.setItem("skyrex_subscribed", isPremium ? "true" : "false");
+            localStorage.setItem("skyrex_subscribed", "true");
         } else {
             // Logged out
             this.dom.authStatusDot.className = "auth-status-dot";
 
-            // Sidebar premium details reset
             const subBadge = document.getElementById("sub-badge");
             const subStatusDesc = document.getElementById("sub-status-desc");
             const subActionBtn = document.getElementById("sub-action-btn");
             const subResetBtn = document.getElementById("sub-reset-btn");
 
-            if (subBadge && subStatusDesc && subActionBtn && subResetBtn) {
-                subBadge.textContent = "Войти";
-                subBadge.className = "sub-badge";
-                subStatusDesc.textContent = "Пожалуйста, авторизуйтесь для использования бота и отслеживания подписки.";
-                subActionBtn.textContent = "Войти в аккаунт";
-                subActionBtn.style.display = "block";
-                subResetBtn.style.display = "none";
+            if (subBadge && subStatusDesc) {
+                subBadge.textContent = "Полный доступ";
+                subBadge.className = "sub-badge premium";
+                subStatusDesc.textContent = "Все функции ИИ-консультанта и подбора ПК активны.";
+                if (subActionBtn) subActionBtn.style.display = "none";
+                if (subResetBtn) subResetBtn.style.display = "none";
             }
 
             const subChatLink = document.getElementById("sub-chat-link");
             if (subChatLink) {
-                subChatLink.style.display = "none";
+                subChatLink.style.display = "inline-block";
             }
         }
     }
