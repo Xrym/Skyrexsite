@@ -29,7 +29,9 @@ def search_price(
     norm_shop = None
     if shop:
         s_low = shop.strip().lower()
-        if "ситилинк" in s_low or "citilink" in s_low:
+        if "онлайн" in s_low or "onlinetrade" in s_low or "трейд" in s_low:
+            norm_shop = "ОнлайнТрейд"
+        elif "ситилинк" in s_low or "citilink" in s_low:
             norm_shop = "Ситилинк"
         elif "dns" in s_low or "днс" in s_low:
             norm_shop = "DNS"

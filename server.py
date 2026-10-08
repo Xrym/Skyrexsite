@@ -246,7 +246,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
     
     if all_products:
         budget_header = f" ПОД БЮДЖЕТ {budget:,} РУБ" if budget else ""
-        context_parts.append(f"=== АКТУАЛЬНЫЕ ЦЕНЫ И НАЛИЧИЕ ИЗ СИТИЛИНКА (РЕАЛЬНЫЙ КАТАЛОГ{budget_header}) ===")
+        context_parts.append(f"=== АКТУАЛЬНЫЕ ЦЕНЫ И НАЛИЧИЕ ИЗ ОНЛАЙНТРЕЙД (РЕАЛЬНЫЙ КАТАЛОГ{budget_header}) ===")
         for p in all_products[:45]:
             specs = detect_hardware_specs(p)
             spec_tags = []
@@ -260,7 +260,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
             price_str = f"{p['price']:,} руб".replace(",", " ")
             old_str = f" (старая цена: {p['old_price']:,} руб)".replace(",", " ") if p.get('old_price') else ""
-            context_parts.append(f"- [{p.get('shop', 'Ситилинк')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {p['url']}")
+            context_parts.append(f"- [{p.get('shop', 'ОнлайнТрейд')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {p['url']}")
 
     return "\n".join(context_parts)
 
@@ -312,8 +312,8 @@ def build_system_instruction(db, dynamic_context=""):
         "Ты — профессиональный ИИ-ассистент, ведущий эксперт по компьютерному железу и технический консультант "
         "магазина игровых ПК Skyrex Computers. Твоя цель — грамотно подбирать комплектующие и готовые сборки ПК под любые задачи и бюджет.\n\n"
         "КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:\n"
-        "1. РЕАЛЬНЫЕ ЦЕНЫ И ССЫЛКИ ИЗ СИТИЛИНКА: В твоем распоряжении есть актуальная база реального парсинга Ситилинка.\n"
-        "   - ВСЕГДА используй точные цены и названия товаров из блока 'АКТУАЛЬНЫЕ ЦЕНЫ И НАЛИЧИЕ ИЗ СИТИЛИНКА'.\n"
+        "1. РЕАЛЬНЫЕ ЦЕНЫ И ССЫЛКИ ИЗ ОНЛАЙНТРЕЙД: В твоем распоряжении есть актуальная база товаров ОнлайнТрейд.\n"
+        "   - ВСЕГДА используй точные цены и названия товаров из блока 'АКТУАЛЬНЫЕ ЦЕНЫ И НАЛИЧИЕ ИЗ ОНЛАЙНТРЕЙД'.\n"
         "   - Если пользователь просит собрать ПК или назвать цену, называй РЕАЛЬНЫЕ цены и прикрепляй кликабельные HTML-ссылки на товары (<a href='...' target='_blank'>Название</a>).\n"
         "   - Никогда не выдумывай несуществующие товары, цены или ссылки.\n\n"
         "2. ЖЕЛЕЗНЫЕ ПРАВИЛА СОВМЕСТИМОСТИ (100% COMPATIBILITY):\n"

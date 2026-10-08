@@ -1,0 +1,430 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta name="ROBOTS" content="NOINDEX, NOFOLLOW">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="viewport" content="initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Commissioner:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+    <link href="./sp_rotated_captcha/js/style.css" rel="stylesheet">
+    <script language="JavaScript" type="text/javascript" src="./sp_rotated_captcha/js/captchaIntGen.js"></script>
+
+    <style>
+
+        * {font-family: 'Commissioner', Arial, Helvetica, sans-serif; font-size: 1em;}
+
+        h1 {font-size: 2.5em; line-height: 1.15; font-weight: 500; padding: 0; margin: 0 0 23px; word-break: break-word;}
+        h3 {font-size: 1.25em; line-height: 1.625; font-weight: 500; padding: 0; margin: 0 0 10px; word-break: break-word;}
+        b {font-weight: 500;}
+
+        p {line-height: 1.5; padding: 0 0 0; margin: 0 0 20px;}
+
+
+        .list__dotMarks {margin: 0 0 20px; list-style: none; padding: 0;}
+            .list__dotMarks li {padding: 0 0 5px 17px; position: relative; line-height: 1.5;}
+                .list__dotMarks li:before {content: ""; font-size: 1em; position: absolute; left: 1px; top: 11px; color: #ff7800; line-height: 1; width: 5px; height: 5px; background: #ff7800; border-radius: 50%;}
+
+        .header__cover
+         {
+            padding-top: 10px;
+        }
+        .header__cover .logo__link
+        {
+            margin-left: 35px;
+        }
+        .captcha-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .box {
+            margin: 20px 0;
+            width: 1087px;
+            height: auto;
+            background-color: rgba(255, 255, 255, 1);
+            border-radius: 8px;
+            border: 0px solid transparent;
+            overflow: hidden;
+            /*box-shadow: 0px 4px 12px 0px rgba(0, 0, 0, 0.15);*/
+        }
+        .captcha-header {
+            margin-top: 30px;
+            margin-bottom: 0px;
+            display: flex;
+            align-items: flex-start;
+            background-color: #f5f5f5;
+            border-left: 5px solid #028105;
+            padding:20px 40px 15px;
+            justify-content: space-between;
+        }
+        .captcha-header-text {
+            font-family: Commissioner;
+             line-height: 1.5;  
+            text-align: left;
+            color: rgba(0, 0, 0, 0.8);
+        }
+        .captcha-header-info-box {
+            display: flex;
+            align-items: flex-start;
+        }
+        .captcha-header-span {
+            font-family: Commissioner;
+            
+            letter-spacing: 0.25px;
+            text-align: left;
+            color: #7A7A7A;
+            margin-bottom: 6px;
+        }
+        .captcha-header-label {
+            font-family: Commissioner;
+             
+            text-align: left;
+            margin-bottom: 6px;
+        }
+        .button-copy {
+            border: none;
+            background: transparent;
+            cursor: pointer;
+        }
+        .captcha {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            padding: 33px 44px;
+        }
+        .captcha-title {
+            font-family: Commissioner;
+            font-size: 18px;
+            font-weight: 500;
+            line-height: 27px;
+            letter-spacing: 0.5px;
+            text-align: left;
+            margin-bottom: 33px;
+        }
+        .captcha-control {
+            position: relative;
+            width: var(--size-control);
+            height: 20px;
+            margin: 0 auto;
+            margin-top: 33px;
+            margin-bottom: 23px;
+        }
+
+        .captcha-control-wrap {
+            left: 0;
+            width: 100%;
+            background: #D1DBD9;
+            overflow: hidden;
+        }
+
+        .captcha-control-wrap, .captcha-control-button {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            border-radius: 100px;
+            box-sizing: border-box;
+        }
+        .captcha-control-button {
+            position: absolute;
+            width: 50px;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 21px 52px 0 rgba(82,82,82,.2);
+            transform: translateX(0);
+            border: 3px solid #01CDCB;
+            top: -15px;
+            height: 50px;
+        }
+
+        .captcha-control-button i {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 28px;
+            height: 28px;
+            margin-left: -14px;
+            margin-top: -14px;
+            background: #01CDCB;
+            border-radius: 50%;
+            /*background-image: url('data:image/svg+xml,<svg width="91" height="91" viewBox="0 0 91 91" fill="none" xmlns="http://www.w3.org/2000/svg"><g filter="url(%23filter0_d_11497_31639)"><circle cx="45.5" cy="35.5" r="20.5" fill="%2301CDCB"/><g filter="url(%23filter1_d_11497_31639)"><circle cx="45.4996" cy="35.4996" r="18.2222" fill="white"/></g><circle cx="45.4987" cy="35.5007" r="13.6667" fill="%2301CDCB"/></g><defs><filter id="filter0_d_11497_31639" x="0" y="0" width="91" height="91" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/><feOffset dy="10"/><feGaussianBlur stdDeviation="12.5"/><feComposite in2="hardAlpha" operator="out"/><feColorMatrix type="matrix" values="0 0 0 0 0.0156863 0 0 0 0 0.0862745 0 0 0 0 0.0745098 0 0 0 0.1 0"/><feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_11497_31639"/><feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_11497_31639" result="shape"/></filter><filter id="filter1_d_11497_31639" x="2.27734" y="2.27734" width="86.4453" height="86.4453" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/><feOffset dy="10"/><feGaussianBlur stdDeviation="12.5"/><feComposite in2="hardAlpha" operator="out"/><feColorMatrix type="matrix" values="0 0 0 0 0.0156863 0 0 0 0 0.0862745 0 0 0 0 0.0745098 0 0 0 0.1 0"/><feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_11497_31639"/><feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_11497_31639" result="shape"/></filter></defs></svg>');*/
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+        }
+        .support-block {padding-top: 40px;}
+        .support-block-title {
+            font-family: Commissioner;
+            font-size: 15px;
+            font-weight: 500;
+            line-height: 20px;
+            letter-spacing: 0.5px;
+            text-align: left;
+            margin-bottom: 13px;
+        }
+        .support-block-subtitle {
+            font-family: Commissioner;
+            font-size: 15px;
+            font-weight: 400;
+            line-height: 20px;
+            letter-spacing: 0.5px;
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        .support-block-dsc {
+            font-family: Commissioner;
+            font-size: 15px;
+            font-weight: 500;
+            line-height: 30px;
+            letter-spacing: 0.5px;
+            text-align: left;
+            margin-bottom: 5px;
+        }
+        .support-block-span {
+            font-family: Commissioner;
+            font-size: 15px;
+            font-weight: 400;
+            line-height: 30px;
+            letter-spacing: 0.5px;
+            text-align: left;
+            margin-bottom: 10px;
+        }
+        .support-block-span span {
+            margin-right: 10px;
+        }
+        @media screen and (max-width: 600px) {
+            .captcha-header-text {
+                display: none;
+            }
+            .box {
+                margin: 0;
+                margin-top: 20px;
+                width: 100%;
+                height: auto;
+                background-color: transparent;
+                border-radius: 0px;
+                border: none;
+                overflow: hidden;
+                box-shadow: none;
+            }
+            .captcha-wrap {
+                width: 100%;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            h1 {
+                font-size: 26px;
+            }
+            h3 {
+                font-size: 20px;
+            }
+            .captcha {
+                justify-content: center;
+                align-items: center;
+            }
+            .support-block-title {
+                display: none;
+            }
+            .support-block-subtitle {
+                display: none;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <script>
+      const url_params = new URLSearchParams(window.location.search);
+      const request_datetime = url_params.get("request_datetime");
+      const request_ip = url_params.get("request_ip");
+      const request_id = url_params.get("request_id");
+
+      function copyToClipboard(string) {
+        let textarea;
+        let result;
+        let report = {
+          report: {
+            datetime: request_datetime,
+            ip: request_ip,
+            id: request_id
+          }
+        };
+        string = JSON.stringify(report)
+        try {
+          textarea = document.createElement('textarea');
+          textarea.setAttribute('readonly', true);
+          textarea.setAttribute('contenteditable', true);
+          textarea.style.position = 'fixed'; // prevent scroll from jumping to the bottom when focus is set.
+          textarea.value = string;
+
+          document.body.appendChild(textarea);
+
+          textarea.focus();
+          textarea.select();
+
+          const range = document.createRange();
+          range.selectNodeContents(textarea);
+
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+
+          textarea.setSelectionRange(0, textarea.value.length);
+          result = document.execCommand('copy');
+        } catch (err) {
+          console.error(err);
+          result = null;
+        } finally {
+          document.body.removeChild(textarea);
+        }
+
+        // manual copy fallback using prompt
+        if (!result) {
+          const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+          const copyHotkey = isMac ? '⌘C' : 'CTRL+C';
+          result = prompt(`Press ${copyHotkey}`, string); // eslint-disable-line no-alert
+          if (!result) {
+            return false;
+          }
+        }
+        return true;
+      }
+    </script>
+    <div id="captcha-holder">
+    <div id="captcha_root" class="captcha-root">      
+    <div class="captcha-wrap">
+        <div class="box">
+            <div class="header__cover">
+                <a href="/" title="На главную страницу" class="logo__link">
+                    <svg viewBox="0 0 267 80" fill="none" xmlns="http://www.w3.org/2000/svg" width="186" alt="ОнлайнТрейд" id="logo" title="ОНЛАЙН ТРЕЙД.РУ — интернет-магазин бытовой техники и электроники" class="logo">
+                        <g clip-path="url(#clip0_3684_4853)">
+                        <path d="M267 70.7716C267 72.6423 265.524 74.1387 263.679 74.1387H204.202C202.357 74.1387 200.88 72.6423 200.88 70.7716V10.039C200.88 8.16837 202.357 6.67188 204.202 6.67188H263.648C265.493 6.67188 266.969 8.16837 266.969 10.039L267 70.7716Z" fill="#F47524"></path>
+                        <path d="M209.645 26.3133H223.669C226.713 26.3133 229.02 27.0304 230.527 28.4957C232.034 29.961 232.802 32.0187 232.802 34.6999C232.802 37.4435 231.972 39.5947 230.311 41.1535C228.651 42.7124 226.129 43.4918 222.715 43.4918H218.102V53.562H209.645V26.3133ZM218.102 37.9735H220.194C221.823 37.9735 222.992 37.6929 223.638 37.1317C224.284 36.6017 224.622 35.8223 224.622 34.9805C224.653 34.1699 224.345 33.3593 223.761 32.7981C223.177 32.2058 222.1 31.894 220.532 31.894H218.102V37.9735V37.9735ZM234.648 26.3133H243.812L247.595 37.537L251.316 26.3133H259.896L250.947 47.3577C250.393 48.6672 249.747 49.9454 249.04 51.1613C248.425 52.0655 247.595 52.7825 246.611 53.219C245.534 53.749 244.058 54.0296 242.182 54.0296C241.198 54.0296 239.476 53.8737 237.046 53.5931V47.9813C238.492 48.1372 239.507 48.1995 240.183 48.1995C242.121 48.1995 243.32 47.4825 243.751 46.0171L234.648 26.3133Z" fill="white"></path>
+                        <path d="M173.264 67.841V46.9213H151.491V52.9696C151.491 58.4879 150.753 63.445 149.246 67.8098H146.57V80H153.028V74.0764H169.604V80H176.063V67.8098H173.264V67.841ZM165.237 67.841H156.965C158.195 62.3538 158.779 57.7085 158.779 53.9673V53.6243H165.237V67.841Z" fill="#0F87C9"></path>
+                        <path d="M137.529 40.2494C137.313 41.7459 136.545 43.0865 135.376 44.0218C132.854 45.9236 129.41 45.9236 126.888 44.0218C125.719 43.1177 124.951 41.7771 124.735 40.2806H127.78C128.272 41.8394 129.379 42.5877 131.04 42.5877C132.823 42.5877 133.961 41.8083 134.453 40.2806L137.529 40.2494Z" fill="#0F87C9"></path>
+                        <path d="M143.403 46.9213V74.1075H135.868V59.1738L126.212 74.1075H118.585V46.9213H126.181V61.9485L135.899 46.9213H143.403Z" fill="#0F87C9"></path>
+                        <path d="M92.3214 46.9213H113.818V52.7202H100.379V57.0538H112.834V62.6033H100.379V67.9345H114.218V74.1075H92.3214V46.9213Z" fill="#0F87C9"></path>
+                        <path d="M85.9862 49.1036C84.5408 47.6695 82.3573 46.9213 79.4357 46.9213H66.0888V74.1075H74.1462V64.0374H78.5439C81.773 64.0374 84.2025 63.258 85.7709 61.7303C87.3393 60.2026 88.1389 58.0514 88.1389 55.2767C88.1389 52.5955 87.4316 50.5378 85.9862 49.1036ZM79.405 57.6773C78.7899 58.2385 77.6828 58.5191 76.1144 58.5191H74.1462V52.4396H76.4527C77.9596 52.4396 79.0052 52.7514 79.528 53.3437C80.0816 53.9361 80.3891 54.7155 80.3583 55.5261C80.3583 56.3367 80.02 57.1473 79.405 57.6773Z" fill="#0F87C9"></path>
+                        <path d="M38.0725 46.9213H62.5214V53.6243H54.3102V74.1075H46.2836V53.6243H38.0725V46.9213Z" fill="#0F87C9"></path>
+                        <path d="M148.907 6.64069H156.934V16.1185H165.668V6.64069H173.725V33.7334H165.668V22.7592H156.934V33.7334H148.907V6.64069Z" fill="#0F87C9"></path>
+                        <path d="M137.652 0C137.467 1.49649 136.668 2.8371 135.499 3.74123C134.3 4.70772 132.793 5.23772 131.255 5.17537C129.717 5.20655 128.21 4.70772 127.011 3.74123C125.842 2.8371 125.074 1.49649 124.889 0H127.934C128.426 1.52767 129.502 2.30709 131.194 2.30709C132.977 2.30709 134.115 1.52767 134.607 0H137.652V0Z" fill="#0F87C9"></path>
+                        <path d="M143.526 6.64069V33.7334H135.991V18.862L126.365 33.7334H118.769V6.64069H126.335V21.6368L136.053 6.64069H143.526Z" fill="#0F87C9"></path>
+                        <path d="M106.499 6.64069H97.734L87.9852 33.7334H96.1655L97.4572 29.2751H106.529L107.821 33.7334H116.217L106.499 6.64069ZM99.1486 23.4139L101.978 13.6867L104.807 23.4139H99.1486Z" fill="#0F87C9"></path>
+                        <path d="M85.2788 33.7334H77.283V13.3125H71.0093V21.6368C71.0093 25.0663 70.8248 27.5916 70.4865 29.1816C70.2097 30.6781 69.3486 31.9564 68.057 32.7358C66.7654 33.484 64.7049 33.8581 61.8756 33.8581C60.8607 33.8581 59.8459 33.7646 58.8618 33.5776V28.0592H60.0611C61.1375 28.0592 61.9063 27.8098 62.3369 27.311C62.7674 26.8122 63.0134 25.908 63.0134 24.5674V6.64069H85.2788V33.7334Z" fill="#0F87C9"></path>
+                        <path d="M31.3683 6.64069H39.3642V16.1185H48.1289V6.64069H56.1555V33.7334H48.1289V22.7592H39.3642V33.7334H31.3683V6.64069Z" fill="#0F87C9"></path>
+                        <path d="M23.5263 9.82075C21.189 7.42012 17.8677 6.20422 13.5622 6.20422C9.349 6.20422 6.0584 7.42012 3.72115 9.91428C1.32239 12.3461 0 16.6485 0 21.0444C0 24.2245 0.768832 26.0016 1.96821 28.0904C3.01382 30.0546 4.64375 31.6758 6.61196 32.7046C8.51866 33.6711 10.9482 34.1699 13.8697 34.1699C16.7913 34.1699 19.1593 33.6087 21.066 32.4864C22.9727 31.3952 24.5104 29.7428 25.4945 27.7475C26.5093 25.721 27.0321 23.1333 27.0321 19.9532C27.0014 15.6508 25.8635 12.2525 23.5263 9.82075ZM17.5909 26.1575C16.6375 27.311 15.3151 27.9034 13.593 27.9034C11.8708 27.9034 10.5791 27.311 9.62578 26.1263C8.67243 24.9416 8.18037 22.9774 8.18037 20.2338C8.18037 17.4903 8.67243 15.4949 9.65653 14.3102C10.6099 13.1255 12.0553 12.4708 13.5622 12.5331C15.2536 12.5331 16.576 13.1255 17.5601 14.3102C18.5442 15.4949 19.0363 17.3344 19.0363 19.8909C19.0055 22.8839 18.5442 25.0039 17.5909 26.1575Z" fill="#0F87C9"></path>
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M187.288 35.8846C189.686 35.8846 191.654 37.88 191.654 40.3118C191.654 42.7436 189.686 44.7389 187.288 44.7389C184.889 44.7389 182.921 42.7436 182.921 40.3118C182.921 37.88 184.858 35.8846 187.288 35.8846Z" fill="#0F87C9"></path>
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M187.288 31.1458C188.149 31.1458 189.01 31.3328 189.779 31.707V8.04366C189.779 6.76541 188.764 6.67188 187.503 6.67188H187.041C185.781 6.67188 184.766 6.76541 184.766 8.04366V31.707C185.565 31.3328 186.426 31.1458 187.288 31.1458Z" fill="#0F87C9"></path>
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M187.288 49.6337C186.426 49.6337 185.565 49.4466 184.797 49.0725V72.6734C184.797 73.9517 185.811 74.1076 187.072 74.1076H187.534C188.794 74.1076 189.809 73.9205 189.809 72.6734V49.0725C189.01 49.4466 188.149 49.6337 187.288 49.6337Z" fill="#0F87C9"></path>
+                        </g>
+                    
+                    </svg>
+
+
+
+
+                    
+                </a>
+            </div>
+
+
+            <div class="captcha-header">
+                <div class="captcha-header-text">
+                    Мы хотим убедиться, что имеем дело именно с вами, а не с ботом.
+                    <br> Пожалуйста, пройдите проверку, чтобы получить доступ к сайту.
+                </div>
+                <div class="captcha-header-info-box">
+                    <div>
+                        <div class="captcha-header-span">
+                            2026-10-08 10:36:05 +0000                        </div>
+                        <div class="captcha-header-label">
+                            Ваш IP:
+                            <span class="captcha-header-span">45.130.188.3</span>
+                        </div>
+                        <div class="captcha-header-label">
+                            ID запроса:
+                            <span class="captcha-header-span">5aR01UbRGW21</span>
+                        </div>
+                    </div>
+                    <div>
+                        <button class="button-copy" onclick="copyToClipboard()">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M16 20H8C7.20435 20 6.44129 19.6839 5.87868 19.1213C5.31607 18.5587 5 17.7956 5 17V7C5 6.73478 4.89464 6.48043 4.70711 6.29289C4.51957 6.10536 4.26522 6 4 6C3.73478 6 3.48043 6.10536 3.29289 6.29289C3.10536 6.48043 3 6.73478 3 7V17C3 18.3261 3.52678 19.5979 4.46447 20.5355C5.40215 21.4732 6.67392 22 8 22H16C16.2652 22 16.5196 21.8946 16.7071 21.7071C16.8946 21.5196 17 21.2652 17 21C17 20.7348 16.8946 20.4804 16.7071 20.2929C16.5196 20.1054 16.2652 20 16 20ZM21 8.94C20.9896 8.84813 20.9695 8.75763 20.94 8.67V8.58C20.8919 8.47718 20.8278 8.38267 20.75 8.3L14.75 2.3C14.6673 2.22222 14.5728 2.15808 14.47 2.11H14.38L14.06 2H10C9.20435 2 8.44129 2.31607 7.87868 2.87868C7.31607 3.44129 7 4.20435 7 5V15C7 15.7956 7.31607 16.5587 7.87868 17.1213C8.44129 17.6839 9.20435 18 10 18H18C18.7956 18 19.5587 17.6839 20.1213 17.1213C20.6839 16.5587 21 15.7956 21 15V9C21 9 21 9 21 8.94ZM15 5.41L17.59 8H16C15.7348 8 15.4804 7.89464 15.2929 7.70711C15.1054 7.51957 15 7.26522 15 7V5.41ZM19 15C19 15.2652 18.8946 15.5196 18.7071 15.7071C18.5196 15.8946 18.2652 16 18 16H10C9.73478 16 9.48043 15.8946 9.29289 15.7071C9.10536 15.5196 9 15.2652 9 15V5C9 4.73478 9.10536 4.48043 9.29289 4.29289C9.48043 4.10536 9.73478 4 10 4H13V7C13 7.79565 13.3161 8.55871 13.8787 9.12132C14.4413 9.68393 15.2044 10 16 10H19V15Z" fill="#7A7A7A"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="captcha">
+                <h1>
+                    Разверните картинку правильно
+                </h1>
+                <div class="captcha-main">
+                    <div class="captcha-wrap">
+                        <div class="captcha-image" style="--size-img-margin: 30px">
+                          <div class="captcha-img" style="--size-img: 152px">
+                            <img src="./sp_rotated_captcha/get_image.php">
+                          </div>
+                            <div class="captcha-coordinate"></div>
+                            <div class="captcha-state">
+                                <svg class="captcha-state-icon-success" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 86.6986 86.6986">
+                                <foreignObject><style xmlns="http://www.w3.org/1999/xhtml">@-webkit-keyframes drawLine{100%{-webkit-stroke-dashoffset: 0;stroke-dashoffset: 0;}}@keyframes drawLine{100%{-webkit-stroke-dashoffset: 0;stroke-dashoffset: 0;}}svg.captcha-state-icon-success path{fill:none;stroke:#fff;stroke-width:3.7253;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:49 51;stroke-dashoffset:50;animation:drawLine 400ms ease-out 90ms forwards;}</style></foreignObject>
+                                <path class="path-success" d="M26.316,42.859L37.9984,54.5414L60.3826,32.1572"></path>
+                                </svg>
+                                <svg class="captcha-state-icon-fail" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 86.6986 86.6986">
+                                <foreignObject><style xmlns="http://www.w3.org/1999/xhtml">@-webkit-keyframes drawLine{100%{-webkit-stroke-dashoffset:0;stroke-dashoffset:0;}}@keyframes drawLine{100%{-webkit-stroke-dashoffset: 0;stroke-dashoffset: 0;}}svg.captcha-state-icon-fail path{fill:none;stroke:#fff;stroke-dasharray:42 44;stroke-dashoffset:-43;stroke-width:3.7253;stroke-linecap:round;stroke-linejoin:round;}.path-1{animation:drawLine 400ms ease-out 80ms forwards;}.path-2{animation:drawLine 400ms ease-out 280ms forwards;}</style></foreignObject>
+                                <path class="path-1" d="M28.774,57.9246L57.9247,28.7739"></path>
+                                <path class="path-2" d="M57.9246,57.9246L28.7739,28.7739"></path>
+                                </svg>
+                            </div>
+			</div>
+                    </div>
+                    <div class="captcha-control" style="--size-control: 275px">
+                        <div class="captcha-control-wrap"></div>
+                        <div class="captcha-control-button"><i></i></div>
+                    </div>
+                   
+                </div>
+                 <p>
+                        Потяните за ползунок, что бы вращать картинку.
+                    </p>
+                <div class="support-block">
+                    
+                    <h3>Зачем потребовалась эта проверка?</h3>
+                    <p>
+                        Что-то в поведении вашего браузера привлекло наше внимание.
+                    </p>
+                    
+                    <h3>Возможные причины:</h3>
+
+                    <ul class="list__dotMarks">
+                        <li>
+                            
+                            Вы просматриваете страницы и кликаете со скоростью, намного превышающую ожидаемую от человека
+                        </li>
+                        <li>
+                            
+                            Что-то мешает работе javascript в вашем браузере
+                        </li>
+                        <li>
+                            
+                            Ваше поведение похоже на поведение автоматизированных систем
+                        </li>
+                    </ul>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+    </div>
+
+<script language="JavaScript" type="text/javascript">
+   let myCaptcha = new Captcha();
+</script>
+<script language="JavaScript" type="text/javascript" src="./sp_rotated_captcha/js/bundle.js"></script>
+
+
+</body></html>

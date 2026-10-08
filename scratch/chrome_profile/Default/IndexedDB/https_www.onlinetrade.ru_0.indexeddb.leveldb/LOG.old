@@ -1,0 +1,6 @@
+2026/10/08-13:35:24.817 6a5c Creating DB C:\code\skyrex-main\scratch\chrome_profile\Default\IndexedDB\https_www.onlinetrade.ru_0.indexeddb.leveldb since it was missing.
+2026/10/08-13:35:24.822 6a5c Reusing MANIFEST C:\code\skyrex-main\scratch\chrome_profile\Default\IndexedDB\https_www.onlinetrade.ru_0.indexeddb.leveldb/MANIFEST-000001
+2026/10/08-13:35:26.681 6a5c Level-0 table #5: started
+2026/10/08-13:35:26.691 6a5c Level-0 table #5: 149171 bytes OK
+2026/10/08-13:35:26.694 6a5c Delete type=0 #3
+2026/10/08-13:35:26.694 6a5c Manual compaction at level-0 from '\x00\x03\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x04\x00\x00\x00' @ 0 : 0; will stop at (end)

@@ -18,12 +18,13 @@ if sys.platform == "win32":
 
 from scraper.dns_worker import DnsScraper
 from scraper.citilink_worker import CitilinkScraper
+from scraper.onlinetrade_worker import OnlineTradeScraper
 from db.database import get_stats
 
 def main():
     parser = argparse.ArgumentParser(description="Skyrex PC Parts Scraper Worker")
-    parser.add_argument("--shop", type=str, choices=["citilink", "dns", "all"], default="citilink",
-                        help="Выбор магазина: citilink (по умолчанию), dns, all")
+    parser.add_argument("--shop", type=str, choices=["onlinetrade", "citilink", "dns", "all"], default="onlinetrade",
+                        help="Выбор магазина: onlinetrade (по умолчанию), citilink, dns, all")
     parser.add_argument("--pages", type=int, default=1, help="Количество страниц на категорию (по умолчанию: 1)")
     parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu")
     parser.add_argument("--proxy", type=str, default=None, help="HTTP/SOCKS5 прокси (например: http://user:pass@host:port)")
@@ -39,6 +40,11 @@ def main():
     if args.proxy:
         print(f"[*] Прокси: {args.proxy.split('@')[-1]}")
     print("=" * 60)
+
+    if args.shop in ["onlinetrade", "all"]:
+        print("\n===> Запуск парсера ОнлайнТрейд...")
+        onlinetrade = OnlineTradeScraper()
+        onlinetrade.run_scrape_cycle(categories=args.cat)
 
     if args.shop in ["citilink", "all"]:
         print("\n===> Запуск парсера Ситилинк...")
