@@ -1,20 +1,20 @@
 @echo off
 chcp 65001 > nul
-title Skyrex Computers - Полный сбор каталога ОнлайнТрейд
+title Skyrex Computers - Full Catalog Scraper
 echo ================================================================
-echo        Skyrex Computers - Полный парсинг каталога ОнлайнТрейд
+echo        Skyrex Computers - Polnyi parsing OnlineTrade
 echo ================================================================
 echo.
-echo Режим: ПОЛНЫЙ ПАРСИНГ ВСЕХ СТРАНИЦ ДО КОНЦА КАТАЛОГА (pages=0)
-echo Задержки: Безопасные рандомные паузы (3.5 - 5.5 сек на страницу, 12 сек между категориями)
+echo Mode: ALL PAGES TO THE END (pages=0)
+echo Delays: Safe random delays (3.5 - 5.5s per page, 12s category)
 echo.
-echo Внимание: процесс может занять от 15 до 40 минут в зависимости от каталога.
-echo Вы можете свернуть это окно, оно работает в фоне.
+echo Vnimanie: process mozhet zanyat 15-40 minut.
+echo Mozhno svernut eto okno, ono rabotaet v fone.
 echo.
 python run_scraper.py --shop onlinetrade --pages 0
 
 echo.
 echo ================================================================
-echo        Полное обновление базы завершено успешно!
+echo        Obnovlenie bazy dannyh zaversheno uspeshno!
 echo ================================================================
 pause
