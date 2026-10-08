@@ -56,8 +56,53 @@ class OnlineTradeScraper:
     Поддерживает браузерные сессии Playwright для прохождения проверки Servicepipe
     и сохранение актуальных цен, ссылок и названий в каталог SQLite.
     """
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = False, profile_dir: Optional[str] = None):
+        # Default headless=False allows the user to solve the Servicepipe captcha in the opened window.
+        # Once solved, cookies and session are stored in persistent profile_dir.
         self.headless = headless
+        if profile_dir is None:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.profile_dir = os.path.join(base_dir, "playwright_onlinetrade_profile")
+        else:
+            self.profile_dir = profile_dir
+
+    async def _handle_captcha_if_needed(self, page) -> bool:
+        """
+        Проверяет, появилось ли окно проверки или капчи Servicepipe.
+        Если появилось:
+        - В режиме с окном (headed): ждет, пока пользователь решит капчу (до 120 сек).
+        - В скрытом режиме (headless): логирует предупреждение.
+        """
+        for _ in range(3):
+            try:
+                content = await page.content()
+                is_captcha = "sp_rotated" in content or "captcha" in content.lower() or "servicepipe" in content.lower() or "проверку" in content
+                if not is_captcha:
+                    return True
+                
+                logger.warning("=" * 60)
+                logger.warning("[!] ОБНАРУЖЕНА ЗАЩИТА/КАПЧА ОНЛАЙНТРЕЙД!")
+                logger.warning("[!] Пожалуйста, поверните ползунок в открывшемся окне браузера.")
+                logger.warning("[!] Скрипт ждёт решения капчи (до 2 минут)...")
+                logger.warning("=" * 60)
+                
+                # Ждем исчезновения капчи (проверяем каждые 2 секунды)
+                for wait_step in range(60):
+                    await page.wait_for_timeout(2000)
+                    try:
+                        cur_content = await page.content()
+                        if "sp_rotated" not in cur_content and "Разверните картинку" not in cur_content and ("indexGoods__item" in cur_content or "catalog__displayedItem" in cur_content or "каталог" in cur_content.lower()):
+                            logger.info("[✓] Капча успешно пройдена! Сессия сохранена в профиль браузера.")
+                            return True
+                    except Exception:
+                        pass
+                
+                logger.error("[X] Время ожидания решения капчи истекло.")
+                return False
+            except Exception as e:
+                logger.warning(f"Ошибка проверки капчи: {e}")
+                await page.wait_for_timeout(2000)
+        return True
 
     def _parse_html_content(self, html_text: str, category_key: str) -> List[Dict[str, Any]]:
         """Parses cards from OnlineTrade HTML."""
@@ -169,16 +214,18 @@ class OnlineTradeScraper:
 
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(
+                os.makedirs(self.profile_dir, exist_ok=True)
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=self.profile_dir,
                     channel="chrome",
                     headless=self.headless,
-                    args=["--disable-blink-features=AutomationControlled"]
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--start-maximized"
+                    ],
+                    viewport=None
                 )
-                context = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    viewport={"width": 1366, "height": 768}
-                )
-                page = await context.new_page()
+                page = context.pages[0] if context.pages else await context.new_page()
 
                 current_page = 1
                 while True:
@@ -194,16 +241,26 @@ class OnlineTradeScraper:
 
                     logger.info(f"[{cat_info['title']}] Запрос страницы {current_page}: {page_url}")
                     try:
-                        await page.goto(page_url, wait_until="commit", timeout=25000)
+                        await page.goto(page_url, wait_until="domcontentloaded", timeout=45000)
                     except Exception as e:
                         logger.warning(f"Ошибка загрузки страницы {current_page}: {e}")
                         break
 
-                    # Случайная пауза для имитации человека и выполнения скрипта (3.5 - 5.5 сек)
+                    # Случайная пауза для имитации человека (3.5 - 5.5 сек)
                     sleep_time = random.uniform(3.5, 5.5)
                     await page.wait_for_timeout(int(sleep_time * 1000))
 
-                    content = await page.content()
+                    # Проверяем и ждем решения капчи Servicepipe при необходимости
+                    captcha_passed = await self._handle_captcha_if_needed(page)
+                    if not captcha_passed:
+                        break
+
+                    try:
+                        content = await page.content()
+                    except Exception:
+                        await page.wait_for_timeout(2000)
+                        content = await page.content()
+
                     page_items = self._parse_html_content(content, category_key)
 
                     # Фильтруем дубликаты
@@ -236,7 +293,7 @@ class OnlineTradeScraper:
                     between_pages_delay = random.uniform(2.5, 4.0)
                     time.sleep(between_pages_delay)
 
-                await browser.close()
+                await context.close()
         except Exception as e:
             logger.error(f"Playwright scrape error for {category_key}: {e}")
 
