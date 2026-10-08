@@ -44,7 +44,7 @@ def main():
     if args.shop in ["onlinetrade", "all"]:
         print("\n===> Запуск парсера ОнлайнТрейд...")
         onlinetrade = OnlineTradeScraper()
-        onlinetrade.run_scrape_cycle(categories=args.cat)
+        onlinetrade.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
 
     if args.shop in ["citilink", "all"]:
         print("\n===> Запуск парсера Ситилинк...")

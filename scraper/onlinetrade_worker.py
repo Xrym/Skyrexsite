@@ -152,16 +152,20 @@ class OnlineTradeScraper:
 
         return products
 
-    async def fetch_category_playwright(self, category_key: str, max_pages: int = 1) -> List[Dict[str, Any]]:
-        """Asynchronously scrapes category via Playwright handling challenge verification."""
+    async def fetch_category_playwright(self, category_key: str, max_pages: int = 0) -> List[Dict[str, Any]]:
+        """
+        Парсит страницы категории через Playwright с защитными задержками.
+        max_pages=0 означает парсить ВСЕ доступные страницы до конца каталога.
+        """
         from playwright.async_api import async_playwright
 
         if category_key not in ONLINETRADE_CATEGORIES:
             return []
 
         cat_info = ONLINETRADE_CATEGORIES[category_key]
-        url = f"https://www.onlinetrade.ru/catalogue/{cat_info['slug']}/"
-        results = []
+        base_slug = cat_info['slug']
+        all_category_products = []
+        seen_product_ids = set()
 
         try:
             async with async_playwright() as p:
@@ -176,56 +180,105 @@ class OnlineTradeScraper:
                 )
                 page = await context.new_page()
 
-                logger.info(f"Загрузка каталога ОнлайнТрейд: {url}")
-                await page.goto(url, wait_until="commit", timeout=20000)
-                await page.wait_for_timeout(4000)
+                current_page = 1
+                while True:
+                    if max_pages > 0 and current_page > max_pages:
+                        logger.info(f"Достигнут лимит страниц ({max_pages}) для категории {category_key}.")
+                        break
 
-                # Check if items already rendered
-                content = await page.content()
-                items = self._parse_html_content(content, category_key)
-                if items:
-                    results.extend(items)
-                    logger.info(f"Успешно извлечено {len(items)} товаров из категории {category_key}")
-                else:
-                    logger.warning(f"Не удалось извлечь товары из ОнлайнТрейд ({category_key}) — возможно активна проверка капчи.")
+                    page_url = (
+                        f"https://www.onlinetrade.ru/catalogue/{base_slug}/"
+                        if current_page == 1
+                        else f"https://www.onlinetrade.ru/catalogue/{base_slug}/?page={current_page}"
+                    )
+
+                    logger.info(f"[{cat_info['title']}] Запрос страницы {current_page}: {page_url}")
+                    try:
+                        await page.goto(page_url, wait_until="commit", timeout=25000)
+                    except Exception as e:
+                        logger.warning(f"Ошибка загрузки страницы {current_page}: {e}")
+                        break
+
+                    # Случайная пауза для имитации человека и выполнения скрипта (3.5 - 5.5 сек)
+                    sleep_time = random.uniform(3.5, 5.5)
+                    await page.wait_for_timeout(int(sleep_time * 1000))
+
+                    content = await page.content()
+                    page_items = self._parse_html_content(content, category_key)
+
+                    # Фильтруем дубликаты
+                    new_items = []
+                    for itm in page_items:
+                        if itm["id"] not in seen_product_ids:
+                            seen_product_ids.add(itm["id"])
+                            new_items.append(itm)
+
+                    if not new_items:
+                        logger.info(f"[{cat_info['title']}] Товары на странице {current_page} закончились (Конец категории).")
+                        break
+
+                    all_category_products.extend(new_items)
+                    # Сразу сохраняем страницу в базу данных
+                    upsert_products(new_items)
+                    logger.info(f"[{cat_info['title']}] Стр. {current_page}: спарсено {len(new_items)} новых товаров (Всего: {len(all_category_products)})")
+
+                    # Проверяем, есть ли кнопка следующей страницы
+                    next_button = await page.query_selector('.navigation__next, a[title*="Следующая"], .paginator a.next')
+                    has_more = bool(next_button)
+
+                    if not has_more and current_page > 1:
+                        logger.info(f"[{cat_info['title']}] Последняя страница каталога достигнута.")
+                        break
+
+                    current_page += 1
+
+                    # Дополнительная безопасная пауза между переходами
+                    between_pages_delay = random.uniform(2.5, 4.0)
+                    time.sleep(between_pages_delay)
 
                 await browser.close()
         except Exception as e:
             logger.error(f"Playwright scrape error for {category_key}: {e}")
 
-        return results
+        return all_category_products
 
-    def run_scrape_cycle(self, categories: Optional[List[str]] = None) -> Dict[str, int]:
-        """Runs scrape cycle for specified or all categories."""
+    def run_scrape_cycle(self, categories: Optional[List[str]] = None, max_pages: int = 0) -> Dict[str, int]:
+        """
+        Запускает полный цикл сбора по всем категориям с безопасными интервалами.
+        max_pages=0 парсит ВСЕ страницы до конца.
+        """
         import asyncio
         init_db()
         target_categories = categories or list(ONLINETRADE_CATEGORIES.keys())
         stats = {}
 
-        logger.info(f"Запуск сбора цен ОнлайнТрейд (Категорий: {len(target_categories)})...")
+        mode_str = f"ВСЕ страницы (до конца каталога)" if max_pages == 0 else f"до {max_pages} страниц"
+        logger.info(f"Запуск полного сбора цен ОнлайнТрейд ({len(target_categories)} категорий, режим: {mode_str})...")
 
         for cat_key in target_categories:
             cat_name = ONLINETRADE_CATEGORIES.get(cat_key, {}).get("title", cat_key)
-            logger.info(f"==> [ОнлайнТрейд] Сбор категории: {cat_name} ({cat_key})")
+            logger.info(f"=========================================================")
+            logger.info(f"==> НАЧАЛО СБОРА КАТЕГОРИИ: {cat_name} ({cat_key})")
+            logger.info(f"=========================================================")
 
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     import concurrent.futures
                     with concurrent.futures.ThreadPoolExecutor() as pool:
-                        items = pool.submit(asyncio.run, self.fetch_category_playwright(cat_key)).result()
+                        items = pool.submit(asyncio.run, self.fetch_category_playwright(cat_key, max_pages=max_pages)).result()
                 else:
-                    items = asyncio.run(self.fetch_category_playwright(cat_key))
+                    items = asyncio.run(self.fetch_category_playwright(cat_key, max_pages=max_pages))
             except Exception:
-                items = asyncio.run(self.fetch_category_playwright(cat_key))
+                items = asyncio.run(self.fetch_category_playwright(cat_key, max_pages=max_pages))
 
-            if items:
-                upsert_products(items)
-                stats[cat_key] = len(items)
-            else:
-                stats[cat_key] = 0
+            stats[cat_key] = len(items)
+            logger.info(f"Завершена категория {cat_name}. Собрано: {len(items)} позиций.")
 
-            time.sleep(1.5)
+            # Безопасная пауза перед переходом к следующей категории (10 - 16 секунд)
+            inter_cat_delay = random.uniform(10.0, 16.0)
+            logger.info(f"Безопасная пауза перед следующей категорией: {inter_cat_delay:.1f} сек...")
+            time.sleep(inter_cat_delay)
 
-        logger.info(f"Цикл ОнлайнТрейд завершен: {stats}")
+        logger.info(f"Полный цикл сбора ОнлайнТрейд успешно завершён! Итоги: {stats}")
         return stats

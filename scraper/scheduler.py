@@ -1,7 +1,7 @@
 import time
 import threading
 import logging
-from .dns_worker import DnsScraper
+from .onlinetrade_worker import OnlineTradeScraper
 
 logger = logging.getLogger("scraper_scheduler")
 
@@ -10,10 +10,10 @@ class BackgroundPriceScheduler:
     Фоновый планировщик, который запускает обновление цен по расписанию
     (например, раз в 12 часов), не блокируя основной сервер и не нагружая сайт запросами.
     """
-    def __init__(self, interval_hours: int = 12, max_pages: int = 2):
+    def __init__(self, interval_hours: int = 12, max_pages: int = 0):
         self.interval_seconds = interval_hours * 3600
         self.max_pages = max_pages
-        self.scraper = DnsScraper()
+        self.scraper = OnlineTradeScraper(headless=True)
         self._thread = None
         self._stop_event = threading.Event()
 
