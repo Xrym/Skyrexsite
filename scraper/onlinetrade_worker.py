@@ -105,8 +105,95 @@ class OnlineTradeScraper:
                 await page.wait_for_timeout(3000)
                 return True
 
-        logger.error("[X] Время ожидания капчи истекло (2 минуты).")
-        return False
+    def _parse_html_content(self, html_text: str, category_key: str) -> List[Dict[str, Any]]:
+        """
+        Извлекает товары из HTML каталога ОнлайнТрейд.
+        Парсит карточки товаров, ссылки, названия и цены.
+        """
+        import html as html_lib
+        products = []
+
+        item_matches = list(re.finditer(r'(?:id=["\']item_(\d+)["\']|class=["\'][^"\']*indexGoods__item[^"\']*["\'])', html_text))
+        if not item_matches:
+            pattern = re.compile(
+                r'<a[^>]*href=["\'](/catalogue/[^"\']+item-(\d+)\.html)["\'][^>]*>(.*?)</a>.*?'
+                r'(?:class=["\'][^"\']*price[^"\']*["\'][^>]*>([\d\s]+)\s*(?:₽|руб)?)',
+                re.DOTALL | re.IGNORECASE
+            )
+            for m in pattern.finditer(html_text):
+                url, pid, title_raw, price_raw = m.groups()
+                clean_price = int(re.sub(r'\D', '', price_raw))
+                clean_title = re.sub(r'<[^>]+>', '', title_raw).strip()
+                if clean_price > 0 and len(clean_title) > 3:
+                    products.append({
+                        "id": f"onlinetrade_{pid}",
+                        "shop": "ОнлайнТрейд",
+                        "name": html_lib.unescape(clean_title),
+                        "category": category_key,
+                        "price": clean_price,
+                        "old_price": None,
+                        "available": True,
+                        "url": f"https://www.onlinetrade.ru{url}",
+                        "city_id": "moscow",
+                        "warranty": "12–36 мес.",
+                        "mark": 8,
+                        "comment": "Новый товар из розничной сети ОнлайнТрейд с официальной гарантией."
+                    })
+            return products
+
+        seen_ids = set()
+        for i, match in enumerate(item_matches):
+            start = match.start()
+            end = item_matches[i + 1].start() if i + 1 < len(item_matches) else start + 12000
+            card_html = html_text[start:end]
+
+            pid_match = re.search(r'item-(\d+)\.html|id=["\']item_(\d+)["\']', card_html)
+            pid = pid_match.group(1) or pid_match.group(2) if pid_match else str(random.randint(100000, 999999))
+            if pid in seen_ids:
+                continue
+            seen_ids.add(pid)
+
+            price = None
+            price_m = re.search(r'class=["\'][^"\']*price[^"\']*["\'][^>]*>([\d\s]+)', card_html)
+            if price_m:
+                digits = re.sub(r'\D', '', price_m.group(1))
+                if digits.isdigit():
+                    price = int(digits)
+
+            if not price or price <= 0:
+                continue
+
+            link_m = re.search(r'<a[^>]*href=["\'](/catalogue/[^"\']+)["\'][^>]*title=["\']([^"\']+)["\']', card_html)
+            if link_m:
+                raw_url = link_m.group(1)
+                raw_title = link_m.group(2)
+            else:
+                a_m = re.search(r'<a[^>]*href=["\'](/catalogue/[^"\']+)["\'][^>]*>(.*?)</a>', card_html, re.DOTALL)
+                if a_m:
+                    raw_url = a_m.group(1)
+                    raw_title = re.sub(r'<[^>]+>', '', a_m.group(2)).strip()
+                else:
+                    continue
+
+            full_url = f"https://www.onlinetrade.ru{raw_url}" if raw_url.startswith("/") else raw_url
+            clean_title = html_lib.unescape(raw_title).strip()
+
+            products.append({
+                "id": f"onlinetrade_{pid}",
+                "shop": "ОнлайнТрейд",
+                "name": clean_title,
+                "category": category_key,
+                "price": price,
+                "old_price": None,
+                "available": True,
+                "url": full_url,
+                "city_id": "moscow",
+                "warranty": "12–36 мес.",
+                "mark": 8,
+                "comment": "Новый товар из розничной сети ОнлайнТрейд с официальной гарантией."
+            })
+
+        return products
 
     async def _scrape_all_categories(self, categories: List[str], max_pages: int = 0) -> Dict[str, int]:
         """
@@ -232,16 +319,11 @@ class OnlineTradeScraper:
         logger.info(f"Запуск полного сбора цен ОнлайнТрейд ({len(target_categories)} категорий, режим: {mode_str})...")
 
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    stats = pool.submit(asyncio.run, self._scrape_all_categories(target_categories, max_pages=max_pages)).result()
-            else:
-                stats = asyncio.run(self._scrape_all_categories(target_categories, max_pages=max_pages))
-        except Exception as e:
-            logger.error(f"Ошибка в цикле сбора: {e}")
             stats = asyncio.run(self._scrape_all_categories(target_categories, max_pages=max_pages))
+        except RuntimeError:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                stats = pool.submit(asyncio.run, self._scrape_all_categories(target_categories, max_pages=max_pages)).result()
 
         logger.info(f"Полный цикл сбора ОнлайнТрейд успешно завершён! Итоги: {stats}")
         return stats
