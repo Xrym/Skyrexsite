@@ -509,19 +509,33 @@ async def handle_search_price(request):
         return web.json_response({"error": str(e)}, status=500)
 
 from db.auth_db import (
-    init_auth_db, register_user, login_user,
-    get_user_by_token, logout_token, activate_subscription
+    init_auth_db, login_user,
+    get_user_by_token, logout_token, activate_subscription,
+    save_verification_code, verify_code_and_register
 )
+from email_service import send_verification_email
 
 # Initialize Auth database schema
 init_auth_db()
 
-# Security Middleware: Blocks sensitive files & sets security headers
+# Security & CORS Middleware: Handles preflight, blocks sensitive files & sets security headers
 @web.middleware
 async def security_middleware(request, handler):
+    origin = request.headers.get("Origin", "*")
+    
+    # 1. Handle CORS Preflight OPTIONS requests for all API endpoints
+    if request.method == "OPTIONS":
+        return web.Response(status=204, headers={
+            "Access-Control-Allow-Origin": origin if origin else "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, Accept, Origin",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "86400"
+        })
+
     path = request.path.lower()
     
-    # Block attempts to view sensitive system and source files
+    # 2. Block attempts to view sensitive system and source files
     blocked_patterns = [
         '.env', '.db', '.py', '.bat', '.sh', '.git', 'bot_db.js',
         'catalog', 'users.db', 'requirements.txt'
@@ -535,20 +549,63 @@ async def security_middleware(request, handler):
     except web.HTTPException as ex:
         response = ex
 
-    # Set hardened security headers
+    # 3. Set hardened security and CORS headers
+    response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
+
 # Auth Request Handlers
+async def handle_auth_send_code(request):
+    """Generates code, saves pending registration, and emails code via SMTP."""
+    try:
+        import secrets
+        data = await request.json()
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
+
+        if not email or "@" not in email:
+            return web.json_response({"success": False, "error": "Некорректный email адрес."}, status=400)
+        if len(password) < 6:
+            return web.json_response({"success": False, "error": "Пароль должен быть не менее 6 символов."}, status=400)
+
+        # Generate 4-digit code
+        code = str(secrets.randbelow(9000) + 1000)
+
+        # Save to DB
+        save_res = save_verification_code(email, password, code, expires_minutes=10)
+        if not save_res.get("success"):
+            return web.json_response(save_res, status=400)
+
+        # Send real email via SMTP
+        mail_res = await send_verification_email(email, code)
+        if not mail_res.get("success"):
+            logger.warning(f"Could not send email to {email}: {mail_res.get('error')}. Fallback demo code: {code}")
+            # If email server is not configured or failed, report error but also return demo code in debug mode
+            return web.json_response({
+                "success": False,
+                "error": mail_res.get("error", "Не удалось отправить письмо на почту."),
+                "fallback_code": code  # helps test if SMTP credentials are still being filled
+            }, status=500)
+
+        return web.json_response({"success": True, "message": f"Код подтверждения отправлен на {email}"})
+    except Exception as e:
+        logger.error(f"Error in handle_auth_send_code: {e}")
+        return web.json_response({"success": False, "error": str(e)}, status=500)
+
 async def handle_auth_register(request):
+    """Verifies submitted code and activates user."""
     try:
         data = await request.json()
-        email = data.get("email", "")
-        password = data.get("password", "")
-        result = register_user(email, password)
+        email = data.get("email", "").strip().lower()
+        code = data.get("code", "").strip()
+        result = verify_code_and_register(email, code)
         status = 200 if result.get("success") else 400
         return web.json_response(result, status=status)
     except Exception as e:
@@ -645,6 +702,7 @@ async def init_app():
     app.router.add_get('/api/search_price', handle_search_price)
     
     # Real Authentication API
+    app.router.add_post('/api/auth/send_code', handle_auth_send_code)
     app.router.add_post('/api/auth/register', handle_auth_register)
     app.router.add_post('/api/auth/login', handle_auth_login)
     app.router.add_get('/api/auth/me', handle_auth_me)

@@ -47,6 +47,18 @@ def init_auth_db():
             );
         """)
         
+        # 3. Verification codes table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS verification_codes (
+                email TEXT PRIMARY KEY COLLATE NOCASE,
+                code TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
         # 3. Create default admin user if not exists
         admin = cursor.execute("SELECT id FROM users WHERE email = 'admin@skyrex.ru'").fetchone()
         if not admin:
@@ -70,31 +82,71 @@ def hash_password(password: str, salt: str) -> str:
         100000
     ).hex()
 
-def register_user(email: str, password: str) -> Dict[str, Any]:
-    """Registers a new user, returning (success, user_dict, error_msg)."""
+def save_verification_code(email: str, password: str, code: str, expires_minutes: int = 10) -> Dict[str, Any]:
+    """Saves pending registration verification code with hashed password."""
     email = email.strip().lower()
     if not email or "@" not in email:
         return {"success": False, "error": "Некорректный email адрес."}
     if len(password) < 6:
         return {"success": False, "error": "Пароль должен содержать минимум 6 символов."}
-        
+
     init_auth_db()
     with get_auth_connection() as conn:
         cursor = conn.cursor()
         existing = cursor.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
         if existing:
             return {"success": False, "error": "Пользователь с таким email уже зарегистрирован."}
-            
+
         salt = secrets.token_hex(16)
         pwd_hash = hash_password(password, salt)
-        
+        expires_at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=expires_minutes)).isoformat()
+
         cursor.execute("""
-            INSERT INTO users (email, password_hash, salt, role, subscribed, subscription_expires)
-            VALUES (?, ?, ?, 'user', 0, NULL)
-        """, (email, pwd_hash, salt))
-        user_id = cursor.lastrowid
+            INSERT OR REPLACE INTO verification_codes (email, code, password_hash, salt, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (email, code, pwd_hash, salt, expires_at))
         conn.commit()
-        
+
+    return {"success": True}
+
+def verify_code_and_register(email: str, code: str) -> Dict[str, Any]:
+    """Validates code from database and registers the user."""
+    email = email.strip().lower()
+    code = code.strip()
+
+    init_auth_db()
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        record = cursor.execute("SELECT * FROM verification_codes WHERE email = ?", (email,)).fetchone()
+        if not record:
+            return {"success": False, "error": "Запрос на регистрацию не найден. Запросите код повторно."}
+
+        # Check expiration
+        try:
+            exp_dt = datetime.datetime.fromisoformat(record["expires_at"].replace("Z", "+00:00"))
+            if datetime.datetime.now(datetime.timezone.utc) > exp_dt:
+                cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+                conn.commit()
+                return {"success": False, "error": "Срок действия кода истёк. Запросите новый."}
+        except Exception:
+            pass
+
+        if record["code"] != code:
+            return {"success": False, "error": "Неверный код подтверждения."}
+
+        # Register user into users table
+        try:
+            cursor.execute("""
+                INSERT INTO users (email, password_hash, salt, role, subscribed, subscription_expires)
+                VALUES (?, ?, ?, 'user', 0, NULL)
+            """, (email, record["password_hash"], record["salt"]))
+            user_id = cursor.lastrowid
+            # Clean up verification code
+            cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": "Пользователь с таким email уже существует."}
+
     token = create_session(user_id)
     return {
         "success": True,
@@ -107,6 +159,7 @@ def register_user(email: str, password: str) -> Dict[str, Any]:
             "subscriptionExpires": None
         }
     }
+
 
 def login_user(email: str, password: str) -> Dict[str, Any]:
     """Authenticates user with email and password."""

@@ -112,12 +112,12 @@ const SkyrexAuth = {
             return { success: false, message: data.error || "Неверный email или пароль." };
         } catch (err) {
             console.error("Login fetch error:", err);
-            return { success: false, message: "Ошибка связи с сервером авторизации." };
+            return { success: false, message: `Ошибка связи с сервером (${err.message || 'сеть недоступна'})` };
         }
     },
 
-    // Registration step 1: Send verification code
-    sendVerificationCode(email, password) {
+    // Registration step 1: Request verification code from server (sent via email)
+    async sendVerificationCode(email, password) {
         email = email.trim().toLowerCase();
 
         // Validate email format
@@ -131,47 +131,45 @@ const SkyrexAuth = {
             return { success: false, message: "Пароль должен быть не менее 6 символов." };
         }
 
-        // Generate 4-digit code
-        const code = Math.floor(1000 + Math.random() * 9000).toString();
-
-        // Save verification entry (expires in 5 minutes)
-        this.tempVerification[email] = {
-            code,
-            password,
-            expires: Date.now() + 5 * 60000
-        };
-
-        console.log(`[Skyrex Verification] Code for ${email} is: ${code}`);
-        return { success: true, code };
+        try {
+            const res = await fetch("/api/auth/send_code", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (data.success) {
+                return { success: true, message: data.message };
+            } else {
+                // If SMTP is not yet configured or returned an error, check if fallback code was provided
+                if (data.fallback_code) {
+                    return { success: true, fallback_code: data.fallback_code, warning: data.error };
+                }
+                return { success: false, message: data.error || "Не удалось отправить код подтверждения." };
+            }
+        } catch (err) {
+            console.error("sendVerificationCode error:", err);
+            return { success: false, message: `Ошибка связи с сервером: ${err.message}` };
+        }
     },
 
     // Registration step 2: Verify code and register on server
     async verifyAndRegister(email, code) {
         email = email.trim().toLowerCase();
-        const record = this.tempVerification[email];
+        code = code.trim();
 
-        if (!record) {
-            return { success: false, message: "Сессия регистрации не найдена. Попробуйте снова." };
-        }
-
-        if (Date.now() > record.expires) {
-            delete this.tempVerification[email];
-            return { success: false, message: "Время действия кода истекло. Запросите новый." };
-        }
-
-        if (record.code !== code) {
-            return { success: false, message: "Неверный код подтверждения." };
+        if (!code) {
+            return { success: false, message: "Пожалуйста, введите код из письма." };
         }
 
         try {
             const res = await fetch("/api/auth/register", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password: record.password })
+                body: JSON.stringify({ email, code })
             });
             const data = await res.json();
             if (data.success && data.token) {
-                delete this.tempVerification[email];
                 this.token = data.token;
                 this.currentUser = data.user;
                 localStorage.setItem(this.TOKEN_KEY, data.token);
@@ -183,7 +181,7 @@ const SkyrexAuth = {
             return { success: false, message: data.error || "Ошибка регистрации." };
         } catch (err) {
             console.error("Register fetch error:", err);
-            return { success: false, message: "Ошибка связи с сервером авторизации." };
+            return { success: false, message: `Ошибка связи с сервером: ${err.message}` };
         }
     },
 
@@ -239,10 +237,6 @@ const SkyrexAuth = {
         }
     },
 
-
-        this.updateUI();
-        return true;
-    },
 
     // Helper formatting subscription time remaining
     getSubscriptionTimeRemaining() {
@@ -342,8 +336,8 @@ const SkyrexAuth = {
             }
         });
 
-        // Form Submit: Register Step 1 (Request Verification)
-        this.dom.registerForm.addEventListener("submit", (e) => {
+        // Form Submit: Register Step 1 (Request Verification via Email)
+        this.dom.registerForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             this.dom.registerError.textContent = "";
 
@@ -356,14 +350,31 @@ const SkyrexAuth = {
                 return;
             }
 
-            const result = this.sendVerificationCode(email, pass);
+            const submitBtn = this.dom.registerForm.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn ? submitBtn.textContent : "";
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = "Отправка кода на почту...";
+            }
+
+            const result = await this.sendVerificationCode(email, pass);
+
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
+
             if (result.success) {
                 // Switch steps
                 this.dom.registerInputStep.style.display = "none";
                 this.dom.registerVerifyStep.style.display = "block";
 
-                // Show demo helper code to help users test registration immediately
-                this.dom.demoCodeHelper.innerHTML = `🔑 <b>Демо-код подтверждения:</b> <span style="font-size: 16px; font-weight: 700; color: #fff; text-shadow: 0 0 5px var(--accent-cyan);">${result.code}</span><br>(код также выведен в консоль)`;
+                if (result.fallback_code) {
+                    this.dom.demoCodeHelper.innerHTML = `⚠️ <i>${result.warning || 'Почта не настроена'}</i><br>🔑 <b>Код подтверждения:</b> <span style="font-size: 16px; font-weight: 700; color: #fff; text-shadow: 0 0 5px var(--accent-cyan);">${result.fallback_code}</span>`;
+                } else {
+                    this.dom.demoCodeHelper.innerHTML = `✉️ <b>Код отправлен на:</b> <span style="color: var(--accent-cyan); font-weight: 600;">${email}</span><br>Пожалуйста, проверьте папку «Входящие» (и папку «Спам»).`;
+                }
+
                 this.dom.verifyCodeInput.value = "";
                 this.dom.verifyCodeInput.focus();
             } else {
