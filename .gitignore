@@ -34,3 +34,5 @@ test_*.py
 check_*.py
 scratch/
 archive_scrapers/*.bak
+playwright_onlinetrade_profile/
+playwright_profile/

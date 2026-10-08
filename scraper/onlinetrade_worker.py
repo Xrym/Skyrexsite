@@ -66,171 +66,88 @@ class OnlineTradeScraper:
         else:
             self.profile_dir = profile_dir
 
-    async def _handle_captcha_if_needed(self, page) -> bool:
+    async def _handle_captcha_if_needed(self, page, target_url: str) -> bool:
         """
-        Проверяет, появилось ли окно проверки или капчи Servicepipe.
-        Если появилось:
-        - В режиме с окном (headed): ждет, пока пользователь решит капчу (до 120 сек).
-        - В скрытом режиме (headless): логирует предупреждение.
+        Проверяет, появилось ли окно проверки или капчи Servicepipe (xpvnsulc / sp_rotated).
+        Если появилось, терпеливо ждёт, пока пользователь повернёт ползунок
+        И страница реально вернется в каталог товаров (url содержит /catalogue/).
         """
-        for _ in range(3):
+        cur_url = page.url
+        try:
+            content = await page.content()
+        except Exception:
+            content = ""
+
+        is_challenge = "xpvnsulc" in cur_url or "sp_rotated" in content or "Разверните картинку" in content or "проверку" in content
+
+        if not is_challenge:
+            return True
+
+        logger.warning("=" * 65)
+        logger.warning("[!] ОБНАРУЖЕНА ЗАЩИТА SERVICEPIPE (ОНЛАЙНТРЕЙД)")
+        logger.warning("[!] Пожалуйста, поверните ползунок в открывшемся окне браузера!")
+        logger.warning("[!] Скрипт ожидает прохождения капчи и перехода в каталог товаров...")
+        logger.warning("=" * 65)
+
+        # Ждем до 120 секунд, пока URL вернется в нормальный каталог
+        for sec in range(60):
+            await page.wait_for_timeout(2000)
+            cur_url = page.url
             try:
-                content = await page.content()
-                is_captcha = "sp_rotated" in content or "captcha" in content.lower() or "servicepipe" in content.lower() or "проверку" in content
-                if not is_captcha:
-                    return True
-                
-                logger.warning("=" * 60)
-                logger.warning("[!] ОБНАРУЖЕНА ЗАЩИТА/КАПЧА ОНЛАЙНТРЕЙД!")
-                logger.warning("[!] Пожалуйста, поверните ползунок в открывшемся окне браузера.")
-                logger.warning("[!] Скрипт ждёт решения капчи (до 2 минут)...")
-                logger.warning("=" * 60)
-                
-                # Ждем исчезновения капчи (проверяем каждые 2 секунды)
-                for wait_step in range(60):
-                    await page.wait_for_timeout(2000)
-                    try:
-                        cur_content = await page.content()
-                        if "sp_rotated" not in cur_content and "Разверните картинку" not in cur_content and ("indexGoods__item" in cur_content or "catalog__displayedItem" in cur_content or "каталог" in cur_content.lower()):
-                            logger.info("[✓] Капча успешно пройдена! Сессия сохранена в профиль браузера.")
-                            return True
-                    except Exception:
-                        pass
-                
-                logger.error("[X] Время ожидания решения капчи истекло.")
-                return False
-            except Exception as e:
-                logger.warning(f"Ошибка проверки капчи: {e}")
-                await page.wait_for_timeout(2000)
-        return True
+                cur_content = await page.content()
+            except Exception:
+                cur_content = ""
 
-    def _parse_html_content(self, html_text: str, category_key: str) -> List[Dict[str, Any]]:
-        """Parses cards from OnlineTrade HTML."""
-        import html as html_lib
-        products = []
+            # Условие успеха: мы больше не на странице капчи, а вернулись в каталог
+            if "xpvnsulc" not in cur_url and ("catalogue" in cur_url or "indexGoods__item" in cur_content or "catalog__displayedItem" in cur_content):
+                logger.info("[✓] Капча успешно пройдена! Каталог открыт.")
+                # Даем 3 секунды подгрузиться компонентам
+                await page.wait_for_timeout(3000)
+                return True
 
-        # Find item blocks via common class or ID patterns in OnlineTrade
-        # OnlineTrade items typically have id="item_XXXXX" or class="indexGoods__item"
-        item_matches = list(re.finditer(r'(?:id=["\']item_(\d+)["\']|class=["\'][^"\']*indexGoods__item[^"\']*["\'])', html_text))
-        if not item_matches:
-            # Fallback regex searching for item links and prices
-            pattern = re.compile(
-                r'<a[^>]*href=["\'](/catalogue/[^"\']+item-(\d+)\.html)["\'][^>]*>(.*?)</a>.*?'
-                r'(?:class=["\'][^"\']*price[^"\']*["\'][^>]*>([\d\s]+)\s*(?:₽|руб)?)',
-                re.DOTALL | re.IGNORECASE
-            )
-            for m in pattern.finditer(html_text):
-                url, pid, title_raw, price_raw = m.groups()
-                clean_price = int(re.sub(r'\D', '', price_raw))
-                clean_title = re.sub(r'<[^>]+>', '', title_raw).strip()
-                if clean_price > 0 and len(clean_title) > 3:
-                    products.append({
-                        "id": f"onlinetrade_{pid}",
-                        "shop": "ОнлайнТрейд",
-                        "name": html_lib.unescape(clean_title),
-                        "category": category_key,
-                        "price": clean_price,
-                        "old_price": None,
-                        "available": True,
-                        "url": f"https://www.onlinetrade.ru{url}",
-                        "city_id": "moscow",
-                        "warranty": "12–36 мес.",
-                        "mark": 8,
-                        "comment": "Новый товар из розничной сети ОнлайнТрейд с официальной гарантией."
-                    })
-            return products
+        logger.error("[X] Время ожидания капчи истекло (2 минуты).")
+        return False
 
-        seen_ids = set()
-        for i, match in enumerate(item_matches):
-            start = match.start()
-            end = item_matches[i + 1].start() if i + 1 < len(item_matches) else start + 12000
-            card_html = html_text[start:end]
-
-            # Product ID
-            pid_match = re.search(r'item-(\d+)\.html|id=["\']item_(\d+)["\']', card_html)
-            pid = pid_match.group(1) or pid_match.group(2) if pid_match else str(random.randint(100000, 999999))
-            if pid in seen_ids:
-                continue
-            seen_ids.add(pid)
-
-            # Price
-            price = None
-            price_m = re.search(r'class=["\'][^"\']*price[^"\']*["\'][^>]*>([\d\s]+)', card_html)
-            if price_m:
-                digits = re.sub(r'\D', '', price_m.group(1))
-                if digits.isdigit():
-                    price = int(digits)
-
-            if not price or price <= 0:
-                continue
-
-            # Link & Title
-            link_m = re.search(r'<a[^>]*href=["\'](/catalogue/[^"\']+)["\'][^>]*title=["\']([^"\']+)["\']', card_html)
-            if link_m:
-                raw_url = link_m.group(1)
-                raw_title = link_m.group(2)
-            else:
-                a_m = re.search(r'<a[^>]*href=["\'](/catalogue/[^"\']+)["\'][^>]*>(.*?)</a>', card_html, re.DOTALL)
-                if a_m:
-                    raw_url = a_m.group(1)
-                    raw_title = re.sub(r'<[^>]+>', '', a_m.group(2)).strip()
-                else:
-                    continue
-
-            full_url = f"https://www.onlinetrade.ru{raw_url}" if raw_url.startswith("/") else raw_url
-            clean_title = html_lib.unescape(raw_title).strip()
-
-            products.append({
-                "id": f"onlinetrade_{pid}",
-                "shop": "ОнлайнТрейд",
-                "name": clean_title,
-                "category": category_key,
-                "price": price,
-                "old_price": None,
-                "available": True,
-                "url": full_url,
-                "city_id": "moscow",
-                "warranty": "12–36 мес.",
-                "mark": 8,
-                "comment": "Новый товар из розничной сети ОнлайнТрейд с официальной гарантией."
-            })
-
-        return products
-
-    async def fetch_category_playwright(self, category_key: str, max_pages: int = 0) -> List[Dict[str, Any]]:
+    async def _scrape_all_categories(self, categories: List[str], max_pages: int = 0) -> Dict[str, int]:
         """
-        Парсит страницы категории через Playwright с защитными задержками.
-        max_pages=0 означает парсить ВСЕ доступные страницы до конца каталога.
+        Запускает единую браузерную сессию для всех категорий,
+        чтобы капчу нужно было решить максимум один раз в начале.
         """
         from playwright.async_api import async_playwright
 
-        if category_key not in ONLINETRADE_CATEGORIES:
-            return []
+        stats = {}
+        os.makedirs(self.profile_dir, exist_ok=True)
 
-        cat_info = ONLINETRADE_CATEGORIES[category_key]
-        base_slug = cat_info['slug']
-        all_category_products = []
-        seen_product_ids = set()
+        async with async_playwright() as p:
+            context = await p.chromium.launch_persistent_context(
+                user_data_dir=self.profile_dir,
+                channel="chrome",
+                headless=self.headless,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--start-maximized"
+                ],
+                viewport=None
+            )
+            page = context.pages[0] if context.pages else await context.new_page()
 
-        try:
-            async with async_playwright() as p:
-                os.makedirs(self.profile_dir, exist_ok=True)
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=self.profile_dir,
-                    channel="chrome",
-                    headless=self.headless,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--start-maximized"
-                    ],
-                    viewport=None
-                )
-                page = context.pages[0] if context.pages else await context.new_page()
+            for cat_idx, cat_key in enumerate(categories):
+                if cat_key not in ONLINETRADE_CATEGORIES:
+                    continue
 
+                cat_info = ONLINETRADE_CATEGORIES[cat_key]
+                base_slug = cat_info['slug']
+                logger.info("=" * 60)
+                logger.info(f"==> НАЧАЛО СБОРА КАТЕГОРИИ [{cat_idx+1}/{len(categories)}]: {cat_info['title']} ({cat_key})")
+                logger.info("=" * 60)
+
+                seen_product_ids = set()
+                category_items_count = 0
                 current_page = 1
+
                 while True:
                     if max_pages > 0 and current_page > max_pages:
-                        logger.info(f"Достигнут лимит страниц ({max_pages}) для категории {category_key}.")
+                        logger.info(f"Достигнут лимит страниц ({max_pages}) для категории {cat_key}.")
                         break
 
                     page_url = (
@@ -243,16 +160,17 @@ class OnlineTradeScraper:
                     try:
                         await page.goto(page_url, wait_until="domcontentloaded", timeout=45000)
                     except Exception as e:
-                        logger.warning(f"Ошибка загрузки страницы {current_page}: {e}")
+                        logger.warning(f"Ошибка перехода на страницу {current_page}: {e}")
                         break
 
-                    # Случайная пауза для имитации человека (3.5 - 5.5 сек)
-                    sleep_time = random.uniform(3.5, 5.5)
+                    # Пауза на выполнение скриптов
+                    sleep_time = random.uniform(3.5, 5.0)
                     await page.wait_for_timeout(int(sleep_time * 1000))
 
-                    # Проверяем и ждем решения капчи Servicepipe при необходимости
-                    captcha_passed = await self._handle_captcha_if_needed(page)
-                    if not captcha_passed:
+                    # Проверяем и ждем решения капчи
+                    passed = await self._handle_captcha_if_needed(page, page_url)
+                    if not passed:
+                        logger.warning(f"Не удалось пройти капчу на категории {cat_key}.")
                         break
 
                     try:
@@ -261,9 +179,8 @@ class OnlineTradeScraper:
                         await page.wait_for_timeout(2000)
                         content = await page.content()
 
-                    page_items = self._parse_html_content(content, category_key)
+                    page_items = self._parse_html_content(content, cat_key)
 
-                    # Фильтруем дубликаты
                     new_items = []
                     for itm in page_items:
                         if itm["id"] not in seen_product_ids:
@@ -274,68 +191,57 @@ class OnlineTradeScraper:
                         logger.info(f"[{cat_info['title']}] Товары на странице {current_page} закончились (Конец категории).")
                         break
 
-                    all_category_products.extend(new_items)
-                    # Сразу сохраняем страницу в базу данных
+                    category_items_count += len(new_items)
+                    # Сразу сохраняем товары в SQLite базу
                     upsert_products(new_items)
-                    logger.info(f"[{cat_info['title']}] Стр. {current_page}: спарсено {len(new_items)} новых товаров (Всего: {len(all_category_products)})")
+                    logger.info(f"[{cat_info['title']}] Стр. {current_page}: спарсено {len(new_items)} товаров (Всего в категории: {category_items_count})")
 
-                    # Проверяем, есть ли кнопка следующей страницы
+                    # Проверяем наличие следующей страницы
                     next_button = await page.query_selector('.navigation__next, a[title*="Следующая"], .paginator a.next')
-                    has_more = bool(next_button)
-
-                    if not has_more and current_page > 1:
-                        logger.info(f"[{cat_info['title']}] Последняя страница каталога достигнута.")
+                    if not next_button and current_page > 1:
+                        logger.info(f"[{cat_info['title']}] Последняя страница категории достигнута.")
                         break
 
                     current_page += 1
-
-                    # Дополнительная безопасная пауза между переходами
                     between_pages_delay = random.uniform(2.5, 4.0)
-                    time.sleep(between_pages_delay)
+                    await page.wait_for_timeout(int(between_pages_delay * 1000))
 
-                await context.close()
-        except Exception as e:
-            logger.error(f"Playwright scrape error for {category_key}: {e}")
+                stats[cat_key] = category_items_count
+                logger.info(f"Завершена категория {cat_info['title']}. Собрано: {category_items_count} позиций.")
 
-        return all_category_products
+                # Пауза перед следующей категорией
+                if cat_idx < len(categories) - 1:
+                    inter_delay = random.uniform(8.0, 14.0)
+                    logger.info(f"Пауза перед следующей категорией: {inter_delay:.1f} сек...")
+                    await page.wait_for_timeout(int(inter_delay * 1000))
+
+            await context.close()
+
+        return stats
 
     def run_scrape_cycle(self, categories: Optional[List[str]] = None, max_pages: int = 0) -> Dict[str, int]:
         """
-        Запускает полный цикл сбора по всем категориям с безопасными интервалами.
-        max_pages=0 парсит ВСЕ страницы до конца.
+        Запускает полный цикл сбора по всем категориям в рамках единой сессии Chrome.
+        max_pages=0 парсит ВСЕ страницы до конца каталога.
         """
         import asyncio
         init_db()
         target_categories = categories or list(ONLINETRADE_CATEGORIES.keys())
-        stats = {}
 
         mode_str = f"ВСЕ страницы (до конца каталога)" if max_pages == 0 else f"до {max_pages} страниц"
         logger.info(f"Запуск полного сбора цен ОнлайнТрейд ({len(target_categories)} категорий, режим: {mode_str})...")
 
-        for cat_key in target_categories:
-            cat_name = ONLINETRADE_CATEGORIES.get(cat_key, {}).get("title", cat_key)
-            logger.info(f"=========================================================")
-            logger.info(f"==> НАЧАЛО СБОРА КАТЕГОРИИ: {cat_name} ({cat_key})")
-            logger.info(f"=========================================================")
-
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as pool:
-                        items = pool.submit(asyncio.run, self.fetch_category_playwright(cat_key, max_pages=max_pages)).result()
-                else:
-                    items = asyncio.run(self.fetch_category_playwright(cat_key, max_pages=max_pages))
-            except Exception:
-                items = asyncio.run(self.fetch_category_playwright(cat_key, max_pages=max_pages))
-
-            stats[cat_key] = len(items)
-            logger.info(f"Завершена категория {cat_name}. Собрано: {len(items)} позиций.")
-
-            # Безопасная пауза перед переходом к следующей категории (10 - 16 секунд)
-            inter_cat_delay = random.uniform(10.0, 16.0)
-            logger.info(f"Безопасная пауза перед следующей категорией: {inter_cat_delay:.1f} сек...")
-            time.sleep(inter_cat_delay)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    stats = pool.submit(asyncio.run, self._scrape_all_categories(target_categories, max_pages=max_pages)).result()
+            else:
+                stats = asyncio.run(self._scrape_all_categories(target_categories, max_pages=max_pages))
+        except Exception as e:
+            logger.error(f"Ошибка в цикле сбора: {e}")
+            stats = asyncio.run(self._scrape_all_categories(target_categories, max_pages=max_pages))
 
         logger.info(f"Полный цикл сбора ОнлайнТрейд успешно завершён! Итоги: {stats}")
         return stats
