@@ -27,6 +27,7 @@ def main():
                         help="Выбор магазина: onlinetrade (по умолчанию), citilink, dns, all")
     parser.add_argument("--pages", type=int, default=1, help="Количество страниц на категорию (по умолчанию: 1)")
     parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu")
+    parser.add_argument("--proxy", type=str, default=None, help="HTTP/SOCKS5 прокси (например: http://user:pass@host:port)")
     parser.add_argument("--headless", action="store_true", help="Запуск в фоновом (скрытом) режиме без графического окна")
 
     args = parser.parse_args()
