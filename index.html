@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
+    <meta name="description"
+        content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- Header Navigation -->
+    <header id="main-header">
+        <div class="container nav-container">
+            <a href="#" class="logo" id="logo-link">
+                <div class="logo-icon">S</div>
+                <span>SKYREX</span>
+            </a>
+            <nav id="main-nav">
+                <a href="#hero">AI Помощник</a>
+                <a href="chat.html" id="nav-chat-link">Premium Чат</a>
+                <a href="#about">О нас</a>
+                <a href="#contacts">Контакты</a>
+            </nav>
+            <div class="nav-controls">
+                <button class="btn-icon-auth" id="auth-toggle-btn" aria-label="Личный кабинет">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span class="auth-status-dot" id="auth-status-dot"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero" id="hero">
+            <div class="container hero-grid">
+                <div class="hero-content">
+                    <span class="hero-tagline">Интеллектуальный AI Помощник</span>
+                    <h1>Создайте идеальный ПК с <span class="gradient-text">SKYREX AI</span></h1>
+                    <p>Наш интерактивный чат-бот мгновенно подберет комплектующие под ваш бюджет, оценит рыночную
+                        стоимость деталей или соберет оптимальный компьютер по вашим задачам. Начните диалог прямо
+                        сейчас!</p>
+
+
+
+                    <!-- Subscription status card embedded directly in Hero -->
+                    <div class="info-card sub-card hero-sub-card" id="subscription-status-card">
+                        <h3>Статус Premium функций</h3>
+                        <div class="sub-status-container">
+                            <div class="sub-badge" id="sub-badge">Базовый</div>
+                            <p class="sub-desc" id="sub-status-desc">Премиальные функции (оценка, подбор и б/у сборки)
+                                заблокированы.</p>
+                        </div>
+                        <button class="btn btn-primary btn-glowing" id="sub-action-btn" style="width: 100%;">
+                            Активировать Premium (390 ₽)
+                        </button>
+                        <a href="chat.html" class="btn btn-primary btn-glowing" id="sub-chat-link"
+                            style="display: none; width: 100%; text-align: center; text-decoration: none; margin-top: 10px; padding: 12px 24px; border-radius: 12px;">
+                            Открыть Premium Чат 🚀
+                        </a>
+                        <button class="btn-text" id="sub-reset-btn"
+                            style="display: none; margin-top: 10px; width: 100%;">
+                            Сбросить подписку (для тестов)
+                        </button>
+                        <button class="btn-text" id="admin-panel-btn"
+                            style="margin-top: 10px; width: 100%; font-size: 11px; opacity: 0.6;">
+                            Панель Администратора (/admin)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chat Window (Right side of Hero) -->
+                <div class="chat-window">
+                    <div class="chat-header">
+                        <div class="chat-avatar">
+                            <div class="avatar-icon">🤖</div>
+                            <div class="online-indicator"></div>
+                        </div>
+                        <div class="chat-user-info">
+                            <span class="chat-bot-name">SkyRex Бот</span>
+                            <span class="chat-bot-status">В сети</span>
+                        </div>
+                        <button class="chat-clear-btn" id="chat-clear-btn" title="Очистить историю чата">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path
+                                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+                                </path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="chat-body" id="chat-body">
+                        <!-- Messages will be injected here dynamically -->
+                    </div>
+
+                    <!-- Typing Indicator -->
+                    <div class="typing-indicator" id="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+
+                    <div class="chat-footer">
+                        <!-- Reply Keyboard (e.g. Main Menu) -->
+                        <div class="chat-reply-keyboard" id="chat-reply-keyboard">
+                            <!-- Reply buttons will be injected here -->
+                        </div>
+                        <div class="chat-input-row">
+                            <input type="text" id="chat-input" placeholder="Введите сообщение..." autocomplete="off">
+                            <button id="chat-send-btn" class="chat-send-btn" aria-label="Отправить">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Bot Features Section -->
+        <section class="bot-features-section" id="bot-features">
+            <div class="container">
+                <div class="section-header center-align">
+                    <div class="section-title text-center">
+                        <h2>Возможности нашего AI-Помощника</h2>
+                        <p>Интеллектуальные инструменты для подбора и оценки железа в один клик</p>
+                    </div>
+                </div>
+
+                <div class="bot-features-grid">
+                    <div class="bot-feature-card">
+                        <div class="bot-feature-icon">🛒</div>
+                        <h3>Реальные цены Ситилинк</h3>
+                        <p>Парсер собирает актуальные цены, наличие и ссылки из каталога Ситилинк с официальной
+                            гарантией.</p>
+                    </div>
+                    <div class="bot-feature-card">
+                        <div class="bot-feature-icon">🤖</div>
+                        <h3>Живой AI-Диалог</h3>
+                        <p>Никаких неудобных кнопок из Telegram — свободное общение с умной нейросетью на естественном
+                            языке.</p>
+                    </div>
+                    <div class="bot-feature-card">
+                        <div class="bot-feature-icon">🛠️</div>
+                        <h3>Подбор под бюджет</h3>
+                        <p>ИИ рассчитает оптимальную конфигурацию ПК по вашему бюджету без переплат и сбалансирует
+                            детали.</p>
+                    </div>
+                    <div class="bot-feature-card">
+                        <div class="bot-feature-icon">💻</div>
+                        <h3>Б/У сборки SkyRex</h3>
+                        <p>Проверенные конфигурации со вторичного рынка для максимальной экономии средств.</p>
+                    </div>
+                    <div class="bot-feature-card">
+                        <div class="bot-feature-icon">⚖️</div>
+                        <h3>Анализ и совместимость</h3>
+                        <p>ИИ проверит совместимость комплектующих, форм-факторы, разъемы и теплопакет системы.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+
+
+    </main>
+
+    <!-- Info Sections Footer -->
+    <footer id="about">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <h3>SKYREX</h3>
+                    <p>Мы собираем передовые компьютеры, сочетающие в себе невероятную производительность, изысканную
+                        эстетику и бескомпромиссную надежность.</p>
+                </div>
+                <div class="footer-links" id="contacts">
+                    <h4>Контакты</h4>
+                    <ul>
+                        <li>Телефон: +7 (800) 555-35-35</li>
+                        <li>Email: info@skyrex-computers.ru</li>
+                        <li>Адрес: г. Москва, ул. Космонавтов, д. 10</li>
+                    </ul>
+                </div>
+                <div class="footer-links">
+                    <h4>Навигация</h4>
+                    <ul>
+                        <li><a href="#hero">AI Помощник</a></li>
+                        <li><a href="#">Политика конфиденциальности</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 SKYREX Computers. Все права защищены.</p>
+                <p>Дизайн и сборка премиум класса</p>
+            </div>
+        </div>
+    </footer>
+
+
+
+    <!-- Subscription Payment Modal Dialog -->
+    <div class="modal-overlay" id="payment-modal">
+        <div class="modal payment-modal-content">
+            <button class="modal-close-btn" id="payment-modal-close-btn" aria-label="Закрыть окно">&times;</button>
+            <h3 class="modal-title">Оплата подписки SkyRex Premium</h3>
+            <p style="color: var(--text-secondary); text-align: center; margin-bottom: 20px; font-size: 14px;">
+                Доступ ко всем функциям бота на 30 дней за 390 ₽.
+            </p>
+
+            <!-- Interactive Bank Card -->
+            <div class="credit-card-container">
+                <div class="credit-card" id="credit-card">
+                    <div class="card-face card-front">
+                        <div class="card-chip"></div>
+                        <div class="card-logo" id="card-logo">VISA</div>
+                        <div class="card-number-display" id="card-number-display">•••• •••• •••• ••••</div>
+                        <div class="card-bottom-row">
+                            <div class="card-holder">
+                                <span class="card-label">CARDHOLDER</span>
+                                <span class="card-holder-display" id="card-holder-display">YOUR NAME</span>
+                            </div>
+                            <div class="card-expires">
+                                <span class="card-label">EXPIRES</span>
+                                <span class="card-expiry-display" id="card-expiry-display">MM/YY</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-face card-back">
+                        <div class="card-magnetic-strip"></div>
+                        <div class="card-cvc-area">
+                            <span class="card-label">CVC</span>
+                            <div class="card-cvc-display" id="card-cvc-display">•••</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Form -->
+            <form id="payment-form" class="payment-form">
+                <div class="form-group">
+                    <label for="card-number">Номер карты</label>
+                    <input type="text" id="card-number" class="form-input" required placeholder="5555 5555 5555 4444"
+                        autocomplete="off" maxlength="19">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="card-expiry">Срок действия</label>
+                        <input type="text" id="card-expiry" class="form-input" required placeholder="12/28"
+                            autocomplete="off" maxlength="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="card-cvc">CVC / CVV</label>
+                        <input type="password" id="card-cvc" class="form-input" required placeholder="123"
+                            autocomplete="off" maxlength="3">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="card-name">Имя на карте</label>
+                    <input type="text" id="card-name" class="form-input" required placeholder="IVAN IVANOV"
+                        autocomplete="off">
+                </div>
+
+                <div
+                    style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: var(--text-muted);">
+                    💡 Использовать тестовую карту ЮKassa для успешной оплаты:<br>
+                    <strong>5555 5555 5555 4444</strong>, CVC: <strong>123</strong>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%;" id="card-submit-btn">Оплатить 390
+                    ₽</button>
+            </form>
+
+            <!-- Processing / Success states inside modal -->
+            <div class="payment-processing-overlay" id="payment-processing">
+                <div class="payment-spinner"></div>
+                <span style="margin-top: 15px; font-weight: 600; color: var(--text-primary);"
+                    id="processing-status-text">Проверка платежа через ЮKassa...</span>
+            </div>
+
+            <div class="payment-success-overlay" id="payment-success">
+                <div class="payment-success-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                </div>
+                <span style="margin-top: 15px; font-size: 18px; font-weight: 700; color: var(--success);">Подписка
+                    успешно активирована!</span>
+                <p
+                    style="color: var(--text-secondary); font-size: 13px; text-align: center; margin-top: 5px; max-width: 280px;">
+                    Вы получили доступ ко всем возможностям SkyRex Premium.
+                </p>
+                <button class="btn btn-primary" id="payment-success-btn"
+                    style="margin-top: 20px; width: 100%;">Отлично</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Modal (Login / Register) -->
+    <div class="modal-overlay" id="auth-modal">
+        <div class="modal auth-modal-content">
+            <button class="modal-close-btn" id="auth-modal-close-btn" aria-label="Закрыть окно">&times;</button>
+            <div class="auth-tabs">
+                <button class="auth-tab-btn active" id="tab-login" onclick="switchAuthTab('login')">Вход</button>
+                <button class="auth-tab-btn" id="tab-register" onclick="switchAuthTab('register')">Регистрация</button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form active">
+                <div class="form-group">
+                    <label for="login-email">Email адрес</label>
+                    <input type="email" id="login-email" class="form-input" required placeholder="example@mail.ru">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Пароль</label>
+                    <input type="password" id="login-password" class="form-input" required placeholder="••••••••">
+                </div>
+                <div class="auth-error" id="login-error"></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 15px;">Войти</button>
+            </form>
+
+            <!-- Register Form -->
+            <form id="register-form" class="auth-form">
+                <div id="register-input-step">
+                    <div class="form-group">
+                        <label for="register-email">Email адрес</label>
+                        <input type="email" id="register-email" class="form-input" required
+                            placeholder="example@mail.ru">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password">Пароль</label>
+                        <input type="password" id="register-password" class="form-input" required
+                            placeholder="Минимум 6 символов">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password-confirm">Подтвердите пароль</label>
+                        <input type="password" id="register-password-confirm" class="form-input" required
+                            placeholder="••••••••">
+                    </div>
+                    <div class="auth-error" id="register-error"></div>
+                    <button type="submit" class="btn btn-primary"
+                        style="width: 100%; margin-top: 15px;">Зарегистрироваться</button>
+                </div>
+
+                <!-- Verification Step -->
+                <div id="register-verify-step" style="display: none;">
+                    <p style="font-size: 14px; color: var(--text-secondary); text-align: center; margin-bottom: 20px;">
+                        Мы отправили код подтверждения на указанную почту.
+                    </p>
+                    <div class="form-group">
+                        <label for="verify-code">Код из письма</label>
+                        <input type="text" id="verify-code" class="form-input" placeholder="1234" maxlength="4"
+                            style="text-align: center; font-size: 24px; letter-spacing: 8px; font-weight: 700;">
+                    </div>
+                    <div class="auth-helper-code" id="auth-demo-code-helper"></div>
+                    <div class="auth-error" id="verify-error"></div>
+                    <button type="button" id="btn-verify-code" class="btn btn-primary"
+                        style="width: 100%; margin-top: 15px;">Подтвердить почту</button>
+                    <button type="button" id="btn-back-to-register" class="btn-text"
+                        style="width: 100%; margin-top: 10px; font-size: 13px; background: none; border: none; color: var(--accent-cyan); cursor: pointer; text-decoration: underline;">Изменить
+                        email</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div class="modal-overlay" id="profile-modal">
+        <div class="modal profile-modal-content">
+            <button class="modal-close-btn" id="profile-modal-close-btn" aria-label="Закрыть окно">&times;</button>
+            <h3 class="modal-title">Личный кабинет</h3>
+
+            <div class="profile-user-info">
+                <div class="profile-avatar">👤</div>
+                <div class="profile-details">
+                    <span class="profile-email" id="profile-email-display">user@mail.ru</span>
+                    <span class="profile-role" id="profile-role-display">Пользователь</span>
+                </div>
+            </div>
+
+            <div class="profile-subscription-card">
+                <h4>Статус подписки SkyRex Bot</h4>
+                <div class="profile-sub-status-box">
+                    <span class="sub-badge" id="profile-sub-badge">Базовый</span>
+                    <p id="profile-sub-expires" style="color: var(--text-secondary);">Подписка не активна</p>
+                </div>
+                <div class="profile-sub-time-remaining" id="profile-sub-time-remaining"
+                    style="display:none; color: var(--accent-cyan); font-size: 13px; font-weight: 600; margin-top: 8px;">
+                </div>
+                <button class="btn btn-primary btn-glowing" id="profile-sub-action-btn"
+                    style="width: 100%; margin-top: 15px;">
+                    Активировать Premium (390 ₽)
+                </button>
+            </div>
+
+            <div class="profile-actions">
+                <button class="btn btn-secondary" id="profile-logout-btn" style="width: 100%;">Выйти из
+                    аккаунта</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic Scripts -->
+    <script src="auth.js"></script>
+    <script src="bot_db.js"></script>
+    <script src="chat_bot.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,34 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# Databases and SQLite journals
+*.db
+*.db-shm
+*.db-wal
+catalog.db*
+users.db*
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Logs and outputs
+*.log
+logfile.log
+
+# IDE & OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary deploy scripts
+deploy.py
+test_*.py
+check_*.py
