@@ -8,7 +8,7 @@ GEMINI_SEARCH_PRICE_TOOL = {
     "functionDeclarations": [
         {
             "name": "search_price",
-            "description": "Поиск актуальных цен на новые комплектующие ПК (видеокарты, процессоры, материнские платы, память, SSD, блоки питания) из магазинов ДНС (DNS-Shop) и Ситилинк по локальной базе данных.",
+            "description": "Поиск актуальных цен на новые комплектующие ПК (видеокарты, процессоры, материнские платы, оперативную память, SSD, блоки питания, кулеры, корпуса) из каталога ОнлайнТрейд, Ситилинк и ДНС по локальной базе данных.",
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
@@ -18,8 +18,8 @@ GEMINI_SEARCH_PRICE_TOOL = {
                     },
                     "category": {
                         "type": "STRING",
-                        "enum": ["gpu", "cpu", "motherboard", "ram", "ssd", "psu"],
-                        "description": "Опциональная категория: gpu (видеокарты), cpu (процессоры), motherboard (платы), ram (память), ssd (диски), psu (блоки питания)"
+                        "enum": ["gpu", "cpu", "motherboard", "ram", "ssd", "psu", "cooler", "case"],
+                        "description": "Опциональная категория: gpu (видеокарты), cpu (процессоры), motherboard (платы), ram (память), ssd (диски), psu (блоки питания), cooler (кулеры), case (корпуса)"
                     },
                     "max_price": {
                         "type": "INTEGER",
@@ -37,7 +37,7 @@ OPENAI_SEARCH_PRICE_TOOL = {
     "type": "function",
     "function": {
         "name": "search_price",
-        "description": "Поиск актуальных цен на новые комплектующие ПК (видеокарты, процессоры, материнские платы, память, SSD, БП) в розничных магазинах ДНС (DNS-Shop) и Ситилинк.",
+        "description": "Поиск актуальных цен на новые комплектующие ПК (видеокарты, процессоры, материнские платы, память, SSD, БП, кулеры, корпуса) в каталоге ОнлайнТрейд, Ситилинк и ДНС.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -47,7 +47,7 @@ OPENAI_SEARCH_PRICE_TOOL = {
                 },
                 "category": {
                     "type": "string",
-                    "enum": ["gpu", "cpu", "motherboard", "ram", "ssd", "psu"],
+                    "enum": ["gpu", "cpu", "motherboard", "ram", "ssd", "psu", "cooler", "case"],
                     "description": "Опциональная категория комплектующего"
                 },
                 "max_price": {
@@ -59,3 +59,4 @@ OPENAI_SEARCH_PRICE_TOOL = {
         }
     }
 }
+

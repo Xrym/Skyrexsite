@@ -1,9 +1,7 @@
 """
-CLI Скрипт ручного или автоматического запуска сбора цен с ДНС и Ситилинк
+CLI Скрипт ручного или автоматического запуска сбора цен с ОнлайнТрейд
 Использование:
-  python run_scraper.py --shop citilink --pages 1 --cat gpu cpu
-  python run_scraper.py --shop dns --proxy http://user:pass@host:port
-  python run_scraper.py --shop all
+  python run_scraper.py --pages 4 --cat gpu cpu
 """
 import sys
 import argparse
@@ -16,25 +14,22 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-from scraper.dns_worker import DnsScraper
-from scraper.citilink_worker import CitilinkScraper
 from scraper.onlinetrade_worker import OnlineTradeScraper
 from db.database import get_stats
 
 def main():
-    parser = argparse.ArgumentParser(description="Skyrex PC Parts Scraper Worker")
-    parser.add_argument("--shop", type=str, choices=["onlinetrade", "citilink", "dns", "all"], default="onlinetrade",
-                        help="Выбор магазина: onlinetrade (по умолчанию), citilink, dns, all")
+    parser = argparse.ArgumentParser(description="Skyrex PC Parts Scraper Worker (OnlineTrade)")
+    parser.add_argument("--shop", type=str, choices=["onlinetrade", "all"], default="onlinetrade",
+                        help="Выбор магазина: onlinetrade")
     parser.add_argument("--pages", type=int, default=1, help="Количество страниц на категорию (по умолчанию: 1)")
-    parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu")
-    parser.add_argument("--proxy", type=str, default=None, help="HTTP/SOCKS5 прокси (например: http://user:pass@host:port)")
+    parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu cooler case")
+    parser.add_argument("--proxy", type=str, default=None, help="HTTP/SOCKS5 прокси")
     parser.add_argument("--headless", action="store_true", help="Запуск в фоновом (скрытом) режиме без графического окна")
 
     args = parser.parse_args()
 
     print("=" * 60)
-    print("[*] Запуск воркера сбора цен на комплектующие")
-    print(f"[*] Магазин: {args.shop.upper()}")
+    print("[*] Запуск воркера сбора цен ОнлайнТрейд")
     print(f"[*] Максимум страниц на категорию: {args.pages}")
     if args.cat:
         print(f"[*] Выбранные категории: {', '.join(args.cat)}")
@@ -42,20 +37,9 @@ def main():
         print(f"[*] Прокси: {args.proxy.split('@')[-1]}")
     print("=" * 60)
 
-    if args.shop in ["onlinetrade", "all"]:
-        print("\n===> Запуск парсера ОнлайнТрейд...")
-        onlinetrade = OnlineTradeScraper(headless=args.headless)
-        onlinetrade.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
-
-    if args.shop in ["citilink", "all"]:
-        print("\n===> Запуск парсера Ситилинк...")
-        citilink = CitilinkScraper(proxy=args.proxy)
-        citilink.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
-
-    if args.shop in ["dns", "all"]:
-        print("\n===> Запуск парсера DNS-Shop...")
-        dns = DnsScraper(proxy=args.proxy)
-        dns.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
+    print("\n===> Запуск парсера ОнлайнТрейд...")
+    onlinetrade = OnlineTradeScraper(headless=args.headless)
+    onlinetrade.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
 
     print("\n" + "=" * 60)
     print("[*] АКТУАЛЬНОЕ СОСТОЯНИЕ БАЗЫ ДАННЫХ CATALOG.DB:")

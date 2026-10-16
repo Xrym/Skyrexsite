@@ -1,21 +1,20 @@
 @echo off
 chcp 65001 > nul
-title Skyrex Computers - Full Catalog Scraper
+title Skyrex Computers - Catalog Scraper
 echo ================================================================
-echo        Skyrex Computers - Polnyi parsing OnlineTrade
+echo        Skyrex Computers - Сбор цен ОнлайнТрейд
 echo ================================================================
 echo.
-echo Mode: ALL PAGES TO THE END (pages=0)
-echo Delays: Safe random delays (3.5 - 5.5s per page, 12s category)
+echo Режим: До 4 страниц на категорию (топ 60 товаров каждого типа).
+echo Задержки: Безопасные рандомные паузы (6 - 9 сек).
 echo.
-echo Vnimanie: otkroetsya okno brauzera Chrome.
-echo Esli poyavitsya zashchita s polzunkom - povernite kartinku rukami.
-echo Posle pervogo raza sessiya sokhranitsya dlya vseh stranic!
+echo Внимание: откроется окно Chrome.
+echo При появлении капчи - поверните ползунок в окне браузера.
 echo.
-python run_scraper.py --shop onlinetrade --pages 0
+python run_scraper.py --shop onlinetrade --pages 4
 
 echo.
 echo ================================================================
-echo        Obnovlenie bazy dannyh zaversheno uspeshno!
+echo        Обновление базы данных завершено успешно!
 echo ================================================================
 pause

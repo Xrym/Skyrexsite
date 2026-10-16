@@ -2,6 +2,8 @@ import os
 import re
 import json
 import logging
+import secrets
+from typing import Optional, Dict, Any, List
 import aiohttp
 from aiohttp import web
 import dotenv
@@ -13,6 +15,7 @@ logger = logging.getLogger("skyrex_server")
 # Load environment variables from .env
 dotenv.load_dotenv()
 
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # 1. Parse bot_db.js to obtain the structured catalog
@@ -53,9 +56,15 @@ BOT_DB = load_bot_db()
 
 from bot_tools import search_price, format_price_results
 from db.database import seed_from_bot_db, get_stats, get_connection
+from db.auth_db import (
+    init_auth_db, login_user, register_user,
+    get_user_by_token, logout_token
+)
+from scraper.scheduler import BackgroundPriceScheduler
 
-# Ensure SQLite database is initialized and clean
+# Ensure SQLite databases are initialized
 seed_from_bot_db()
+init_auth_db()
 
 # 2. Hardware specs detector & budget extractor
 def extract_budget(text: str) -> Optional[int]:
@@ -242,6 +251,14 @@ def get_parsed_catalog_context(user_message: str) -> str:
             ssd_rows = conn.execute("SELECT * FROM products WHERE category = 'ssd' ORDER BY price DESC LIMIT 5").fetchall()
             cat_items.extend([dict(r) for r in ssd_rows])
 
+            # H. Select Coolers
+            cooler_rows = conn.execute("SELECT * FROM products WHERE category = 'cooler' ORDER BY price DESC LIMIT 5").fetchall()
+            cat_items.extend([dict(r) for r in cooler_rows])
+
+            # I. Select Cases
+            case_rows = conn.execute("SELECT * FROM products WHERE category = 'case' ORDER BY price DESC LIMIT 5").fetchall()
+            cat_items.extend([dict(r) for r in case_rows])
+
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]
     
     if all_products:
@@ -309,35 +326,46 @@ def build_system_instruction(db, dynamic_context=""):
         catalog_text += "\n"
 
     system_prompt = (
-        "Ты — профессиональный ИИ-ассистент, ведущий эксперт по компьютерному железу и технический консультант "
-        "магазина игровых ПК Skyrex Computers. Твоя цель — грамотно подбирать комплектующие и готовые сборки ПК под любые задачи и бюджет.\n\n"
-        "КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:\n"
-        "1. РЕАЛЬНЫЕ ЦЕНЫ И ССЫЛКИ ИЗ ОНЛАЙНТРЕЙД: В твоем распоряжении есть актуальная база товаров ОнлайнТрейд.\n"
-        "   - ВСЕГДА используй точные цены и названия товаров из блока 'АКТУАЛЬНЫЕ ЦЕНЫ И НАЛИЧИЕ ИЗ ОНЛАЙНТРЕЙД'.\n"
-        "   - Если пользователь просит собрать ПК или назвать цену, называй РЕАЛЬНЫЕ цены и прикрепляй кликабельные HTML-ссылки на товары (<a href='...' target='_blank'>Название</a>).\n"
-        "   - Никогда не выдумывай несуществующие товары, цены или ссылки.\n\n"
-        "2. ЖЕЛЕЗНЫЕ ПРАВИЛА СОВМЕСТИМОСТИ (100% COMPATIBILITY):\n"
-        "   - СОКЕТ ПРОЦЕССОРА И МАТЕРИНСКОЙ ПЛАТЫ ОБЯЗАНЫ СТРОГО СОВПАДАТЬ!\n"
-        "     * Процессор Socket AM5 (Ryzen 7000/8000/9000, 9800X3D, 9850X3D) -> ТОЛЬКО материнская плата Socket AM5 (чипсеты B650, X670, B850, X870, X870E). КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ставить AM4 или Intel платы к AM5!\n"
-        "     * Процессор Socket AM4 (Ryzen 1000-5000, 5600, 5700X, 5800X) -> ТОЛЬКО материнская плата Socket AM4 (B450, B550, A520, X570).\n"
-        "     * Процессор Intel LGA 1700 (12-14 поколение: 12400, 13600, 14700, 14900) -> ТОЛЬКО материнская плата Socket LGA 1700 (H610, B760, Z790, W680).\n"
-        "     * Процессор Intel LGA 1851 (Core Ultra 9 285) -> ТОЛЬКО материнская плата Socket LGA 1851 (Z890, B860).\n"
-        "   - СОВМЕСТИМОСТЬ ПАМЯТИ:\n"
-        "     * Платформа AM5 и платы LGA 1851 работают ИСКЛЮЧИТЕЛЬНО с оперативной памятью DDR5! Ни в коем случае не предлагай DDR4 для AM5!\n"
-        "     * Платформа AM4 работает ИСКЛЮЧИТЕЛЬНО с памятью DDR4.\n"
-        "   - БЛОК ПИТАНИЯ (PSU):\n"
-        "     * Для мощных флагманских видеокарт (RTX 5080, 4090, 4080) выбирай БП мощностью от 850W до 1000W+ (желательно с золотым сертификатом 80 PLUS GOLD).\n"
-        "     * Для карт уровня RTX 4070 / 5070 / RX 9070 — БП от 750W.\n"
-        "     * Для карт уровня RTX 4060 / 5060Ti / 3060 — БП от 550W до 700W.\n\n"
-        "3. МАКСИМИЗАЦИЯ ПОД БЮДЖЕТ:\n"
-        "   - Если пользователь указал большой бюджет (например, 500 000 руб), подбирай ТОПОВЫЕ МАКСИМАЛЬНЫЕ компоненты (RTX 5080, Ryzen 7 9800X3D/9850X3D, топовая плата X870E, 64GB DDR5, 1000W Gold БП), которые укладываются в бюджет.\n"
-        "   - Не экономь впустую, если бюджет позволяет бескомпромиссную мощь. Видеокарта в игровой сборке должна быть максимально мощной из влезающих в сумму.\n"
-        "   - В конце сборки ОБЯЗАТЕЛЬНО выведи итоговый подсчет: точную суммарную стоимость всех комплектующих сборки и покажи остаток от бюджета (если есть запас на корпус и охлаждение).\n\n"
-        "4. ВТОРИЧНЫЙ РЫНОК / SKYREX: Для максимальной экономии пользователь также может рассматривать проверенные позиции со вторички из каталога Skyrex.\n"
-        "5. НИКАКИХ КНОПОК И МЕНЮ: Общайся в форме естественного, живого экспертного диалога. Не предлагай кнопок или Telegram-команд.\n"
-        "6. ФОРМАТИРОВАНИЕ: Отвечай на чистом русском языке. Используй HTML-теги для оформления сообщений: <b>жирный шрифт</b>, "
-        "<i>курсив</i>, списки <ul><li>...</li></ul>, переводы строк <br>, кликабельные ссылки <a href='...' target='_blank'>Название</a>. "
-        "Не используй markdown-символы (``` или ### или **), только чистые HTML-теги!\n\n"
+        "Ты — профессиональный ИИ-ассистент, бескомпромиссный эксперт по компьютерному железу и технический консультант "
+    "магазина игровых ПК Skyrex Computers. Твоя цель — грамотно подбирать комплектующие и готовые сборки ПК под любые задачи и бюджет.\n\n"
+    "КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:\n"
+    "1. СНАЧАЛА УТОЧНЯЙ, ПОТОМ СОБИРАЙ:\n"
+    "   - Если пользователь просто назвал бюджет или общую задачу, НЕ выдавай готовую сборку моментально. "
+    "Сначала задай 2-3 уточняющих вопроса, чтобы сделать подбор идеальным.\n"
+    "   - Спроси про предпочтения по брендам: процессоры (Intel или AMD Ryzen?) и видеокарты (NVIDIA RTX или AMD RX?).\n"
+    "   - Уточни целевое разрешение монитора (FullHD, 2K, 4K) и важен ли внешний вид (RGB-подсветка, цвет корпуса, аквариум).\n\n"
+    "2. РЕАЛЬНЫЕ ЦЕНЫ И ССЫЛКИ ИЗ ОНЛАЙНТРЕЙД:\n"
+    "   - В твоем распоряжении есть актуальная база товаров ОнлайнТрейд. ВСЕГДА используй точные цены и названия товаров оттуда.\n"
+    "   - Называй РЕАЛЬНЫЕ цены и прикрепляй кликабельные HTML-ссылки на товары (<a href='...' target='_blank'>Название</a>).\n"
+    "   - Никогда не выдумывай несуществующие товары, цены или ссылки.\n"
+    "   - ОБЯЗАТЕЛЬНОЕ УСЛОВИЕ: Когда выдаешь итоговую сборку из ОнлайнТрейд, всегда добавляй примечание, что "
+    "некоторые комплектующие (например, процессоры, ОЗУ или SSD) можно найти на Wildberries чуть дешевле.\n\n"
+    "3. УВЕРЕННОСТЬ И ОТСТАИВАНИЕ СВОЕЙ ТОЧКИ ЗРЕНИЯ:\n"
+    "   - Ты — главный эксперт. Если пользователь предлагает глупое решение (например, поставить RTX 4080 к слабому Core i3, "
+    "взять дешевый китайский блок питания для мощной системы или переплатить за ненужную материнскую плату) — жестко, но вежливо "
+    "ОТГОВАРИВАЙ ЕГО.\n"
+    "   - Аргументируй свой выбор. Объясняй, почему ты выбрал именно этот блок питания, почему эта связка процессора и видеокарты "
+    "оптимальна, и где возникает 'bottleneck' (узкое горлышко) в плохих сборках.\n\n"
+    "4. ЖЕЛЕЗНЫЕ ПРАВИЛА СОВМЕСТИМОСТИ (100% COMPATIBILITY):\n"
+    "   - СОКЕТ ПРОЦЕССОРА И МАТЕРИНСКОЙ ПЛАТЫ ОБЯЗАНЫ СТРОГО СОВПАДАТЬ!\n"
+    "     * Процессор Socket AM5 -> ТОЛЬКО плата Socket AM5 (B650, X670, B850, X870). КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ставить AM4 или Intel платы к AM5!\n"
+    "     * Процессор Socket AM4 -> ТОЛЬКО плата Socket AM4 (B450, B550, A520, X570).\n"
+    "     * Процессор Intel LGA 1700 -> ТОЛЬКО плата Socket LGA 1700 (H610, B760, Z790).\n"
+    "     * Процессор Intel LGA 1851 -> ТОЛЬКО плата Socket LGA 1851 (Z890, B860).\n"
+    "   - СОВМЕСТИМОСТЬ ПАМЯТИ: Платформа AM5 и LGA 1851 работают ИСКЛЮЧИТЕЛЬНО с DDR5! AM4 работает ИСКЛЮЧИТЕЛЬНО с DDR4.\n"
+    "   - БЛОК ПИТАНИЯ (PSU):\n"
+    "     * Для флагманов (RTX 5080, 4090, 4080) — БП 850W-1000W+ (80 PLUS GOLD).\n"
+    "     * Для среднего-высокого сегмента (RTX 4070 / 5070 / RX 9070) — БП от 750W.\n"
+    "     * Для начального-среднего (RTX 4060 / 5060Ti / 3060) — БП 550W-700W.\n\n"
+    "5. МАКСИМИЗАЦИЯ ПОД БЮДЖЕТ:\n"
+    "   - Если бюджет большой, подбирай ТОПОВЫЕ компоненты, которые укладываются в сумму.\n"
+    "   - Не экономь впустую, если бюджет позволяет бескомпромиссную мощь. Видеокарта в игровой сборке должна быть максимально мощной.\n"
+    "   - В конце ОБЯЗАТЕЛЬНО выведи точную суммарную стоимость всех комплектующих и покажи остаток от бюджета.\n\n"
+    "6. ВТОРИЧНЫЙ РЫНОК / SKYREX: Для максимальной экономии пользователь может рассматривать проверенные позиции со вторички из каталога Skyrex.\n"
+    "7. НИКАКИХ КНОПОК И МЕНЮ: Общайся в форме естественного, живого экспертного диалога.\n"
+    "8. ФОРМАТИРОВАНИЕ: Отвечай на чистом русском языке. Используй ТОЛЬКО HTML-теги для оформления: <b>жирный шрифт</b>, "
+    "<i>курсив</i>, списки <ul><li>...</li></ul>, переводы строк <br>, ссылки <a href='...' target='_blank'>Название</a>. "
+    "Категорически запрещено использовать markdown-символы (```, ### или **), только чистые HTML-теги!\n"
         f"{catalog_text}\n"
         f"{dynamic_context}"
     )
@@ -390,9 +418,26 @@ async def call_llm(message, history):
     dynamic_context = get_parsed_catalog_context(message)
     system_instruction = build_system_instruction(BOT_DB, dynamic_context)
 
+    # Proxy detection for LLM (supports Happ, v2ray, Clash, system proxy)
+    llm_proxy = os.getenv("LLM_PROXY", "").strip() or None
+    if not llm_proxy and provider != "ollama":
+        env_proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+        if env_proxy:
+            llm_proxy = env_proxy
+        else:
+            # Auto-detect local proxy clients (Happ/v2ray on 10809, Clash on 7890)
+            import socket
+            for test_port in (10809, 7890):
+                try:
+                    with socket.create_connection(("127.0.0.1", test_port), timeout=0.2):
+                        llm_proxy = f"http://127.0.0.1:{test_port}"
+                        break
+                except Exception:
+                    pass
+
     # Convert frontend history to LLM format
     # Frontend history format: [{"sender": "user"/"bot", "text": "..."}]
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(trust_env=True) as session:
         try:
             if provider == "gemini":
                 # Gemini REST Payload
@@ -420,8 +465,8 @@ async def call_llm(message, history):
                     }
                 }
                 
-                logger.info(f"Sending request to Gemini API (Model: {model})...")
-                async with session.post(url, json=payload, timeout=30) as resp:
+                logger.info(f"Sending request to Gemini API (Model: {model}, Proxy: {llm_proxy or 'direct'})...")
+                async with session.post(url, json=payload, proxy=llm_proxy, timeout=35) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"Gemini API returned status {resp.status}: {err_text}")
@@ -459,8 +504,8 @@ async def call_llm(message, history):
                     headers["HTTP-Referer"] = "https://skyrex.ai"
                     headers["X-Title"] = "Skyrex Computers AI"
                 
-                logger.info(f"Sending request to OpenAI-compatible {provider} API (Model: {model})...")
-                async with session.post(url, json=payload, headers=headers, timeout=30) as resp:
+                logger.info(f"Sending request to OpenAI-compatible {provider} API (Model: {model}, Proxy: {llm_proxy or 'direct'})...")
+                async with session.post(url, json=payload, headers=headers, proxy=llm_proxy, timeout=35) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"{provider.upper()} API returned status {resp.status}: {err_text}")
@@ -476,8 +521,6 @@ async def call_llm(message, history):
         except Exception as e:
             logger.error(f"Connection error to {provider}: {e}")
             return f"⚠️ Не удалось подключиться к серверу нейросети ({type(e).__name__}). Проверьте соединение с интернетом."
-
-from scraper.scheduler import BackgroundPriceScheduler
 
 # Optional background price auto-updater (can be enabled via .env)
 auto_scraper_enabled = os.getenv("ENABLE_AUTO_SCRAPER", "false").lower() in ("true", "1", "yes")
@@ -508,15 +551,6 @@ async def handle_search_price(request):
         logger.error(f"Error in handle_search_price: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
-from db.auth_db import (
-    init_auth_db, login_user,
-    get_user_by_token, logout_token, activate_subscription,
-    save_verification_code, verify_code_and_register
-)
-from email_service import send_verification_email
-
-# Initialize Auth database schema
-init_auth_db()
 
 # Security & CORS Middleware: Handles preflight, blocks sensitive files & sets security headers
 @web.middleware
@@ -563,49 +597,19 @@ async def security_middleware(request, handler):
 
 # Auth Request Handlers
 async def handle_auth_send_code(request):
-    """Generates code, saves pending registration, and emails code via SMTP."""
-    try:
-        import secrets
-        data = await request.json()
-        email = data.get("email", "").strip().lower()
-        password = data.get("password", "")
-
-        if not email or "@" not in email:
-            return web.json_response({"success": False, "error": "Некорректный email адрес."}, status=400)
-        if len(password) < 6:
-            return web.json_response({"success": False, "error": "Пароль должен быть не менее 6 символов."}, status=400)
-
-        # Generate 4-digit code
-        code = str(secrets.randbelow(9000) + 1000)
-
-        # Save to DB
-        save_res = save_verification_code(email, password, code, expires_minutes=10)
-        if not save_res.get("success"):
-            return web.json_response(save_res, status=400)
-
-        # Send real email via SMTP
-        mail_res = await send_verification_email(email, code)
-        if not mail_res.get("success"):
-            logger.warning(f"Could not send email to {email}: {mail_res.get('error')}. Fallback demo code: {code}")
-            # If email server is not configured or failed, report error but also return demo code in debug mode
-            return web.json_response({
-                "success": False,
-                "error": mail_res.get("error", "Не удалось отправить письмо на почту."),
-                "fallback_code": code  # helps test if SMTP credentials are still being filled
-            }, status=500)
-
-        return web.json_response({"success": True, "message": f"Код подтверждения отправлен на {email}"})
-    except Exception as e:
-        logger.error(f"Error in handle_auth_send_code: {e}")
-        return web.json_response({"success": False, "error": str(e)}, status=500)
+    """Deprecated: Email verification code request."""
+    return web.json_response({
+        "success": False,
+        "error": "Подтверждение почты отключено. Регистрация выполняется напрямую по логину и паролю."
+    }, status=400)
 
 async def handle_auth_register(request):
-    """Verifies submitted code and activates user."""
+    """Directly registers a new user with username and password in users.db."""
     try:
         data = await request.json()
-        email = data.get("email", "").strip().lower()
-        code = data.get("code", "").strip()
-        result = verify_code_and_register(email, code)
+        username = (data.get("username") or data.get("login") or "").strip()
+        password = data.get("password", "")
+        result = register_user(username, password)
         status = 200 if result.get("success") else 400
         return web.json_response(result, status=status)
     except Exception as e:
@@ -613,11 +617,12 @@ async def handle_auth_register(request):
         return web.json_response({"success": False, "error": str(e)}, status=500)
 
 async def handle_auth_login(request):
+    """Authenticates user with username and password against users.db."""
     try:
         data = await request.json()
-        email = data.get("email", "")
+        username = (data.get("username") or data.get("login") or "").strip()
         password = data.get("password", "")
-        result = login_user(email, password)
+        result = login_user(username, password)
         status = 200 if result.get("success") else 401
         return web.json_response(result, status=status)
     except Exception as e:
@@ -638,16 +643,6 @@ async def handle_auth_logout(request):
     logout_token(token)
     return web.json_response({"success": True})
 
-async def handle_auth_subscribe(request):
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
-    user = get_user_by_token(token)
-    if not user:
-        return web.json_response({"success": False, "error": "Необходима авторизация."}, status=401)
-        
-    updated_user = activate_subscription(user["id"], days=30)
-    return web.json_response({"success": True, "user": updated_user})
-
 async def handle_chat(request):
     try:
         # Check authorization token (optional during free beta)
@@ -666,13 +661,11 @@ async def handle_chat(request):
         return web.json_response({"response": ai_response})
     except Exception as e:
         logger.error(f"Error handling chat request: {e}")
-        return web.json_response({"response": f"⚠️ Внутренняя ошибка сервера бэкенда: {str(e)}"}, status=500)
+        err_msg = f"⚠️ Внутренняя ошибка сервера: {str(e)}" if DEBUG else "⚠️ Произошла ошибка при обработке запроса. Пожалуйста, попробуйте снова позже."
+        return web.json_response({"response": err_msg}, status=500)
 
 async def handle_index(request):
     return web.FileResponse(os.path.join(PROJECT_ROOT, 'index.html'))
-
-async def handle_chat_page(request):
-    return web.FileResponse(os.path.join(PROJECT_ROOT, 'chat.html'))
 
 async def handle_safe_static(request):
     """Serves strictly whitelisted client-side scripts and stylesheets."""
@@ -701,12 +694,10 @@ async def init_app():
     app.router.add_post('/api/auth/login', handle_auth_login)
     app.router.add_get('/api/auth/me', handle_auth_me)
     app.router.add_post('/api/auth/logout', handle_auth_logout)
-    app.router.add_post('/api/auth/subscribe', handle_auth_subscribe)
     
     # HTML pages
     app.router.add_get('/', handle_index)
     app.router.add_get('/index.html', handle_index)
-    app.router.add_get('/chat.html', handle_chat_page)
     
     # Explicitly whitelisted assets ONLY (Never expose project root!)
     app.router.add_get(r'/{filename:(?:style\.css|app\.js|auth\.js|chat_bot\.js)}', handle_safe_static)

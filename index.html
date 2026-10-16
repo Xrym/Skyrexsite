@@ -20,8 +20,7 @@
                 <span>SKYREX</span>
             </a>
             <nav id="main-nav">
-                <a href="#hero">AI Помощник</a>
-                <a href="chat.html" id="nav-chat-link">Чат-Консультант</a>
+                <a href="#hero">AI Консультант</a>
                 <a href="#about">О нас</a>
                 <a href="#contacts">Контакты</a>
             </nav>
@@ -49,25 +48,6 @@
                     <p>Наш интерактивный чат-бот мгновенно подберет комплектующие под ваш бюджет, оценит рыночную
                         стоимость деталей или соберет оптимальный компьютер по вашим задачам. Начните диалог прямо
                         сейчас!</p>
-
-
-
-                    <!-- Free Beta status card embedded directly in Hero -->
-                    <div class="info-card sub-card hero-sub-card" id="subscription-status-card">
-                        <h3>Статус доступа: <span style="color: var(--accent-cyan);">Бесплатно</span></h3>
-                        <div class="sub-status-container">
-                            <div class="sub-badge active-premium" id="sub-badge" style="background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan);">Полный доступ</div>
-                            <p class="sub-desc" id="sub-status-desc">Все функции ИИ-консультанта, подбор сборок и анализ цен доступны бесплатно.</p>
-                        </div>
-                        <a href="chat.html" class="btn btn-primary btn-glowing" id="sub-chat-link"
-                            style="width: 100%; text-align: center; text-decoration: none; margin-top: 10px; padding: 12px 24px; border-radius: 12px; display: inline-block;">
-                            Открыть полный чат на весь экран 🚀
-                        </a>
-                        <button class="btn-text" id="admin-panel-btn"
-                            style="margin-top: 10px; width: 100%; font-size: 11px; opacity: 0.6;">
-                            Панель Администратора (/admin)
-                        </button>
-                    </div>
                 </div>
 
                 <!-- Chat Window (Right side of Hero) -->
@@ -138,7 +118,7 @@
                 <div class="bot-features-grid">
                     <div class="bot-feature-card">
                         <div class="bot-feature-icon">🛒</div>
-                        <h3>Реальные цены ОнлайнТрейд</h3>
+                        <h3>Реальные цены</h3>
                         <p>Парсер собирает актуальные цены, наличие и ссылки из каталога ОнлайнТрейд с официальной
                             гарантией.</p>
                     </div>
@@ -185,9 +165,8 @@
                 <div class="footer-links" id="contacts">
                     <h4>Контакты</h4>
                     <ul>
-                        <li>Телефон: +7 (800) 555-35-35</li>
-                        <li>Email: info@skyrex-computers.ru</li>
-                        <li>Адрес: г. Москва, ул. Космонавтов, д. 10</li>
+                        <li>Telegram: https://t.me/skyrexic</li>
+                        <li>YouTube: https://www.youtube.com/@skyrexic/featured</li>
                     </ul>
                 </div>
                 <div class="footer-links">
@@ -207,104 +186,6 @@
 
 
 
-    <!-- Subscription Payment Modal Dialog -->
-    <div class="modal-overlay" id="payment-modal">
-        <div class="modal payment-modal-content">
-            <button class="modal-close-btn" id="payment-modal-close-btn" aria-label="Закрыть окно">&times;</button>
-            <h3 class="modal-title">Оплата подписки SkyRex Premium</h3>
-            <p style="color: var(--text-secondary); text-align: center; margin-bottom: 20px; font-size: 14px;">
-                Доступ ко всем функциям бота на 30 дней за 390 ₽.
-            </p>
-
-            <!-- Interactive Bank Card -->
-            <div class="credit-card-container">
-                <div class="credit-card" id="credit-card">
-                    <div class="card-face card-front">
-                        <div class="card-chip"></div>
-                        <div class="card-logo" id="card-logo">VISA</div>
-                        <div class="card-number-display" id="card-number-display">•••• •••• •••• ••••</div>
-                        <div class="card-bottom-row">
-                            <div class="card-holder">
-                                <span class="card-label">CARDHOLDER</span>
-                                <span class="card-holder-display" id="card-holder-display">YOUR NAME</span>
-                            </div>
-                            <div class="card-expires">
-                                <span class="card-label">EXPIRES</span>
-                                <span class="card-expiry-display" id="card-expiry-display">MM/YY</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-face card-back">
-                        <div class="card-magnetic-strip"></div>
-                        <div class="card-cvc-area">
-                            <span class="card-label">CVC</span>
-                            <div class="card-cvc-display" id="card-cvc-display">•••</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Payment Form -->
-            <form id="payment-form" class="payment-form">
-                <div class="form-group">
-                    <label for="card-number">Номер карты</label>
-                    <input type="text" id="card-number" class="form-input" required placeholder="5555 5555 5555 4444"
-                        autocomplete="off" maxlength="19">
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="card-expiry">Срок действия</label>
-                        <input type="text" id="card-expiry" class="form-input" required placeholder="12/28"
-                            autocomplete="off" maxlength="5">
-                    </div>
-                    <div class="form-group">
-                        <label for="card-cvc">CVC / CVV</label>
-                        <input type="password" id="card-cvc" class="form-input" required placeholder="123"
-                            autocomplete="off" maxlength="3">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="card-name">Имя на карте</label>
-                    <input type="text" id="card-name" class="form-input" required placeholder="IVAN IVANOV"
-                        autocomplete="off">
-                </div>
-
-                <div
-                    style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: var(--text-muted);">
-                    💡 Использовать тестовую карту ЮKassa для успешной оплаты:<br>
-                    <strong>5555 5555 5555 4444</strong>, CVC: <strong>123</strong>
-                </div>
-
-                <button type="submit" class="btn btn-primary" style="width: 100%;" id="card-submit-btn">Оплатить 390
-                    ₽</button>
-            </form>
-
-            <!-- Processing / Success states inside modal -->
-            <div class="payment-processing-overlay" id="payment-processing">
-                <div class="payment-spinner"></div>
-                <span style="margin-top: 15px; font-weight: 600; color: var(--text-primary);"
-                    id="processing-status-text">Проверка платежа через ЮKassa...</span>
-            </div>
-
-            <div class="payment-success-overlay" id="payment-success">
-                <div class="payment-success-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                </div>
-                <span style="margin-top: 15px; font-size: 18px; font-weight: 700; color: var(--success);">Подписка
-                    успешно активирована!</span>
-                <p
-                    style="color: var(--text-secondary); font-size: 13px; text-align: center; margin-top: 5px; max-width: 280px;">
-                    Вы получили доступ ко всем возможностям SkyRex Premium.
-                </p>
-                <button class="btn btn-primary" id="payment-success-btn"
-                    style="margin-top: 20px; width: 100%;">Отлично</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Auth Modal (Login / Register) -->
     <div class="modal-overlay" id="auth-modal">
         <div class="modal auth-modal-content">
@@ -317,12 +198,14 @@
             <!-- Login Form -->
             <form id="login-form" class="auth-form active">
                 <div class="form-group">
-                    <label for="login-email">Email адрес</label>
-                    <input type="email" id="login-email" class="form-input" required placeholder="example@mail.ru">
+                    <label for="login-username">Логин</label>
+                    <input type="text" id="login-username" class="form-input" required placeholder="Введите логин"
+                        autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label for="login-password">Пароль</label>
-                    <input type="password" id="login-password" class="form-input" required placeholder="••••••••">
+                    <input type="password" id="login-password" class="form-input" required placeholder="••••••••"
+                        autocomplete="current-password">
                 </div>
                 <div class="auth-error" id="login-error"></div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 15px;">Войти</button>
@@ -330,45 +213,24 @@
 
             <!-- Register Form -->
             <form id="register-form" class="auth-form">
-                <div id="register-input-step">
-                    <div class="form-group">
-                        <label for="register-email">Email адрес</label>
-                        <input type="email" id="register-email" class="form-input" required
-                            placeholder="example@mail.ru">
-                    </div>
-                    <div class="form-group">
-                        <label for="register-password">Пароль</label>
-                        <input type="password" id="register-password" class="form-input" required
-                            placeholder="Минимум 6 символов">
-                    </div>
-                    <div class="form-group">
-                        <label for="register-password-confirm">Подтвердите пароль</label>
-                        <input type="password" id="register-password-confirm" class="form-input" required
-                            placeholder="••••••••">
-                    </div>
-                    <div class="auth-error" id="register-error"></div>
-                    <button type="submit" class="btn btn-primary"
-                        style="width: 100%; margin-top: 15px;">Зарегистрироваться</button>
+                <div class="form-group">
+                    <label for="register-username">Логин</label>
+                    <input type="text" id="register-username" class="form-input" required
+                        placeholder="Придумайте логин (от 3 символов)" autocomplete="username">
                 </div>
-
-                <!-- Verification Step -->
-                <div id="register-verify-step" style="display: none;">
-                    <p style="font-size: 14px; color: var(--text-secondary); text-align: center; margin-bottom: 20px;">
-                        Мы отправили код подтверждения на указанную почту.
-                    </p>
-                    <div class="form-group">
-                        <label for="verify-code">Код из письма</label>
-                        <input type="text" id="verify-code" class="form-input" placeholder="1234" maxlength="4"
-                            style="text-align: center; font-size: 24px; letter-spacing: 8px; font-weight: 700;">
-                    </div>
-                    <div class="auth-helper-code" id="auth-demo-code-helper"></div>
-                    <div class="auth-error" id="verify-error"></div>
-                    <button type="button" id="btn-verify-code" class="btn btn-primary"
-                        style="width: 100%; margin-top: 15px;">Подтвердить почту</button>
-                    <button type="button" id="btn-back-to-register" class="btn-text"
-                        style="width: 100%; margin-top: 10px; font-size: 13px; background: none; border: none; color: var(--accent-cyan); cursor: pointer; text-decoration: underline;">Изменить
-                        email</button>
+                <div class="form-group">
+                    <label for="register-password">Пароль</label>
+                    <input type="password" id="register-password" class="form-input" required
+                        placeholder="Минимум 6 символов" autocomplete="new-password">
                 </div>
+                <div class="form-group">
+                    <label for="register-password-confirm">Подтвердите пароль</label>
+                    <input type="password" id="register-password-confirm" class="form-input" required
+                        placeholder="••••••••" autocomplete="new-password">
+                </div>
+                <div class="auth-error" id="register-error"></div>
+                <button type="submit" class="btn btn-primary"
+                    style="width: 100%; margin-top: 15px;">Зарегистрироваться</button>
             </form>
         </div>
     </div>
@@ -382,16 +244,8 @@
             <div class="profile-user-info">
                 <div class="profile-avatar">👤</div>
                 <div class="profile-details">
-                    <span class="profile-email" id="profile-email-display">user@mail.ru</span>
+                    <span class="profile-email profile-username" id="profile-username-display">Пользователь</span>
                     <span class="profile-role" id="profile-role-display">Пользователь</span>
-                </div>
-            </div>
-
-            <div class="profile-subscription-card">
-                <h4>Тарифный план</h4>
-                <div class="profile-sub-status-box">
-                    <span class="sub-badge active-premium" id="profile-sub-badge" style="background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan);">Бесплатный доступ</span>
-                    <p id="profile-sub-expires" style="color: var(--text-secondary);">Все функции ассистента активны</p>
                 </div>
             </div>
 
@@ -403,7 +257,7 @@
     </div>
 
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=2.1"></script>
+    <script src="auth.js?v=3.0"></script>
     <script src="chat_bot.js?v=2.1"></script>
     <script src="app.js?v=2.1"></script>
 </body>

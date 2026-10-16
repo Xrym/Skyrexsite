@@ -13,7 +13,7 @@ def search_price(
     limit: int = 5
 ) -> List[Dict[str, Any]]:
     """
-    Высокоскоростной поиск по базе актуальных цен ДНС и Ситилинк с использованием SQLite FTS5.
+    Высокоскоростной поиск по базе актуальных цен ОнлайнТрейд, Ситилинк и ДНС с использованием SQLite FTS5.
     Поддерживает полнотекстовый поиск, префиксное сопоставление (4060*), ранжирование BM25 и LIKE fallback.
     """
     clean_query = re.sub(r'[^\w\s]', ' ', query).strip()
@@ -118,7 +118,7 @@ def format_price_results(results: List[Dict[str, Any]]) -> str:
         price_str = f"<b>{item['price']:,} ₽</b>".replace(",", " ")
         old_str = f" <s>{item['old_price']:,} ₽</s>".replace(",", " ") if item.get('old_price') else ""
         link_str = f"<a href='{item['url']}' target='_blank'>{item['name']}</a>"
-        shop_tag = f"[{item.get('shop', 'DNS')}]"
+        shop_tag = f"[{item.get('shop', 'ОнлайнТрейд')}]"
         avail_str = "✅ В наличии" if item.get('available') else "⏳ Под заказ"
         warranty_str = f"Гарантия: {item['warranty']}" if item.get('warranty') else ""
 

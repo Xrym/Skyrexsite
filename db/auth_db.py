@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 import hashlib
 import secrets
 import datetime
@@ -22,19 +23,47 @@ def init_auth_db():
     with get_auth_connection() as conn:
         cursor = conn.cursor()
         
-        # 1. Users table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL COLLATE NOCASE,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'user',
-                subscribed INTEGER NOT NULL DEFAULT 0,
-                subscription_expires TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
+        # Check if users table exists and migrate if needed
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users';")
+        users_table_exists = cursor.fetchone() is not None
+        
+        if not users_table_exists:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                    password_hash TEXT NOT NULL,
+                    salt TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    subscribed INTEGER NOT NULL DEFAULT 0,
+                    subscription_expires TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+        else:
+            cols = [col[1].lower() for col in cursor.execute("PRAGMA table_info(users);").fetchall()]
+            if "username" not in cols:
+                # Migrate table to use username instead of email
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS users_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                        password_hash TEXT NOT NULL,
+                        salt TEXT NOT NULL,
+                        role TEXT NOT NULL DEFAULT 'user',
+                        subscribed INTEGER NOT NULL DEFAULT 0,
+                        subscription_expires TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                if "email" in cols:
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO users_new (id, username, password_hash, salt, role, subscribed, subscription_expires, created_at)
+                        SELECT id, email, password_hash, salt, role, subscribed, subscription_expires, created_at FROM users;
+                    """)
+                cursor.execute("DROP TABLE users;")
+                cursor.execute("ALTER TABLE users_new RENAME TO users;")
+                logger.info("Migrated users table to username schema.")
         
         # 2. Sessions table
         cursor.execute("""
@@ -47,29 +76,31 @@ def init_auth_db():
             );
         """)
         
-        # 3. Verification codes table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS verification_codes (
-                email TEXT PRIMARY KEY COLLATE NOCASE,
-                code TEXT NOT NULL,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
+        # 3. Clean up obsolete verification_codes table
+        cursor.execute("DROP TABLE IF EXISTS verification_codes;")
         
-        # 3. Create default admin user if not exists
-        admin = cursor.execute("SELECT id FROM users WHERE email = 'admin@skyrex.ru'").fetchone()
-        if not admin:
+        # 4. Create or update admin user if configured via environment variables
+        admin_login = (os.getenv("ADMIN_LOGIN") or os.getenv("ADMIN_USERNAME") or os.getenv("ADMIN_EMAIL") or "").strip()
+        admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+        
+        # Remove legacy insecure test users if present
+        cursor.execute("DELETE FROM users WHERE username = 'admin@skyrex.ru' AND password_hash = ?", 
+                       (hash_password("admin123", "legacy_salt_placeholder"),))
+        
+        if admin_login and admin_password:
+            existing = cursor.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (admin_login,)).fetchone()
             salt = secrets.token_hex(16)
-            pwd_hash = hash_password("admin123", salt)
-            expires = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)).isoformat()
-            cursor.execute("""
-                INSERT INTO users (email, password_hash, salt, role, subscribed, subscription_expires)
-                VALUES ('admin@skyrex.ru', ?, ?, 'admin', 1, ?)
-            """, (pwd_hash, salt, expires))
-            logger.info("Created default admin user: admin@skyrex.ru")
+            pwd_hash = hash_password(admin_password, salt)
+            if existing:
+                cursor.execute("""
+                    UPDATE users SET password_hash = ?, salt = ?, role = 'admin' WHERE id = ?
+                """, (pwd_hash, salt, existing["id"]))
+            else:
+                cursor.execute("""
+                    INSERT INTO users (username, password_hash, salt, role, subscribed)
+                    VALUES (?, ?, ?, 'admin', 1)
+                """, (admin_login, pwd_hash, salt))
+            logger.info(f"Configured admin account for {admin_login}")
             
         conn.commit()
 
@@ -82,70 +113,39 @@ def hash_password(password: str, salt: str) -> str:
         100000
     ).hex()
 
-def save_verification_code(email: str, password: str, code: str, expires_minutes: int = 10) -> Dict[str, Any]:
-    """Saves pending registration verification code with hashed password."""
-    email = email.strip().lower()
-    if not email or "@" not in email:
-        return {"success": False, "error": "Некорректный email адрес."}
-    if len(password) < 6:
+def register_user(username: str, password: str) -> Dict[str, Any]:
+    """Directly registers a new user by login/username and password into users.db."""
+    username = (username or "").strip()
+    if not username:
+        return {"success": False, "error": "Логин не может быть пустым."}
+    if len(username) < 3:
+        return {"success": False, "error": "Логин должен содержать минимум 3 символа."}
+    if len(username) > 32:
+        return {"success": False, "error": "Логин не должен превышать 32 символа."}
+    if not re.match(r"^[\w\.\-]+$", username, re.UNICODE):
+        return {"success": False, "error": "Логин может содержать только буквы, цифры, дефис, точку и подчеркивание."}
+    if not password or len(password) < 6:
         return {"success": False, "error": "Пароль должен содержать минимум 6 символов."}
 
     init_auth_db()
     with get_auth_connection() as conn:
         cursor = conn.cursor()
-        existing = cursor.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        existing = cursor.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (username,)).fetchone()
         if existing:
-            return {"success": False, "error": "Пользователь с таким email уже зарегистрирован."}
+            return {"success": False, "error": "Пользователь с таким логином уже зарегистрирован."}
 
         salt = secrets.token_hex(16)
         pwd_hash = hash_password(password, salt)
-        expires_at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=expires_minutes)).isoformat()
 
-        cursor.execute("""
-            INSERT OR REPLACE INTO verification_codes (email, code, password_hash, salt, expires_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (email, code, pwd_hash, salt, expires_at))
-        conn.commit()
-
-    return {"success": True}
-
-def verify_code_and_register(email: str, code: str) -> Dict[str, Any]:
-    """Validates code from database and registers the user."""
-    email = email.strip().lower()
-    code = code.strip()
-
-    init_auth_db()
-    with get_auth_connection() as conn:
-        cursor = conn.cursor()
-        record = cursor.execute("SELECT * FROM verification_codes WHERE email = ?", (email,)).fetchone()
-        if not record:
-            return {"success": False, "error": "Запрос на регистрацию не найден. Запросите код повторно."}
-
-        # Check expiration
-        try:
-            exp_dt = datetime.datetime.fromisoformat(record["expires_at"].replace("Z", "+00:00"))
-            if datetime.datetime.now(datetime.timezone.utc) > exp_dt:
-                cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
-                conn.commit()
-                return {"success": False, "error": "Срок действия кода истёк. Запросите новый."}
-        except Exception:
-            pass
-
-        if record["code"] != code:
-            return {"success": False, "error": "Неверный код подтверждения."}
-
-        # Register user into users table
         try:
             cursor.execute("""
-                INSERT INTO users (email, password_hash, salt, role, subscribed, subscription_expires)
+                INSERT INTO users (username, password_hash, salt, role, subscribed, subscription_expires)
                 VALUES (?, ?, ?, 'user', 0, NULL)
-            """, (email, record["password_hash"], record["salt"]))
+            """, (username, pwd_hash, salt))
             user_id = cursor.lastrowid
-            # Clean up verification code
-            cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
             conn.commit()
         except sqlite3.IntegrityError:
-            return {"success": False, "error": "Пользователь с таким email уже существует."}
+            return {"success": False, "error": "Пользователь с таким логином уже зарегистрирован."}
 
     token = create_session(user_id)
     return {
@@ -153,32 +153,32 @@ def verify_code_and_register(email: str, code: str) -> Dict[str, Any]:
         "token": token,
         "user": {
             "id": user_id,
-            "email": email,
+            "username": username,
             "role": "user",
             "subscribed": False,
             "subscriptionExpires": None
         }
     }
 
+def login_user(username: str, password: str) -> Dict[str, Any]:
+    """Authenticates user with username and password against users.db."""
+    username = (username or "").strip()
+    if not username or not password:
+        return {"success": False, "error": "Введите логин и пароль."}
 
-def login_user(email: str, password: str) -> Dict[str, Any]:
-    """Authenticates user with email and password."""
-    email = email.strip().lower()
     init_auth_db()
-    
     with get_auth_connection() as conn:
         cursor = conn.cursor()
-        user = cursor.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        user = cursor.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,)).fetchone()
         if not user:
-            return {"success": False, "error": "Неверный email или пароль."}
-            
+            return {"success": False, "error": "Неверный логин или пароль."}
+
         calc_hash = hash_password(password, user["salt"])
         if calc_hash != user["password_hash"]:
-            return {"success": False, "error": "Неверный email или пароль."}
-            
+            return {"success": False, "error": "Неверный логин или пароль."}
+
         token = create_session(user["id"])
-        
-        # Check active subscription
+
         is_sub = bool(user["subscribed"])
         sub_exp = user["subscription_expires"]
         if is_sub and sub_exp:
@@ -190,13 +190,13 @@ def login_user(email: str, password: str) -> Dict[str, Any]:
                     conn.commit()
             except Exception:
                 pass
-                
+
         return {
             "success": True,
             "token": token,
             "user": {
                 "id": user["id"],
-                "email": user["email"],
+                "username": user["username"],
                 "role": user["role"],
                 "subscribed": is_sub,
                 "subscriptionExpires": sub_exp
@@ -218,20 +218,20 @@ def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
     """Validates session token and returns active user profile."""
     if not token:
         return None
-        
+
     init_auth_db()
     with get_auth_connection() as conn:
         cursor = conn.cursor()
         row = cursor.execute("""
-            SELECT s.expires_at, u.id, u.email, u.role, u.subscribed, u.subscription_expires
+            SELECT s.expires_at, u.id, u.username, u.role, u.subscribed, u.subscription_expires
             FROM sessions s
             JOIN users u ON s.user_id = u.id
             WHERE s.token = ?
         """, (token,)).fetchone()
-        
+
         if not row:
             return None
-            
+
         # Check session expiry
         try:
             exp_dt = datetime.datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
@@ -241,8 +241,7 @@ def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
                 return None
         except Exception:
             return None
-            
-        # Check subscription expiry
+
         is_sub = bool(row["subscribed"])
         sub_exp = row["subscription_expires"]
         if is_sub and sub_exp:
@@ -254,10 +253,10 @@ def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
                     conn.commit()
             except Exception:
                 pass
-                
+
         return {
             "id": row["id"],
-            "email": row["email"],
+            "username": row["username"],
             "role": row["role"],
             "subscribed": is_sub,
             "subscriptionExpires": sub_exp
@@ -278,5 +277,12 @@ def activate_subscription(user_id: int, days: int = 30) -> Dict[str, Any]:
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET subscribed = 1, subscription_expires = ? WHERE id = ?", (expires, user_id))
         conn.commit()
-        user = cursor.execute("SELECT id, email, role, subscribed, subscription_expires FROM users WHERE id = ?", (user_id,)).fetchone()
+        user = cursor.execute("SELECT id, username, role, subscribed, subscription_expires FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(user)
+
+# Backward-compatibility stubs for legacy verification codes
+def save_verification_code(email: str, password: str, code: str, expires_minutes: int = 10) -> Dict[str, Any]:
+    return register_user(email, password)
+
+def verify_code_and_register(email: str, code: str) -> Dict[str, Any]:
+    return {"success": False, "error": "Email verification is deprecated. Use register_user."}
