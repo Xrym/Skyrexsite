@@ -3,10 +3,13 @@ import re
 import json
 import logging
 import secrets
+import asyncio
 from typing import Optional, Dict, Any, List
 import aiohttp
 from aiohttp import web
 import dotenv
+
+from tg_admin_bot import TelegramAdminBot
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -283,7 +286,20 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
 # 4. Format database into highly descriptive instructions for LLM
 def build_system_instruction(db, dynamic_context=""):
-    components = db.get('components', [])
+    from db.database import get_expert_components, get_ai_rules
+    try:
+        db_components = get_expert_components(limit=150)
+        components = db_components if db_components else db.get('components', [])
+    except Exception as e:
+        logger.error(f"Error loading expert components: {e}")
+        components = db.get('components', [])
+
+    try:
+        ai_rules = get_ai_rules(active_only=True)
+    except Exception as e:
+        logger.error(f"Error loading AI rules: {e}")
+        ai_rules = []
+
     bestpcs = db.get('bestpc', [])
     
     catalog_text = "=== ОФИЦИАЛЬНЫЙ КАТАЛОГ МАГАЗИНА SKYREX (Б/У И БАЗОВЫЕ ПОЗИЦИИ) ===\n\n"
@@ -325,9 +341,18 @@ def build_system_instruction(db, dynamic_context=""):
             catalog_text += f"  Вердикт эксперта: {pccomment}\n"
         catalog_text += "\n"
 
+    # Personalized custom rules trained by admin via Telegram
+    rules_text = ""
+    if ai_rules:
+        rules_text = "\n\n=== ПЕРСОНАЛЬНЫЕ ПРАВИЛА И ОБУЧЕНИЕ ОТ ГЛАВНОГО ЭКСПЕРТА SKYREX ===\n"
+        for i, r in enumerate(ai_rules, 1):
+            rules_text += f"{i}. [{r.get('title') or 'Инструкция'}]: {r.get('rule_text')}\n"
+        rules_text += "ОБЯЗАТЕЛЬНО СТРОГО СЛЕДУЙ ЭТИМ ПРАВИЛАМ ПРИ ЛЮБЫХ ОТВЕТАХ И ПОДБОРЕ СБОРОК!\n"
+
     system_prompt = (
         "Ты — профессиональный ИИ-ассистент, бескомпромиссный эксперт по компьютерному железу и технический консультант "
-    "магазина игровых ПК Skyrex Computers. Твоя цель — грамотно подбирать комплектующие и готовые сборки ПК под любые задачи и бюджет.\n\n"
+        "магазина игровых ПК Skyrex Computers. Твоя цель — грамотно подбирать комплектующие и готовые сборки ПК под любые задачи и бюджет.\n\n"
+        f"{rules_text}\n"
     "КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:\n"
     "1. СНАЧАЛА УТОЧНЯЙ, ПОТОМ СОБИРАЙ:\n"
     "   - Если пользователь просто назвал бюджет или общую задачу, НЕ выдавай готовую сборку моментально. "
@@ -720,6 +745,20 @@ async def init_app():
     app.router.add_get('/api/auth/me', handle_auth_me)
     app.router.add_post('/api/auth/logout', handle_auth_logout)
     
+    # Public API for expert catalog & rules
+    async def handle_expert_components(request):
+        from db.database import get_expert_components
+        comps = get_expert_components(limit=200)
+        return web.json_response({"components": comps})
+
+    async def handle_ai_rules(request):
+        from db.database import get_ai_rules
+        rules = get_ai_rules(active_only=True)
+        return web.json_response({"rules": rules})
+
+    app.router.add_get('/api/expert-components', handle_expert_components)
+    app.router.add_get('/api/ai-rules', handle_ai_rules)
+
     # HTML pages
     app.router.add_get('/', handle_index)
     app.router.add_get('/index.html', handle_index)
@@ -729,6 +768,27 @@ async def init_app():
     assets_dir = os.path.join(PROJECT_ROOT, 'assets')
     if os.path.exists(assets_dir):
         app.router.add_static('/assets/', path=assets_dir)
+
+    # Background Telegram Admin Bot
+    tg_token = os.getenv("TG_BOT_TOKEN", "").strip()
+    if tg_token:
+        tg_bot = TelegramAdminBot(token=tg_token)
+        async def start_tg(app_instance):
+            app_instance['tg_bot_task'] = asyncio.create_task(tg_bot.start())
+            logger.info("Telegram Admin Bot launched in background.")
+
+        async def stop_tg(app_instance):
+            await tg_bot.stop()
+            if 'tg_bot_task' in app_instance:
+                app_instance['tg_bot_task'].cancel()
+                try:
+                    await app_instance['tg_bot_task']
+                except asyncio.CancelledError:
+                    pass
+            logger.info("Telegram Admin Bot stopped cleanly.")
+
+        app.on_startup.append(start_tg)
+        app.on_cleanup.append(stop_tg)
         
     return app
 

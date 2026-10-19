@@ -118,19 +118,176 @@ def cleanup_static_dns():
     logger.info("Removed static DNS components from database.")
 
 def seed_from_bot_db():
-    """Initializes SQLite schema and cleans out old static DNS catalog items."""
+    """Initializes SQLite schema, expert tables, and cleans out old static DNS catalog items."""
     init_db()
     cleanup_static_dns()
+    init_expert_tables()
+
+def init_expert_tables():
+    """Initializes expert_components and ai_rules tables and seeds them if empty."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. Expert used/custom components
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS expert_components (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                componentname TEXT NOT NULL,
+                mark INTEGER DEFAULT 8,
+                price INTEGER NOT NULL,
+                minprice INTEGER,
+                comment TEXT,
+                analogue TEXT,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_expert_type ON expert_components(type);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_expert_price ON expert_components(price);")
+        
+        # 2. AI learning rules / prompt directives
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                rule_text TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Seed from bot_db.js if expert_components is empty
+        cursor.execute("SELECT COUNT(*) FROM expert_components;")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            bot_db_path = os.path.join(PROJECT_ROOT, "bot_db.js")
+            if os.path.exists(bot_db_path):
+                try:
+                    with open(bot_db_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    start_idx = content.find('{')
+                    end_idx = content.rfind('};')
+                    if start_idx != -1 and end_idx != -1:
+                        json_like = content[start_idx:end_idx+1]
+                        json_like = re.sub(r'(?m)^(\s*)(\w+)\s*:', r'\1"\2":', json_like)
+                        json_like = re.sub(r'(?m)^\s*//.*$', '', json_like)
+                        parsed = json.loads(json_like)
+                        comps = parsed.get("components", [])
+                        for c in comps:
+                            cursor.execute("""
+                                INSERT INTO expert_components (
+                                    type, componentname, mark, price, minprice, comment, analogue, created_by
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'system_bot_db')
+                            """, (
+                                c.get("type", "other"),
+                                c.get("componentname", "Без названия"),
+                                c.get("mark", 8),
+                                c.get("price", 0),
+                                c.get("minprice"),
+                                c.get("comment", ""),
+                                c.get("analogue", "")
+                            ))
+                        conn.commit()
+                        logger.info(f"Seeded {len(comps)} initial expert components from bot_db.js into SQLite.")
+                except Exception as e:
+                    logger.error(f"Failed to seed expert components from bot_db.js: {e}")
+
+        conn.commit()
+
+def add_expert_component(data: Dict[str, Any]) -> int:
+    """Inserts a new expert component and returns its ID."""
+    init_expert_tables()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO expert_components (
+                type, componentname, mark, price, minprice, comment, analogue, created_by, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (
+            data.get("type", "other"),
+            data.get("componentname", "Без названия"),
+            data.get("mark", 8),
+            int(data.get("price", 0)),
+            int(data.get("minprice")) if data.get("minprice") else None,
+            data.get("comment", ""),
+            data.get("analogue", ""),
+            data.get("created_by", "")
+        ))
+        conn.commit()
+        return cursor.lastrowid
+
+def get_expert_components(limit: int = 100) -> List[Dict[str, Any]]:
+    """Retrieves expert components from database."""
+    init_expert_tables()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, type, componentname, mark, price, minprice, comment, analogue, created_by, created_at
+            FROM expert_components
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+
+def delete_expert_component(comp_id: int) -> bool:
+    """Deletes an expert component by ID."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM expert_components WHERE id = ?", (comp_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def add_ai_rule(rule_text: str, title: str = "", created_by: str = "") -> int:
+    """Inserts an AI directive/rule."""
+    init_expert_tables()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO ai_rules (title, rule_text, created_by)
+            VALUES (?, ?, ?)
+        """, (title or rule_text[:40], rule_text, created_by))
+        conn.commit()
+        return cursor.lastrowid
+
+def get_ai_rules(active_only: bool = True) -> List[Dict[str, Any]]:
+    """Retrieves AI learning rules."""
+    init_expert_tables()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        query = "SELECT id, title, rule_text, is_active, created_by, created_at FROM ai_rules"
+        if active_only:
+            query += " WHERE is_active = 1"
+        query += " ORDER BY id ASC"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+
+def delete_ai_rule(rule_id: int) -> bool:
+    """Deletes an AI rule by ID."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ai_rules WHERE id = ?", (rule_id,))
+        conn.commit()
+        return cursor.rowcount > 0
 
 def get_stats() -> Dict[str, Any]:
     """Returns database size and breakdown by shops/categories."""
     init_db()
+    init_expert_tables()
     with get_connection() as conn:
         total = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
         by_shop = dict(conn.execute("SELECT shop, COUNT(*) FROM products GROUP BY shop").fetchall())
         by_cat = dict(conn.execute("SELECT category, COUNT(*) FROM products GROUP BY category").fetchall())
+        expert_count = conn.execute("SELECT COUNT(*) FROM expert_components").fetchone()[0]
+        rules_count = conn.execute("SELECT COUNT(*) FROM ai_rules WHERE is_active = 1").fetchone()[0]
         return {
             "total_products": total,
             "by_shop": by_shop,
-            "by_category": by_cat
+            "by_category": by_cat,
+            "expert_components_count": expert_count,
+            "ai_rules_count": rules_count
         }
