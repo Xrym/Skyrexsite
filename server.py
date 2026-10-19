@@ -418,15 +418,40 @@ async def call_llm(message, history):
     dynamic_context = get_parsed_catalog_context(message)
     system_instruction = build_system_instruction(BOT_DB, dynamic_context)
 
-    # Proxy detection for LLM (supports Happ, v2ray, Clash, system proxy)
+    # Proxy detection for LLM (supports Happ, v2ray, Clash, system proxy, or direct)
     llm_proxy = os.getenv("LLM_PROXY", "").strip() or None
+    if llm_proxy and llm_proxy.lower() in ("none", "direct", "false", "off", "no"):
+        llm_proxy = None
+
+    import socket
+    from urllib.parse import urlparse
+
+    if llm_proxy:
+        # Verify configured proxy is actually reachable (avoids failure when transferring .env to VPS)
+        try:
+            p = urlparse(llm_proxy)
+            p_host = p.hostname or "127.0.0.1"
+            p_port = p.port or (443 if p.scheme == "https" else 80)
+            with socket.create_connection((p_host, p_port), timeout=0.3):
+                pass
+        except Exception:
+            logger.warning(f"Configured LLM proxy {llm_proxy} is unreachable. Falling back to direct connection.")
+            llm_proxy = None
+
     if not llm_proxy and provider != "ollama":
         env_proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
         if env_proxy:
-            llm_proxy = env_proxy
-        else:
-            # Auto-detect local proxy clients (Happ/v2ray on 10809, Clash on 7890)
-            import socket
+            try:
+                p = urlparse(env_proxy)
+                p_host = p.hostname or "127.0.0.1"
+                p_port = p.port or (443 if p.scheme == "https" else 80)
+                with socket.create_connection((p_host, p_port), timeout=0.3):
+                    llm_proxy = env_proxy
+            except Exception:
+                pass
+        
+        if not llm_proxy:
+            # Auto-detect local proxy clients on desktop (Happ/v2ray on 10809, Clash on 7890)
             for test_port in (10809, 7890):
                 try:
                     with socket.create_connection(("127.0.0.1", test_port), timeout=0.2):
