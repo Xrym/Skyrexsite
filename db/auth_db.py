@@ -279,10 +279,3 @@ def activate_subscription(user_id: int, days: int = 30) -> Dict[str, Any]:
         conn.commit()
         user = cursor.execute("SELECT id, username, role, subscribed, subscription_expires FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(user)
-
-# Backward-compatibility stubs for legacy verification codes
-def save_verification_code(email: str, password: str, code: str, expires_minutes: int = 10) -> Dict[str, Any]:
-    return register_user(email, password)
-
-def verify_code_and_register(email: str, code: str) -> Dict[str, Any]:
-    return {"success": False, "error": "Email verification is deprecated. Use register_user."}

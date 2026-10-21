@@ -646,13 +646,6 @@ async def security_middleware(request, handler):
 
 
 # Auth Request Handlers
-async def handle_auth_send_code(request):
-    """Deprecated: Email verification code request."""
-    return web.json_response({
-        "success": False,
-        "error": "Подтверждение почты отключено. Регистрация выполняется напрямую по логину и паролю."
-    }, status=400)
-
 async def handle_auth_register(request):
     """Directly registers a new user with username and password in users.db."""
     try:
@@ -739,7 +732,6 @@ async def init_app():
     app.router.add_get('/api/search_price', handle_search_price)
     
     # Real Authentication API
-    app.router.add_post('/api/auth/send_code', handle_auth_send_code)
     app.router.add_post('/api/auth/register', handle_auth_register)
     app.router.add_post('/api/auth/login', handle_auth_login)
     app.router.add_get('/api/auth/me', handle_auth_me)

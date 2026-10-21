@@ -144,11 +144,11 @@ const SkyrexAuth = {
             loginForm: document.getElementById("login-form"),
             registerForm: document.getElementById("register-form"),
 
-            loginUsername: document.getElementById("login-username") || document.getElementById("login-email"),
+            loginUsername: document.getElementById("login-username"),
             loginPass: document.getElementById("login-password"),
             loginError: document.getElementById("login-error"),
 
-            registerUsername: document.getElementById("register-username") || document.getElementById("register-email"),
+            registerUsername: document.getElementById("register-username"),
             registerPass: document.getElementById("register-password"),
             registerPassConfirm: document.getElementById("register-password-confirm"),
             registerError: document.getElementById("register-error"),
@@ -156,7 +156,7 @@ const SkyrexAuth = {
             // Profile Modal
             profileModal: document.getElementById("profile-modal"),
             profileCloseBtn: document.getElementById("profile-modal-close-btn"),
-            profileUsernameDisplay: document.getElementById("profile-username-display") || document.getElementById("profile-email-display"),
+            profileUsernameDisplay: document.getElementById("profile-username-display"),
             profileRoleDisplay: document.getElementById("profile-role-display"),
             profileLogoutBtn: document.getElementById("profile-logout-btn"),
         };
@@ -352,7 +352,7 @@ const SkyrexAuth = {
 
     updateProfileUI() {
         if (!this.currentUser) return;
-        const displayName = this.currentUser.username || this.currentUser.login || this.currentUser.email || "Пользователь";
+        const displayName = this.currentUser.username || this.currentUser.login || "Пользователь";
         if (this.dom.profileUsernameDisplay) {
             this.dom.profileUsernameDisplay.textContent = displayName;
         }
