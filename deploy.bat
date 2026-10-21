@@ -3,12 +3,12 @@ chcp 65001 >nul
 title Skyrex Deployer
 
 echo ========================================================
-echo   Skyrex Computers - Запуск выгрузки на сервер...
+echo   Skyrex Computers - Starting deployment...
 echo ========================================================
 echo.
 
 python "%~dp0deploy.py" %*
 
 echo.
-echo Для закрытия окна нажмите любую клавишу...
+echo Press any key to close this window...
 pause >nul

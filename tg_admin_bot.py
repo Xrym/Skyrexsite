@@ -285,7 +285,7 @@ class TelegramAdminBot:
             logger.error("LLM_API_KEY is missing in environment!")
             return None
 
-        model = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
         payload = {

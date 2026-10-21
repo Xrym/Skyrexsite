@@ -416,7 +416,7 @@ async def call_llm(message, history):
     # Setup Defaults
     if provider == "gemini":
         if not model:
-            model = "gemini-3.5-flash-lite"
+            model = "gemini-2.5-flash"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     else:
         # OpenAI-compatible setup
