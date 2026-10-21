@@ -3,6 +3,7 @@ import sys
 import json
 import asyncio
 import logging
+import socket
 import urllib.parse
 from typing import Dict, Any, Optional, List
 import aiohttp
@@ -296,8 +297,18 @@ class TelegramAdminBot:
 
         # Handle optional proxy fallback
         proxy = os.getenv("LLM_PROXY", "").strip() or None
-        if proxy and proxy.lower() in ("none", "direct", "off", "false"):
+        if proxy and proxy.lower() in ("none", "direct", "off", "false", "no"):
             proxy = None
+        if proxy:
+            try:
+                parsed_proxy = urllib.parse.urlparse(proxy)
+                proxy_host = parsed_proxy.hostname or "127.0.0.1"
+                proxy_port = parsed_proxy.port or (443 if parsed_proxy.scheme == "https" else 80)
+                with socket.create_connection((proxy_host, proxy_port), timeout=0.3):
+                    pass
+            except (OSError, ValueError):
+                logger.warning("Configured LLM proxy is unreachable. Falling back to a direct connection.")
+                proxy = None
 
         try:
             async with self.session.post(url, json=payload, proxy=proxy, timeout=25) as resp:
