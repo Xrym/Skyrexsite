@@ -18,6 +18,8 @@ from db.database import (
     get_ai_rules,
     get_prompt_template,
     delete_ai_rule,
+    reset_prompt_template,
+    update_prompt_template,
     get_stats
 )
 
@@ -62,6 +64,7 @@ class TelegramAdminBot:
         # State storage
         self.pending_actions: Dict[int, Dict[str, Any]] = {}
         self.user_drafts: Dict[int, Dict[str, Any]] = {}
+        self.pending_prompt_edits: set[int] = set()
 
     async def start(self):
         """Starts long polling loop."""
@@ -165,6 +168,27 @@ class TelegramAdminBot:
             await self.send_message(chat_id, "Пожалуйста, отправьте текстовое сообщение или команду.")
             return
 
+        if chat_id in self.pending_prompt_edits:
+            if text.lower() == "/cancel":
+                self.pending_prompt_edits.remove(chat_id)
+                await self.send_message(chat_id, "Изменение системного промпта отменено.")
+                return
+            if text.startswith("/"):
+                await self.send_message(
+                    chat_id,
+                    "Отправьте новый системный промпт одним сообщением или используйте "
+                    "<code>/cancel</code> для отмены.",
+                )
+                return
+
+            update_prompt_template("assistant_system", text)
+            self.pending_prompt_edits.remove(chat_id)
+            await self.send_message(
+                chat_id,
+                "✅ Системный промпт консультанта полностью заменён и сохранён в SQLite.",
+            )
+            return
+
         # Commands
         if text.startswith("/"):
             await self.handle_command(chat_id, user_id, text)
@@ -190,7 +214,9 @@ class TelegramAdminBot:
                 "  <i>«Запомни: в сборках до 60к предлагать только Deepcool PK550D или Montech Gamma, китайские БП запрещены»</i>\n\n"
                 "<b>📋 Доступные команды:</b>\n"
                 "/list — Последние 10 Б/У комплектующих в базе\n"
-                "/rules — Список активных правил для ИИ\n"
+                "/rules — Системный промпт и правила ИИ\n"
+                "/add_prompt — Заменить системный промпт\n"
+                "/del_prompt — Сбросить системный промпт к исходному\n"
                 "/prompt — Базовый системный промпт консультанта\n"
                 "/stats — Общая статистика каталога и базы\n"
                 "/del_comp &lt;ID&gt; — Удалить комплектующее\n"
@@ -215,9 +241,32 @@ class TelegramAdminBot:
             await self.send_message(chat_id, "\n".join(lines))
 
         elif cmd == "/rules":
+            prompt_text = get_prompt_template("assistant_system")
+            prompt_chunks = [
+                prompt_text[index:index + 600]
+                for index in range(0, len(prompt_text), 600)
+            ]
+            await self.send_message(
+                chat_id,
+                "🧠 <b>Системный промпт консультанта</b>\n"
+                "Это базовая инструкция. Активные правила ниже добавляются после неё "
+                "и имеют приоритет при конфликте.\n"
+                "Заменить: /add_prompt\nСбросить к исходному: /del_prompt",
+            )
+            for index, chunk in enumerate(prompt_chunks, start=1):
+                await self.send_message(
+                    chat_id,
+                    f"<b>Системный промпт, часть {index}/{len(prompt_chunks)}:</b>\n"
+                    f"<pre>{html.escape(chunk)}</pre>",
+                )
+
             rules = get_ai_rules(active_only=True)
             if not rules:
-                await self.send_message(chat_id, "🧠 Пока нет добавленных правил обучения ИИ. Напишите правило (например, <i>«Запомни: ...»</i>), чтобы добавить.")
+                await self.send_message(
+                    chat_id,
+                    "🧠 Пока нет дополнительных правил обучения ИИ. "
+                    "Напишите правило обычным сообщением, чтобы добавить.",
+                )
                 return
             lines = ["🧠 <b>Активные правила обучения ИИ на skyrex.pro:</b>\n"]
             for r in rules:
@@ -227,6 +276,22 @@ class TelegramAdminBot:
                     f"<i>Удалить: /del_rule {r['id']}</i>\n"
                 )
             await self.send_message(chat_id, "\n".join(lines))
+
+        elif cmd == "/add_prompt":
+            self.pending_prompt_edits.add(chat_id)
+            await self.send_message(
+                chat_id,
+                "Отправьте следующим сообщением новый системный промпт консультанта. "
+                "Он полностью заменит текущий. Чтобы отменить, отправьте <code>/cancel</code>.",
+            )
+
+        elif cmd == "/del_prompt":
+            reset_prompt_template("assistant_system")
+            self.pending_prompt_edits.discard(chat_id)
+            await self.send_message(
+                chat_id,
+                "✅ Текущий системный промпт удалён и восстановлен исходный промпт по умолчанию.",
+            )
 
         elif cmd == "/prompt":
             prompt_kind = args[0].lower() if args else "assistant"

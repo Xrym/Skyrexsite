@@ -399,6 +399,14 @@ def update_prompt_template(name: str, prompt_text: str) -> None:
             raise KeyError(f"Unknown prompt template: {name}")
         conn.commit()
 
+def reset_prompt_template(name: str) -> None:
+    """Restores a prompt template to its original default text."""
+    from db.prompt_defaults import DEFAULT_PROMPTS
+
+    if name not in DEFAULT_PROMPTS:
+        raise KeyError(f"Unknown prompt template: {name}")
+    update_prompt_template(name, DEFAULT_PROMPTS[name])
+
 def get_ai_rules(active_only: bool = True) -> List[Dict[str, Any]]:
     """Retrieves AI learning rules."""
     init_expert_tables()
