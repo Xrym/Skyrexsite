@@ -50,8 +50,9 @@ CATEGORY_ICONS = {
     "psu": "🔋 Блок питания",
     "case": "📦 Корпус",
     "cooler": "❄️ Охлаждение / Кулер",
-    "other": "⚙️ Комплектующее"
+    "other": "⚙️ Комплектующее",
 }
+
 
 class TelegramAdminBot:
     def __init__(self, token: str = TOKEN, admin_ids: set = ADMIN_IDS):
@@ -204,16 +205,15 @@ class TelegramAdminBot:
         if cmd in ("/start", "/help"):
             welcome = (
                 "👋 <b>Панель управления Skyrex Computers</b>\n\n"
-                "Я помогаю наполнять базу Б/У комплектующих и обучать ИИ-консультанта на сайте <b>skyrex.pro</b>.\n\n"
+                "Я помогаю наполнять базу комплектующих и обучать ИИ-консультанта на сайте <b>skyrex.pro</b>.\n\n"
                 "<b>💡 Как использовать:</b>\n"
-                "• <b>Добавить Б/У компонент:</b>\n"
-                "  Просто напишите текстом своими словами, например:\n"
-                "  <i>«видюха 3070ti на авито щас где-то 30к, норм вариант но горячая память, ставь 8»</i>\n\n"
+                "• <b>Добавить компонент:</b>\n"
+                "  Напишите название, примерную цену и описание своими словами.\n\n"
                 "• <b>Обучить нейросеть:</b>\n"
                 "  Напишите правило общения или подбора, например:\n"
                 "  <i>«Запомни: в сборках до 60к предлагать только Deepcool PK550D или Montech Gamma, китайские БП запрещены»</i>\n\n"
                 "<b>📋 Доступные команды:</b>\n"
-                "/list — Последние 10 Б/У комплектующих в базе\n"
+                "/list — Последние 10 комплектующих в базе\n"
                 "/rules — Системный промпт и правила ИИ\n"
                 "/add_prompt — Заменить системный промпт\n"
                 "/del_prompt — Сбросить системный промпт к исходному\n"
@@ -227,16 +227,16 @@ class TelegramAdminBot:
         elif cmd == "/list":
             comps = get_expert_components(limit=10)
             if not comps:
-                await self.send_message(chat_id, "📭 В базе пока нет Б/У комплектующих. Напишите текст, чтобы добавить первый!")
+                await self.send_message(chat_id, "📭 В базе пока нет комплектующих. Напишите название и цену, чтобы добавить первое!")
                 return
-            lines = ["📋 <b>Последние Б/У комплектующие в базе:</b>\n"]
-            for c in comps:
-                icon_tag = CATEGORY_ICONS.get(c.get("type", "other"), "⚙️")
-                price_str = f"{c.get('price', 0):,} ₽".replace(",", " ")
+            lines = ["📋 <b>Последние комплектующие в базе:</b>\n"]
+            for component in comps:
+                icon = CATEGORY_ICONS.get(component.get("type", "other"), "⚙️")
+                price = f"{component.get('price', 0):,} ₽".replace(",", " ")
                 lines.append(
-                    f"<b>#{c['id']}</b> {icon_tag} <b>{c['componentname']}</b>\n"
-                    f"   Цена: {price_str} | Оценка: ⭐️ {c.get('mark', 'N/A')}/10\n"
-                    f"   <i>Удалить: /del_comp {c['id']}</i>\n"
+                    f"<b>#{component['id']}</b> {icon} <b>{component['componentname']}</b>\n"
+                    f"   Цена: {price} | Оценка: ⭐️ {component.get('mark', 'N/A')}/10\n"
+                    f"   <i>Удалить: /del_comp {component['id']}</i>\n"
                 )
             await self.send_message(chat_id, "\n".join(lines))
 
@@ -332,7 +332,7 @@ class TelegramAdminBot:
                 "📊 <b>Статистика Skyrex Computers:</b>\n\n"
                 f"• 🌐 <b>Сайт:</b> https://skyrex.pro/\n"
                 f"• 🛒 <b>Товаров в каталоге ОнлайнТрейд:</b> {stats.get('total_products', 0):,}\n"
-                f"• 📦 <b>Экспертных Б/У комплектующих:</b> {stats.get('expert_components_count', 0)}\n"
+                f"• 📦 <b>Экспертных комплектующих:</b> {stats.get('expert_components_count', 0)}\n"
                 f"• 🧠 <b>Правил обучения ИИ:</b> {stats.get('ai_rules_count', 0)}\n"
             )
             await self.send_message(chat_id, msg)
@@ -361,7 +361,7 @@ class TelegramAdminBot:
             await self.send_message(chat_id, "Неизвестная команда. Введите /help для просмотра списка команд.")
 
     async def call_gemini_parser(self, prompt_text: str) -> Optional[Dict[str, Any]]:
-        """Calls Gemini API with JSON output mode to extract structured component or rule."""
+        """Calls Gemini API to extract an AI rule from administrator input."""
         api_key = os.getenv("LLM_API_KEY", "")
         if not api_key:
             logger.error("LLM_API_KEY is missing in environment!")
@@ -407,11 +407,13 @@ class TelegramAdminBot:
             return None
 
     async def process_natural_language(self, chat_id: int, user_id: int, text: str):
-        # If user had a pending draft waiting for clarification, combine them
         input_text = text
         if chat_id in self.user_drafts:
             draft = self.user_drafts[chat_id]
-            input_text = f"Исходный компонент: {draft.get('name', '')}. Дополнительные детали от админа: {text}"
+            input_text = (
+                f"Исходный компонент: {draft.get('name', '')}. "
+                f"Дополнительные детали от администратора: {text}"
+            )
             del self.user_drafts[chat_id]
 
         parsed = await self.call_gemini_parser(input_text)
@@ -422,54 +424,55 @@ class TelegramAdminBot:
         intent = parsed.get("intent")
 
         if intent == "clarify_needed":
-            comp = parsed.get("component") or {}
-            self.user_drafts[chat_id] = comp
-            question = parsed.get("clarify_question") or f"Укажите ориентировочную цену для <b>{comp.get('name', 'этого компонента')}</b> и оценку (от 1 до 10)."
+            component = parsed.get("component") or {}
+            self.user_drafts[chat_id] = component
+            question = parsed.get("clarify_question") or (
+                f"Укажите примерную цену для <b>{component.get('name', 'этого компонента')}</b>."
+            )
             await self.send_message(chat_id, f"🤔 {question}")
             return
 
         elif intent == "add_component":
-            comp = parsed.get("component")
-            if not comp or not comp.get("name"):
-                await self.send_message(chat_id, "⚠️ Не удалось определить название комплектующего. Пожалуйста, уточните.")
+            component = parsed.get("component")
+            if not component or not component.get("name"):
+                await self.send_message(chat_id, "⚠️ Не удалось определить название комплектующего. Уточните его.")
                 return
 
             self.pending_actions[chat_id] = {
                 "type": "comp",
-                "data": comp,
-                "user_id": user_id
+                "data": component,
+                "user_id": user_id,
             }
 
-            cat_icon = CATEGORY_ICONS.get(comp.get("category", "other"), "⚙️ Комплектующее")
-            price_str = f"{comp.get('price', 0):,} ₽".replace(",", " ")
-            min_str = f" (мин. {comp.get('minprice'):,} ₽)".replace(",", " ") if comp.get("minprice") else ""
-            mark = comp.get("mark") or 8
-            comment = comp.get("comment") or "Нет комментария"
-            analogue = comp.get("analogue")
-
+            category = CATEGORY_ICONS.get(component.get("category", "other"), "⚙️ Комплектующее")
+            price = f"{component.get('price', 0):,} ₽".replace(",", " ")
+            min_price = (
+                f" (мин. {component.get('minprice'):,} ₽)"
+                if component.get("minprice")
+                else ""
+            )
+            comment = component.get("comment") or "Нет комментария"
             card = (
                 "📦 <b>Подтвердите добавление комплектующего:</b>\n\n"
-                f"• <b>Тип:</b> {cat_icon}\n"
-                f"• <b>Название:</b> <b>{comp['name']}</b>\n"
-                f"• <b>Ориентир цены:</b> {price_str}{min_str}\n"
-                f"• <b>Оценка эксперта:</b> ⭐️ {mark}/10\n"
-                f"• <b>Вердикт:</b> <i>{comment}</i>\n"
+                f"• <b>Тип:</b> {category}\n"
+                f"• <b>Название:</b> <b>{component['name']}</b>\n"
+                f"• <b>Ориентир цены:</b> {price}{min_price}\n"
+                f"• <b>Оценка эксперта:</b> ⭐️ {component.get('mark') or 8}/10\n"
+                f"• <b>Описание:</b> <i>{comment}</i>\n"
             )
-            if analogue:
-                card += f"• <b>Аналоги:</b> {analogue}\n"
-            card += "\n<i>Сохранить на сайт skyrex.pro и в базу ИИ-консультанта?</i>"
-
+            if component.get("analogue"):
+                card += f"• <b>Аналоги:</b> {component['analogue']}\n"
+            card += "\n<i>Сохранить компонент в базу каталога?</i>"
             keyboard = {
-                "inline_keyboard": [
-                    [
-                        {"text": "✅ Да, сохранить на сайт", "callback_data": "confirm_save"},
-                        {"text": "❌ Отмена", "callback_data": "cancel_action"}
-                    ]
-                ]
+                "inline_keyboard": [[
+                    {"text": "✅ Сохранить", "callback_data": "confirm_save"},
+                    {"text": "❌ Отмена", "callback_data": "cancel_action"},
+                ]]
             }
             await self.send_message(chat_id, card, reply_markup=keyboard)
+            return
 
-        elif intent == "add_rule":
+        if intent == "add_rule":
             rule = parsed.get("rule")
             if not rule or not rule.get("rule_text"):
                 await self.send_message(chat_id, "⚠️ Не удалось сформулировать правило. Пожалуйста, напишите чуть подробнее.")
@@ -501,7 +504,7 @@ class TelegramAdminBot:
         else:
             await self.send_message(
                 chat_id,
-                "🤔 Не совсем понял. Вы хотите добавить комплектующее или правило для ИИ? "
+                "🤔 Не совсем понял. Напишите комплектующее с примерной ценой или правило для ИИ. "
                 "Введите /help для примеров."
             )
 
@@ -539,7 +542,7 @@ class TelegramAdminBot:
             item_data = action.get("data", {})
 
             if action_type == "comp":
-                comp_to_save = {
+                component = {
                     "type": item_data.get("category", "other"),
                     "componentname": item_data.get("name", "Без названия"),
                     "mark": item_data.get("mark", 8),
@@ -547,19 +550,18 @@ class TelegramAdminBot:
                     "minprice": int(item_data.get("minprice")) if item_data.get("minprice") else None,
                     "comment": item_data.get("comment", ""),
                     "analogue": item_data.get("analogue", ""),
-                    "created_by": str(user_id)
+                    "created_by": str(user_id),
                 }
-                new_id = add_expert_component(comp_to_save)
+                new_id = add_expert_component(component)
                 del self.pending_actions[chat_id]
 
                 await self.answer_callback(cb_id, "Успешно сохранено!")
                 await self.edit_message(
                     chat_id,
                     message_id,
-                    f"✅ <b>Комплектующее успешно сохранено в базе!</b> (ID: <code>#{new_id}</code>)\n\n"
-                    f"• <b>{comp_to_save['componentname']}</b> ({comp_to_save['price']:,} ₽)\n"
-                    f"• Доступно на сайте <b>https://skyrex.pro/</b>\n"
-                    f"• ИИ-консультант уже знает о нем и будет предлагать клиентам."
+                    f"✅ <b>Комплектующее добавлено в базу!</b> (ID: <code>#{new_id}</code>)\n\n"
+                    f"• <b>{component['componentname']}</b> ({component['price']:,} ₽)\n"
+                    "• ИИ-консультант сможет использовать его при подборе.",
                 )
 
             elif action_type == "rule":

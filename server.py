@@ -27,33 +27,31 @@ def load_bot_db():
     if not os.path.exists(db_path):
         logger.warning(f"bot_db.js not found at {db_path}, catalog empty")
         return {"components": [], "bestpc": []}
-        
+
     try:
         with open(db_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # Extract JS object bounds
         start_idx = content.find('{')
         end_idx = content.rfind('};')
-        
         if start_idx == -1 or end_idx == -1:
             logger.error("Could not find Javascript object bounds in bot_db.js")
             return {"components": [], "bestpc": []}
-            
-        json_like = content[start_idx:end_idx+1]
-        
-        # Convert unquoted keys at start of line to quoted keys
+
+        json_like = content[start_idx:end_idx + 1]
         json_like = re.sub(r'(?m)^(\s*)(\w+)\s*:', r'\1"\2":', json_like)
-        
-        # Strip JS single line comments
         json_like = re.sub(r'(?m)^\s*//.*$', '', json_like)
-        
         db = json.loads(json_like)
-        logger.info(f"Loaded database: {len(db.get('components', []))} components, {len(db.get('bestpc', []))} PC builds.")
+        logger.info(
+            "Loaded database: %s components, %s PC builds.",
+            len(db.get("components", [])),
+            len(db.get("bestpc", [])),
+        )
         return db
-    except Exception as e:
-        logger.error(f"Failed to parse bot_db.js: {e}")
+    except Exception as error:
+        logger.error("Failed to parse bot_db.js: %s", error)
         return {"components": [], "bestpc": []}
+
 
 BOT_DB = load_bot_db()
 
@@ -285,7 +283,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
     return "\n".join(context_parts)
 
 # 4. Format database into highly descriptive instructions for LLM
-def build_system_instruction(db, dynamic_context=""):
+def build_system_instruction(dynamic_context=""):
     from db.database import (
         get_ai_rules,
         get_expert_components,
@@ -294,58 +292,54 @@ def build_system_instruction(db, dynamic_context=""):
 
     try:
         db_components = get_expert_components(limit=150)
-        components = db_components if db_components else db.get('components', [])
-    except Exception as e:
-        logger.error(f"Error loading expert components: {e}")
-        components = db.get('components', [])
+        components = db_components if db_components else BOT_DB.get("components", [])
+    except Exception as error:
+        logger.error("Error loading expert components: %s", error)
+        components = BOT_DB.get("components", [])
 
     ai_rules = get_ai_rules(active_only=True)
     base_prompt = get_prompt_template("assistant_system")
 
-    bestpcs = db.get('bestpc', [])
-
     catalog_text = "=== ОФИЦИАЛЬНЫЙ КАТАЛОГ МАГАЗИНА SKYREX (Б/У И БАЗОВЫЕ ПОЗИЦИИ) ===\n\n"
-
     catalog_text += "КОМПЛЕКТУЮЩИЕ (В ОСНОВНОМ ВТОРИЧНЫЙ РЫНОК / БУ):\n"
     catalog_text += (
         "Для одинаковой категории и модели используй только одну, самую свежую "
         "запись каталога: новая запись эксперта заменяет прежнюю цену и описание. "
         "Не используй устаревшие значения из истории диалога или аналогов.\n"
     )
-    for c in components:
+    for component in components:
         catalog_text += (
-            f"- {c.get('componentname', 'Без названия')} "
-            f"({c.get('type', 'other').upper()}). "
-            f"Цена: {c.get('price', 'N/A')} руб. "
+            f"- {component.get('componentname', 'Без названия')} "
+            f"({component.get('type', 'other').upper()}). "
+            f"Цена: {component.get('price', 'N/A')} руб. "
         )
-        if c.get('minprice'):
-            catalog_text += f"(Минимальная цена: {c.get('minprice')} руб). "
-        catalog_text += f"Оценка экспертов: {c.get('mark', 'N/A')}/10. "
-        comment = c.get('comment', '').replace('\n', ' ')
+        if component.get("minprice"):
+            catalog_text += f"(Минимальная цена: {component['minprice']} руб). "
+        catalog_text += f"Оценка экспертов: {component.get('mark', 'N/A')}/10. "
+        comment = component.get("comment", "").replace("\n", " ")
         if comment:
             catalog_text += f"Комментарий: {comment} "
-        analogue = c.get('analogue', '').replace('\n', ' ')
+        analogue = component.get("analogue", "").replace("\n", " ")
         if analogue:
             catalog_text += f"Рекомендуемые аналоги: {analogue}"
         catalog_text += "\n"
 
     catalog_text += "\nГОТОВЫЕ ОПТИМИЗИРОВАННЫЕ СБОРКИ ПК (Б/У):\n"
-    for pc in bestpcs:
+    for pc in BOT_DB.get("bestpc", []):
         catalog_text += (
             f"- Сборка \"{pc.get('pcname', 'Без названия')}\". "
             f"Стоимость: {pc.get('pcprice', 'N/A')} руб. "
         )
-        comp_parts = []
-        for comp in pc.get('components', []):
-            part_str = f"{comp.get('name', '')} ({comp.get('price', '')} руб)"
-            if comp.get('comment'):
-                part_str += f" - {comp.get('comment')}"
-            comp_parts.append(part_str)
-
-        catalog_text += "Состав сборки:\n  " + "\n  ".join(comp_parts) + "\n"
-        pccomment = pc.get('pccomment', '').replace('\n', ' ')
-        if pccomment:
-            catalog_text += f"  Вердикт эксперта: {pccomment}\n"
+        parts = []
+        for component in pc.get("components", []):
+            part = f"{component.get('name', '')} ({component.get('price', '')} руб)"
+            if component.get("comment"):
+                part += f" - {component['comment']}"
+            parts.append(part)
+        catalog_text += "Состав сборки:\n  " + "\n  ".join(parts) + "\n"
+        comment = pc.get("pccomment", "").replace("\n", " ")
+        if comment:
+            catalog_text += f"  Вердикт эксперта: {comment}\n"
         catalog_text += "\n"
 
     admin_rules_text = ""
@@ -413,7 +407,7 @@ async def call_llm(message, history):
 
     # Dynamic context for the message
     dynamic_context = get_parsed_catalog_context(message)
-    system_instruction = build_system_instruction(BOT_DB, dynamic_context)
+    system_instruction = build_system_instruction(dynamic_context)
 
     # Proxy detection for LLM (supports Happ, v2ray, Clash, system proxy, or direct)
     llm_proxy = os.getenv("LLM_PROXY", "").strip() or None
@@ -712,8 +706,8 @@ async def init_app():
     # Public API for expert catalog & rules
     async def handle_expert_components(request):
         from db.database import get_expert_components
-        comps = get_expert_components(limit=200)
-        return web.json_response({"components": comps})
+        components = get_expert_components(limit=200)
+        return web.json_response({"components": components})
 
     async def handle_ai_rules(request):
         from db.database import get_ai_rules

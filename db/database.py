@@ -118,17 +118,16 @@ def cleanup_static_dns():
     logger.info("Removed static DNS components from database.")
 
 def seed_from_bot_db():
-    """Initializes SQLite schema, expert tables, and cleans out old static DNS catalog items."""
+    """Initializes the product catalog and AI configuration tables."""
     init_db()
     cleanup_static_dns()
     init_expert_tables()
 
 def init_expert_tables():
-    """Initializes expert_components and ai_rules tables and seeds them if empty."""
+    """Initializes expert components, AI rules, and prompt templates."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        
-        # 1. Expert used/custom components
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS expert_components (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,8 +145,8 @@ def init_expert_tables():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_expert_type ON expert_components(type);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_expert_price ON expert_components(price);")
-        
-        # 2. AI learning rules / prompt directives
+
+        # AI learning rules / prompt directives
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS ai_rules (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,56 +182,55 @@ def init_expert_tables():
             );
         """)
 
-        legacy_catalog_migration = "remove_legacy_bot_db_used_catalog"
+        cleanup_migration = "clear_legacy_used_components"
         migration_applied = cursor.execute(
             "SELECT 1 FROM app_migrations WHERE name = ?",
-            (legacy_catalog_migration,),
+            (cleanup_migration,),
         ).fetchone()
         if not migration_applied:
-            cursor.execute(
-                "DELETE FROM expert_components WHERE created_by = 'system_bot_db'"
-            )
+            cursor.execute("DELETE FROM expert_components")
+            prompt_row = cursor.execute(
+                "SELECT prompt_text FROM prompt_templates WHERE name = 'assistant_system'"
+            ).fetchone()
+            if prompt_row:
+                old_rule = next(
+                    (
+                        line for line in prompt_row["prompt_text"].splitlines()
+                        if line.startswith("6. ТОЛЬКО НОВЫЕ КОМПЛЕКТУЮЩИЕ:")
+                    ),
+                    None,
+                )
+                if old_rule:
+                    restored_rule = next(
+                        line for line in DEFAULT_PROMPTS["assistant_system"].splitlines()
+                        if line.startswith("6. ВТОРИЧНЫЙ РЫНОК / SKYREX:")
+                    )
+                    prompt_text = prompt_row["prompt_text"].replace(old_rule, restored_rule)
+                    cursor.execute(
+                        """
+                        UPDATE prompt_templates
+                        SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE name = 'assistant_system'
+                        """,
+                        (prompt_text,),
+                    )
+            parser_row = cursor.execute(
+                "SELECT prompt_text FROM prompt_templates WHERE name = 'telegram_parser'"
+            ).fetchone()
+            if parser_row and "только правила поведения ИИ-консультанта" in parser_row["prompt_text"]:
+                cursor.execute(
+                    """
+                    UPDATE prompt_templates
+                    SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE name = 'telegram_parser'
+                    """,
+                    (DEFAULT_PROMPTS["telegram_parser"],),
+                )
             cursor.execute(
                 "INSERT INTO app_migrations (name) VALUES (?)",
-                (legacy_catalog_migration,),
+                (cleanup_migration,),
             )
-            logger.info("Removed legacy components imported from bot_db.js.")
-        
-        # Seed from bot_db.js if expert_components is empty
-        cursor.execute("SELECT COUNT(*) FROM expert_components;")
-        count = cursor.fetchone()[0]
-        if count == 0:
-            bot_db_path = os.path.join(PROJECT_ROOT, "bot_db.js")
-            if os.path.exists(bot_db_path):
-                try:
-                    with open(bot_db_path, "r", encoding="utf-8") as f:
-                        content = f.read()
-                    start_idx = content.find('{')
-                    end_idx = content.rfind('};')
-                    if start_idx != -1 and end_idx != -1:
-                        json_like = content[start_idx:end_idx+1]
-                        json_like = re.sub(r'(?m)^(\s*)(\w+)\s*:', r'\1"\2":', json_like)
-                        json_like = re.sub(r'(?m)^\s*//.*$', '', json_like)
-                        parsed = json.loads(json_like)
-                        comps = parsed.get("components", [])
-                        for c in comps:
-                            cursor.execute("""
-                                INSERT INTO expert_components (
-                                    type, componentname, mark, price, minprice, comment, analogue, created_by
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'system_bot_db')
-                            """, (
-                                c.get("type", "other"),
-                                c.get("componentname", "Без названия"),
-                                c.get("mark", 8),
-                                c.get("price", 0),
-                                c.get("minprice"),
-                                c.get("comment", ""),
-                                c.get("analogue", "")
-                            ))
-                        conn.commit()
-                        logger.info(f"Seeded {len(comps)} initial expert components from bot_db.js into SQLite.")
-                except Exception as e:
-                    logger.error(f"Failed to seed expert components from bot_db.js: {e}")
+            logger.info("Cleared legacy used components; manual component entry remains enabled.")
 
         conn.commit()
 
