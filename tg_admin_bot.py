@@ -3,6 +3,7 @@ import sys
 import json
 import asyncio
 import logging
+import html
 import socket
 import urllib.parse
 from typing import Dict, Any, Optional, List
@@ -190,6 +191,7 @@ class TelegramAdminBot:
                 "<b>📋 Доступные команды:</b>\n"
                 "/list — Последние 10 Б/У комплектующих в базе\n"
                 "/rules — Список активных правил для ИИ\n"
+                "/prompt — Базовый системный промпт консультанта\n"
                 "/stats — Общая статистика каталога и базы\n"
                 "/del_comp &lt;ID&gt; — Удалить комплектующее\n"
                 "/del_rule &lt;ID&gt; — Удалить правило ИИ"
@@ -225,6 +227,39 @@ class TelegramAdminBot:
                     f"<i>Удалить: /del_rule {r['id']}</i>\n"
                 )
             await self.send_message(chat_id, "\n".join(lines))
+
+        elif cmd == "/prompt":
+            prompt_kind = args[0].lower() if args else "assistant"
+            prompt_names = {
+                "assistant": ("assistant_system", "системный промпт консультанта"),
+                "parser": ("telegram_parser", "промпт Telegram-парсера"),
+            }
+            if prompt_kind not in prompt_names:
+                await self.send_message(
+                    chat_id,
+                    "⚠️ Использование: <code>/prompt</code> для консультанта или "
+                    "<code>/prompt parser</code> для Telegram-парсера.",
+                )
+                return
+
+            template_name, title = prompt_names[prompt_kind]
+            prompt_text = get_prompt_template(template_name)
+            chunks = [
+                prompt_text[index:index + 600]
+                for index in range(0, len(prompt_text), 600)
+            ]
+            await self.send_message(
+                chat_id,
+                f"🧠 <b>{title.capitalize()} из SQLite.</b>\n"
+                "Каталог и активные правила из <code>/rules</code> добавляются отдельно.\n"
+                f"Часть 1/{len(chunks)}:\n<pre>{html.escape(chunks[0])}</pre>",
+            )
+            for index, chunk in enumerate(chunks[1:], start=2):
+                await self.send_message(
+                    chat_id,
+                    f"🧠 <b>{title.capitalize()}, часть {index}/{len(chunks)}:</b>\n"
+                    f"<pre>{html.escape(chunk)}</pre>",
+                )
 
         elif cmd == "/stats":
             stats = get_stats()
