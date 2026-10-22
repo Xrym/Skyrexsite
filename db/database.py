@@ -197,6 +197,25 @@ def init_expert_tables():
 
         conn.commit()
 
+def _normalized_expert_component_name(component_type: str, component_name: str) -> str:
+    """Normalizes equivalent GPU names for matching expert catalog entries."""
+    name = re.sub(r"\s+", " ", component_name).strip().casefold()
+    if component_type.strip().casefold() == "gpu":
+        prefixes = (
+            "nvidia geforce ",
+            "geforce ",
+            "nvidia ",
+            "amd radeon ",
+            "radeon ",
+            "amd ",
+        )
+        for prefix in prefixes:
+            if name.startswith(prefix):
+                name = name[len(prefix):]
+                break
+    return name
+
+
 def add_expert_component(data: Dict[str, Any]) -> int:
     """Adds or replaces an expert component identified by type and name."""
     init_expert_tables()
@@ -217,13 +236,17 @@ def add_expert_component(data: Dict[str, Any]) -> int:
         cursor = conn.cursor()
         cursor.execute("BEGIN IMMEDIATE")
         cursor.execute("""
-            SELECT id
+            SELECT id, componentname, updated_at
             FROM expert_components
             WHERE lower(trim(type)) = lower(trim(?))
-              AND lower(trim(componentname)) = lower(trim(?))
-            ORDER BY id DESC
-        """, (component_type, component_name))
-        existing_ids = [row[0] for row in cursor.fetchall()]
+            ORDER BY updated_at DESC, id DESC
+        """, (component_type,))
+        existing_ids = [
+            row["id"]
+            for row in cursor.fetchall()
+            if _normalized_expert_component_name(component_type, row["componentname"])
+            == _normalized_expert_component_name(component_type, component_name)
+        ]
 
         if existing_ids:
             component_id = existing_ids[0]
@@ -253,28 +276,39 @@ def add_expert_component(data: Dict[str, Any]) -> int:
 
 def get_expert_components(limit: int = 100) -> List[Dict[str, Any]]:
     """Retrieves the latest entry for each expert component."""
+    if limit <= 0:
+        return []
+
     init_expert_tables()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            WITH ranked_components AS (
-                SELECT id, type, componentname, mark, price, minprice, comment,
-                       analogue, created_by, created_at, updated_at,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY lower(trim(type)), lower(trim(componentname))
-                           ORDER BY updated_at DESC, id DESC
-                       ) AS row_number
-                FROM expert_components
-            )
             SELECT id, type, componentname, mark, price, minprice, comment,
-                   analogue, created_by, created_at
-            FROM ranked_components
-            WHERE row_number = 1
+                   analogue, created_by, created_at, updated_at
+            FROM expert_components
             ORDER BY updated_at DESC, id DESC
-            LIMIT ?
-        """, (limit,))
+        """)
         rows = cursor.fetchall()
-        return [dict(r) for r in rows]
+
+    components = []
+    seen = set()
+    for row in rows:
+        component = dict(row)
+        key = (
+            component["type"].strip().casefold(),
+            _normalized_expert_component_name(
+                component["type"],
+                component["componentname"],
+            ),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        component.pop("updated_at")
+        components.append(component)
+        if len(components) >= limit:
+            break
+    return components
 
 def delete_expert_component(comp_id: int) -> bool:
     """Deletes an expert component by ID."""

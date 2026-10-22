@@ -25,12 +25,17 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 dotenv.load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 TOKEN = os.getenv("TG_BOT_TOKEN", "").strip()
-admin_env = os.getenv("TG_ADMIN_IDS", "1755491562,7775798957")
-ADMIN_IDS = set()
-for part in admin_env.split(","):
-    part = part.strip()
-    if part.isdigit():
-        ADMIN_IDS.add(int(part))
+
+
+def _parse_admin_ids(value: str) -> set[int]:
+    """Parse Telegram user IDs from the TG_ADMIN_IDS environment variable."""
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if any(not part.isdigit() for part in parts):
+        raise ValueError("TG_ADMIN_IDS must contain comma-separated numeric Telegram IDs.")
+    return {int(part) for part in parts}
+
+
+ADMIN_IDS = _parse_admin_ids(os.getenv("TG_ADMIN_IDS", ""))
 
 CATEGORY_ICONS = {
     "gpu": "🎮 Видеокарта",
@@ -90,6 +95,8 @@ class TelegramAdminBot:
         """Starts long polling loop."""
         if not self.token:
             raise RuntimeError("TG_BOT_TOKEN must be configured in the environment.")
+        if not self.admin_ids:
+            raise RuntimeError("TG_ADMIN_IDS must contain at least one Telegram user ID.")
 
         self.is_running = True
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40))
