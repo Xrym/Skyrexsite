@@ -15,6 +15,7 @@ from db.database import (
     delete_expert_component,
     add_ai_rule,
     get_ai_rules,
+    get_prompt_template,
     delete_ai_rule,
     get_stats
 )
@@ -48,36 +49,6 @@ CATEGORY_ICONS = {
     "cooler": "❄️ Охлаждение / Кулер",
     "other": "⚙️ Комплектующее"
 }
-
-PARSER_PROMPT = """Ты — интеллектуальный ассистент-парсер для магазина игровых ПК Skyrex Computers.
-Администратор магазина присылает сообщение о компьютерном железе (Б/У на вторичке/Авито) или обучающее правило для ИИ.
-
-Твоя задача — извлечь данные и вернуть СТРОГО один валидный JSON-объект без форматирования markdown (без ```json):
-{
-  "intent": "add_component" | "add_rule" | "clarify_needed",
-  "component": {
-    "category": "gpu" | "cpu" | "motherboard" | "ram" | "ssd" | "psu" | "case" | "cooler" | "other",
-    "name": "Точное понятное название комплектующего",
-    "price": 30000,
-    "minprice": null,
-    "mark": 8,
-    "comment": "Понятное описание и вердикт эксперта",
-    "analogue": "Аналоги (если упомянуты) или ''"
-  },
-  "rule": {
-    "title": "Краткая тема правила",
-    "rule_text": "Четкая инструкция для ИИ-консультанта"
-  },
-  "clarify_question": "Вежливый вопрос к админу, если не хватает критических данных (например, цены или оценки)"
-}
-
-ПРАВИЛА КЛАССИФИКАЦИИ:
-1. Если админ упоминает конкретное железо (видюха, карта, проц, кулер, плата, память, бп, корпус):
-   - Если указана хотя бы примерная цена: intent = "add_component". Если оценка не указана, поставь разумную по умолчанию (7 или 8).
-   - Если цены вообще нет и это непонятно: intent = "clarify_needed", заполни clarify_question.
-2. Если админ говорит, как отвечать, что советовать, что запрещено, правила сборок или поведения: intent = "add_rule".
-3. Автоматически нормализуй названия (например "3070ти" -> "NVIDIA GeForce RTX 3070 Ti", "5600" -> "AMD Ryzen 5 5600", "ak620" -> "DeepCool AK620").
-"""
 
 class TelegramAdminBot:
     def __init__(self, token: str = TOKEN, admin_ids: set = ADMIN_IDS):
@@ -300,7 +271,9 @@ class TelegramAdminBot:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
         payload = {
-            "systemInstruction": {"parts": [{"text": PARSER_PROMPT}]},
+            "systemInstruction": {
+                "parts": [{"text": get_prompt_template("telegram_parser")}]
+            },
             "contents": [{"role": "user", "parts": [{"text": prompt_text}]}],
             "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"}
         }

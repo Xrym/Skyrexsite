@@ -158,6 +158,23 @@ def init_expert_tables():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prompt_templates (
+                name TEXT PRIMARY KEY,
+                prompt_text TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        from db.prompt_defaults import DEFAULT_PROMPTS
+
+        for prompt_name, prompt_text in DEFAULT_PROMPTS.items():
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO prompt_templates (name, prompt_text)
+                VALUES (?, ?)
+                """,
+                (prompt_name, prompt_text),
+            )
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS app_migrations (
@@ -351,6 +368,36 @@ def add_ai_rule(rule_text: str, title: str = "", created_by: str = "") -> int:
         """, (title or rule_text[:40], rule_text, created_by))
         conn.commit()
         return cursor.lastrowid
+
+def get_prompt_template(name: str) -> str:
+    """Returns a stored prompt template, seeding defaults when needed."""
+    init_expert_tables()
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT prompt_text FROM prompt_templates WHERE name = ?",
+            (name,),
+        ).fetchone()
+    if row is None:
+        raise KeyError(f"Unknown prompt template: {name}")
+    return row["prompt_text"]
+
+def update_prompt_template(name: str, prompt_text: str) -> None:
+    """Updates an existing prompt template without creating unknown prompt types."""
+    if not prompt_text.strip():
+        raise ValueError("Prompt text cannot be empty.")
+    init_expert_tables()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE prompt_templates
+            SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE name = ?
+            """,
+            (prompt_text, name),
+        )
+        if cursor.rowcount == 0:
+            raise KeyError(f"Unknown prompt template: {name}")
+        conn.commit()
 
 def get_ai_rules(active_only: bool = True) -> List[Dict[str, Any]]:
     """Retrieves AI learning rules."""
