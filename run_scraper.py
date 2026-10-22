@@ -11,21 +11,20 @@ if sys.platform == "win32":
         pass
 
 from scraper.onlinetrade_worker import OnlineTradeScraper
-from scraper.wildberries_worker import WildberriesScraper
 from db.database import get_stats
 
 def main():
-    parser = argparse.ArgumentParser(description="Skyrex PC Parts Scraper Worker")
+    parser = argparse.ArgumentParser(description="Skyrex PC Parts Price Updater")
     parser.add_argument(
         "--shop",
-        choices=["onlinetrade", "wildberries", "all"],
+        choices=["onlinetrade", "all"],
         default="onlinetrade",
-        help="Магазин для сбора цен (по умолчанию: onlinetrade)",
+        help="Магазин для обновления цен (по умолчанию: onlinetrade)",
     )
     parser.add_argument("--pages", type=int, default=1, help="Количество страниц на категорию (по умолчанию: 1)")
     parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu cooler case")
-    parser.add_argument("--proxy", type=str, default=None, help="HTTP/SOCKS5 прокси")
-    parser.add_argument("--headless", action="store_true", help="Запуск в фоновом (скрытом) режиме без графического окна")
+    parser.add_argument("--proxy", type=str, default=None, help="HTTP/SOCKS5 прокси для ОнлайнТрейд")
+    parser.add_argument("--headless", action="store_true", help="Запуск браузера ОнлайнТрейд без графического окна")
 
     args = parser.parse_args()
 
@@ -38,18 +37,10 @@ def main():
         print(f"[*] Прокси: {args.proxy.split('@')[-1]}")
     print("=" * 60)
 
-    shops = (
-        ["onlinetrade", "wildberries"]
-        if args.shop == "all"
-        else [args.shop]
-    )
+    shops = ["onlinetrade"] if args.shop == "all" else [args.shop]
     for shop in shops:
-        print(f"\n===> Запуск парсера {shop}...")
-        scraper = (
-            OnlineTradeScraper(headless=args.headless)
-            if shop == "onlinetrade"
-            else WildberriesScraper(headless=args.headless)
-        )
+        print(f"\n===> Обновление цен: {shop}...")
+        scraper = OnlineTradeScraper(headless=args.headless)
         scraper.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
 
     print("\n" + "=" * 60)

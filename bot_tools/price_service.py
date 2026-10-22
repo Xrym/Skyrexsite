@@ -1,4 +1,5 @@
 import re
+from html import escape
 from typing import List, Dict, Any, Optional
 from db.database import get_connection, seed_from_bot_db
 
@@ -117,16 +118,19 @@ def format_price_results(results: List[Dict[str, Any]]) -> str:
     for i, item in enumerate(results, 1):
         price_str = f"<b>{item['price']:,} ₽</b>".replace(",", " ")
         old_str = f" <s>{item['old_price']:,} ₽</s>".replace(",", " ") if item.get('old_price') else ""
-        link_str = f"<a href='{item['url']}' target='_blank'>{item['name']}</a>"
-        shop_tag = f"[{item.get('shop', 'ОнлайнТрейд')}]"
+        link_str = (
+            f"<a href='{escape(str(item['url']), quote=True)}' target='_blank'>"
+            f"{escape(str(item['name']))}</a>"
+        )
+        shop_tag = f"[{escape(str(item.get('shop', 'ОнлайнТрейд')))}]"
         avail_str = "✅ В наличии" if item.get('available') else "⏳ Под заказ"
-        warranty_str = f"Гарантия: {item['warranty']}" if item.get('warranty') else ""
+        warranty_str = f"Гарантия: {escape(str(item['warranty']))}" if item.get('warranty') else ""
 
         line = f"{i}. {shop_tag} {link_str} — {price_str}{old_str} ({avail_str})"
         if warranty_str:
             line += f" • <i>{warranty_str}</i>"
         if item.get("comment"):
-            line += f"<br>&nbsp;&nbsp;&nbsp;💡 <i>{item['comment']}</i>"
+            line += f"<br>&nbsp;&nbsp;&nbsp;💡 <i>{escape(str(item['comment']))}</i>"
         lines.append(line)
 
     return "<br>".join(lines)
