@@ -158,6 +158,28 @@ def init_expert_tables():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS app_migrations (
+                name TEXT PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        legacy_catalog_migration = "remove_legacy_bot_db_used_catalog"
+        migration_applied = cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (legacy_catalog_migration,),
+        ).fetchone()
+        if not migration_applied:
+            cursor.execute(
+                "DELETE FROM expert_components WHERE created_by = 'system_bot_db'"
+            )
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (legacy_catalog_migration,),
+            )
+            logger.info("Removed legacy components imported from bot_db.js.")
         
         # Seed from bot_db.js if expert_components is empty
         cursor.execute("SELECT COUNT(*) FROM expert_components;")
