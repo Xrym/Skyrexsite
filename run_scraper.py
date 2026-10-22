@@ -1,8 +1,4 @@
-"""
-CLI Скрипт ручного или автоматического запуска сбора цен с ОнлайнТрейд
-Использование:
-  python run_scraper.py --pages 4 --cat gpu cpu
-"""
+"""CLI for manually running supported store price scrapers."""
 import sys
 import argparse
 
@@ -15,12 +11,17 @@ if sys.platform == "win32":
         pass
 
 from scraper.onlinetrade_worker import OnlineTradeScraper
+from scraper.wildberries_worker import WildberriesScraper
 from db.database import get_stats
 
 def main():
-    parser = argparse.ArgumentParser(description="Skyrex PC Parts Scraper Worker (OnlineTrade)")
-    parser.add_argument("--shop", type=str, choices=["onlinetrade", "all"], default="onlinetrade",
-                        help="Выбор магазина: onlinetrade")
+    parser = argparse.ArgumentParser(description="Skyrex PC Parts Scraper Worker")
+    parser.add_argument(
+        "--shop",
+        choices=["onlinetrade", "wildberries", "all"],
+        default="onlinetrade",
+        help="Магазин для сбора цен (по умолчанию: onlinetrade)",
+    )
     parser.add_argument("--pages", type=int, default=1, help="Количество страниц на категорию (по умолчанию: 1)")
     parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu cooler case")
     parser.add_argument("--proxy", type=str, default=None, help="HTTP/SOCKS5 прокси")
@@ -29,7 +30,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("[*] Запуск воркера сбора цен ОнлайнТрейд")
+    print(f"[*] Запуск воркера сбора цен: {args.shop}")
     print(f"[*] Максимум страниц на категорию: {args.pages}")
     if args.cat:
         print(f"[*] Выбранные категории: {', '.join(args.cat)}")
@@ -37,9 +38,19 @@ def main():
         print(f"[*] Прокси: {args.proxy.split('@')[-1]}")
     print("=" * 60)
 
-    print("\n===> Запуск парсера ОнлайнТрейд...")
-    onlinetrade = OnlineTradeScraper(headless=args.headless)
-    onlinetrade.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
+    shops = (
+        ["onlinetrade", "wildberries"]
+        if args.shop == "all"
+        else [args.shop]
+    )
+    for shop in shops:
+        print(f"\n===> Запуск парсера {shop}...")
+        scraper = (
+            OnlineTradeScraper(headless=args.headless)
+            if shop == "onlinetrade"
+            else WildberriesScraper(headless=args.headless)
+        )
+        scraper.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
 
     print("\n" + "=" * 60)
     print("[*] АКТУАЛЬНОЕ СОСТОЯНИЕ БАЗЫ ДАННЫХ CATALOG.DB:")

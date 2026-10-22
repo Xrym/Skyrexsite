@@ -24,7 +24,7 @@ logger = logging.getLogger("skyrex_tg_bot")
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 dotenv.load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
-TOKEN = os.getenv("TG_BOT_TOKEN", "***REMOVED_TELEGRAM_BOT_TOKEN***").strip()
+TOKEN = os.getenv("TG_BOT_TOKEN", "").strip()
 admin_env = os.getenv("TG_ADMIN_IDS", "1755491562,7775798957")
 ADMIN_IDS = set()
 for part in admin_env.split(","):
@@ -88,6 +88,9 @@ class TelegramAdminBot:
 
     async def start(self):
         """Starts long polling loop."""
+        if not self.token:
+            raise RuntimeError("TG_BOT_TOKEN must be configured in the environment.")
+
         self.is_running = True
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40))
         logger.info(f"Telegram Admin Bot starting for admins: {self.admin_ids}...")
@@ -473,7 +476,7 @@ class TelegramAdminBot:
                 await self.edit_message(
                     chat_id,
                     message_id,
-                    f"✅ <b>Комплектующее успешно добавлено в базу!</b> (ID: <code>#{new_id}</code>)\n\n"
+                    f"✅ <b>Комплектующее успешно сохранено в базе!</b> (ID: <code>#{new_id}</code>)\n\n"
                     f"• <b>{comp_to_save['componentname']}</b> ({comp_to_save['price']:,} ₽)\n"
                     f"• Доступно на сайте <b>https://skyrex.pro/</b>\n"
                     f"• ИИ-консультант уже знает о нем и будет предлагать клиентам."

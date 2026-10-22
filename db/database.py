@@ -198,36 +198,79 @@ def init_expert_tables():
         conn.commit()
 
 def add_expert_component(data: Dict[str, Any]) -> int:
-    """Inserts a new expert component and returns its ID."""
+    """Adds or replaces an expert component identified by type and name."""
     init_expert_tables()
+    component_type = data.get("type", "other")
+    component_name = data.get("componentname", "Без названия")
+    values = (
+        component_type,
+        component_name,
+        data.get("mark", 8),
+        int(data.get("price", 0)),
+        int(data.get("minprice")) if data.get("minprice") else None,
+        data.get("comment", ""),
+        data.get("analogue", ""),
+        data.get("created_by", ""),
+    )
+
     with get_connection() as conn:
         cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")
         cursor.execute("""
-            INSERT INTO expert_components (
-                type, componentname, mark, price, minprice, comment, analogue, created_by, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, (
-            data.get("type", "other"),
-            data.get("componentname", "Без названия"),
-            data.get("mark", 8),
-            int(data.get("price", 0)),
-            int(data.get("minprice")) if data.get("minprice") else None,
-            data.get("comment", ""),
-            data.get("analogue", ""),
-            data.get("created_by", "")
-        ))
+            SELECT id
+            FROM expert_components
+            WHERE lower(trim(type)) = lower(trim(?))
+              AND lower(trim(componentname)) = lower(trim(?))
+            ORDER BY id DESC
+        """, (component_type, component_name))
+        existing_ids = [row[0] for row in cursor.fetchall()]
+
+        if existing_ids:
+            component_id = existing_ids[0]
+            cursor.execute("""
+                UPDATE expert_components
+                SET type = ?, componentname = ?, mark = ?, price = ?, minprice = ?,
+                    comment = ?, analogue = ?, created_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (*values, component_id))
+            if len(existing_ids) > 1:
+                duplicate_ids = existing_ids[1:]
+                placeholders = ",".join("?" for _ in duplicate_ids)
+                cursor.execute(
+                    f"DELETE FROM expert_components WHERE id IN ({placeholders})",
+                    duplicate_ids,
+                )
+        else:
+            cursor.execute("""
+                INSERT INTO expert_components (
+                    type, componentname, mark, price, minprice, comment, analogue, created_by, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, values)
+            component_id = cursor.lastrowid
+
         conn.commit()
-        return cursor.lastrowid
+        return component_id
 
 def get_expert_components(limit: int = 100) -> List[Dict[str, Any]]:
-    """Retrieves expert components from database."""
+    """Retrieves the latest entry for each expert component."""
     init_expert_tables()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, type, componentname, mark, price, minprice, comment, analogue, created_by, created_at
-            FROM expert_components
-            ORDER BY id DESC
+            WITH ranked_components AS (
+                SELECT id, type, componentname, mark, price, minprice, comment,
+                       analogue, created_by, created_at, updated_at,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY lower(trim(type)), lower(trim(componentname))
+                           ORDER BY updated_at DESC, id DESC
+                       ) AS row_number
+                FROM expert_components
+            )
+            SELECT id, type, componentname, mark, price, minprice, comment,
+                   analogue, created_by, created_at
+            FROM ranked_components
+            WHERE row_number = 1
+            ORDER BY updated_at DESC, id DESC
             LIMIT ?
         """, (limit,))
         rows = cursor.fetchall()

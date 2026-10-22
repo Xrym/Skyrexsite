@@ -305,6 +305,11 @@ def build_system_instruction(db, dynamic_context=""):
     catalog_text = "=== ОФИЦИАЛЬНЫЙ КАТАЛОГ МАГАЗИНА SKYREX (Б/У И БАЗОВЫЕ ПОЗИЦИИ) ===\n\n"
     
     catalog_text += "КОМПЛЕКТУЮЩИЕ (В ОСНОВНОМ ВТОРИЧНЫЙ РЫНОК / БУ):\n"
+    catalog_text += (
+        "Для одинаковой категории и модели используй только одну, самую свежую "
+        "запись каталога: новая запись эксперта заменяет прежнюю цену и описание. "
+        "Не используй устаревшие значения из истории диалога или аналогов.\n"
+    )
     for c in components:
         catalog_text += (
             f"- {c.get('componentname', 'Без названия')} "
@@ -789,4 +794,3 @@ if __name__ == '__main__':
     host = os.getenv("HOST", "0.0.0.0")
     logger.info(f"Starting Skyrex AI Server on http://{host}:{port} (Local: http://localhost:{port})...")
     web.run_app(init_app(), host=host, port=port)
-
