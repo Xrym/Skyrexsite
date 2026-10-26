@@ -80,14 +80,16 @@ def upsert_products(products: List[Dict[str, Any]]):
                 "city_id": p.get("city_id", "moscow"),
                 "warranty": p.get("warranty", "36 мес."),
                 "mark": p.get("mark"),
-                "comment": p.get("comment", "")
+                "comment": p.get("comment", ""),
+                "rating": p.get("rating"),
+                "feedback_count": p.get("feedback_count") if p.get("feedback_count") is not None else p.get("feedbacks")
             }
             
             cursor.execute("""
                 INSERT INTO products (
-                    id, shop, name, category, price, old_price, available, url, city_id, warranty, mark, comment, updated_at
+                    id, shop, name, category, price, old_price, available, url, city_id, warranty, mark, comment, rating, feedback_count, updated_at
                 ) VALUES (
-                    :id, :shop, :name, :category, :price, :old_price, :available, :url, :city_id, :warranty, :mark, :comment, CURRENT_TIMESTAMP
+                    :id, :shop, :name, :category, :price, :old_price, :available, :url, :city_id, :warranty, :mark, :comment, :rating, :feedback_count, CURRENT_TIMESTAMP
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     price = excluded.price,
@@ -97,6 +99,8 @@ def upsert_products(products: List[Dict[str, Any]]):
                     warranty = excluded.warranty,
                     mark = excluded.mark,
                     comment = excluded.comment,
+                    rating = excluded.rating,
+                    feedback_count = excluded.feedback_count,
                     updated_at = CURRENT_TIMESTAMP;
             """, p_data)
             
@@ -231,6 +235,117 @@ def init_expert_tables():
                 (cleanup_migration,),
             )
             logger.info("Cleared legacy used components; manual component entry remains enabled.")
+
+        parser_example_migration = "fix_legacy_telegram_parser_example"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (parser_example_migration,),
+        ).fetchone():
+            parser_row = cursor.execute(
+                "SELECT prompt_text FROM prompt_templates WHERE name = 'telegram_parser'"
+            ).fetchone()
+            if parser_row:
+                parser_text = parser_row["prompt_text"]
+                parser_text = parser_text.replace(
+                    '"intent": "add_component" | "add_rule" | "clarify_needed",',
+                    '"intent": "add_component",',
+                )
+                parser_text = parser_text.replace(
+                    '"category": "gpu" | "cpu" | "motherboard" | "ram" | "ssd" | "psu" | "case" | "cooler" | "other",',
+                    '"category": "gpu",',
+                )
+                if parser_text != parser_row["prompt_text"]:
+                    cursor.execute(
+                        """
+                        UPDATE prompt_templates
+                        SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE name = 'telegram_parser'
+                        """,
+                        (parser_text,),
+                    )
+
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (parser_example_migration,),
+            )
+
+        prompt_migration_v2 = "remove_stale_wildberries_prompt_rule_v2"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (prompt_migration_v2,),
+        ).fetchone():
+            prompt_row = cursor.execute(
+                "SELECT prompt_text FROM prompt_templates WHERE name = 'assistant_system'"
+            ).fetchone()
+            if prompt_row:
+                prompt_lines = prompt_row["prompt_text"].splitlines(keepends=True)
+                filtered_lines = [
+                    line for line in prompt_lines
+                    if "Wildberries чуть дешевле." not in line
+                ]
+                if len(filtered_lines) != len(prompt_lines):
+                    cursor.execute(
+                        """
+                        UPDATE prompt_templates
+                        SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE name = 'assistant_system'
+                        """,
+                        ("".join(filtered_lines),),
+                    )
+            cursor.execute("INSERT INTO app_migrations (name) VALUES (?)", (prompt_migration_v2,))
+
+        parser_migration = "fix_telegram_parser_prompt_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (parser_migration,),
+        ).fetchone():
+            parser_row = cursor.execute(
+                "SELECT prompt_text FROM prompt_templates WHERE name = 'telegram_parser'"
+            ).fetchone()
+            if parser_row and "Допустимые значения" not in parser_row["prompt_text"]:
+                parser_lines = parser_row["prompt_text"].splitlines(keepends=True)
+                insert_at = next(
+                    (
+                        index for index, line in enumerate(parser_lines)
+                        if line.startswith("ПРАВИЛА КЛАССИФИКАЦИИ:")
+                    ),
+                    None,
+                )
+                if insert_at is not None:
+                    allowed_values = (
+                        'Допустимые значения intent: "add_component", "add_rule", "clarify_needed".\n'
+                        'Допустимые значения component.category: "gpu", "cpu", "motherboard", "ram", '
+                        '"ssd", "psu", "case", "cooler", "other".\n\n'
+                    )
+                    parser_lines.insert(insert_at, allowed_values)
+                    cursor.execute(
+                        """
+                        UPDATE prompt_templates
+                        SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE name = 'telegram_parser'
+                        """,
+                        ("".join(parser_lines),),
+                    )
+            cursor.execute("INSERT INTO app_migrations (name) VALUES (?)", (parser_migration,))
+
+        avito_prompt_migration = "update_assistant_system_avito_search_rules_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (avito_prompt_migration,),
+        ).fetchone():
+            cursor.execute(
+                """
+                UPDATE prompt_templates
+                SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = 'assistant_system'
+                """,
+                (DEFAULT_PROMPTS["assistant_system"],),
+            )
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (avito_prompt_migration,),
+            )
+            logger.info("Migrated assistant_system prompt template with Avito search rules.")
 
         conn.commit()
 

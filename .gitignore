@@ -38,4 +38,11 @@ check_*.py
 scratch/
 archive_scrapers/*.bak
 playwright_onlinetrade_profile/
+playwright_wb_profile/
+*.xlsx
+*.csv
+wb_*.json
+test_*.json
+all_wb_*.json
+
 playwright_profile/

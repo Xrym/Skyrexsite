@@ -126,14 +126,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!text || !text.trim()) return;
         const query = text.trim();
 
-        // Append user message
-        appendMessage("user", query);
-        chatInput.value = "";
-
-        // Show typing animation
-        showTyping(true);
-
-        // Gather history for context
+        // Read the existing conversation before appendMessage saves the new user message.
         let history = [];
         const saved = localStorage.getItem("skyrex_chat_history");
         if (saved) {
@@ -143,6 +136,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 console.error("Failed to parse history", e);
             }
         }
+
+        // Append user message
+        appendMessage("user", query);
+        chatInput.value = "";
+
+        // Show typing animation
+        showTyping(true);
 
         // Call Backend AI Endpoint
         const token = (typeof SkyrexAuth !== "undefined" && SkyrexAuth.getToken) ? SkyrexAuth.getToken() : "";

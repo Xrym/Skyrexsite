@@ -10,26 +10,6 @@ logger = logging.getLogger("onlinetrade_scraper")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 ONLINETRADE_CATEGORIES = {
-    "gpu": {
-        "title": "Видеокарты",
-        "slug": "videokarty-c338"
-    },
-    "cpu": {
-        "title": "Процессоры",
-        "slug": "processory-c342"
-    },
-    "motherboard": {
-        "title": "Материнские платы",
-        "slug": "materinskie_platy-c340"
-    },
-    "ram": {
-        "title": "Оперативная память",
-        "slug": "operativnaya_pamyat-c341"
-    },
-    "ssd": {
-        "title": "SSD накопители",
-        "slug": "ssd_diski-c294"
-    },
     "psu": {
         "title": "Блоки питания",
         "slug": "bloki_pitaniya-c339"

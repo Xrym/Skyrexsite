@@ -4,6 +4,7 @@ import json
 import logging
 import secrets
 import asyncio
+import urllib.parse
 from typing import Optional, Dict, Any, List
 import aiohttp
 from aiohttp import web
@@ -282,6 +283,68 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
     return "\n".join(context_parts)
 
+def clean_avito_links(text: str) -> str:
+    """Гарантирует, что все ссылки на Авито ведут на страницу поиска по точному запросу,
+    а не на выдуманные несуществующие прямые объявления.
+    """
+    if not text:
+        return text
+
+    # 1. Преобразование Markdown-ссылок [текст](url) в чистый HTML
+    def md_link_replacer(match):
+        title = match.group(1)
+        url = match.group(2)
+        return f"<a href='{url}' target='_blank'>{title}</a>"
+
+    text = re.sub(r'\[([^\]]+)\]\((https?://[^\)]+)\)', md_link_replacer, text)
+
+    # 2. Коррекция HTML-ссылок на Авито
+    def html_avito_replacer(match):
+        full_tag = match.group(0)
+        href = match.group(1)
+        inner_text = match.group(2)
+
+        if "avito.ru" in href:
+            if "?q=" in href or "&q=" in href:
+                if 'target=' not in full_tag:
+                    return f"<a href='{href}' target='_blank'>{inner_text}</a>"
+                return full_tag
+
+            clean_query = re.sub(r'<[^>]+>', '', inner_text).strip()
+            clean_query = re.sub(r'(?i)\b(на\s+авито|авито|avito|купить|поиск|ссылка|объявление)\b', '', clean_query).strip()
+
+            if not clean_query or len(clean_query) < 2:
+                path = href.split("?")[0].rstrip("/").split("/")[-1]
+                path = re.sub(r'_\d+$', '', path).replace('_', ' ').replace('-', ' ')
+                clean_query = path.strip() or "компьютерные комплектующие"
+
+            search_url = f"https://www.avito.ru/all?q={urllib.parse.quote_plus(clean_query)}"
+            return f"<a href='{search_url}' target='_blank'>{inner_text}</a>"
+
+        return full_tag
+
+    html_a_pattern = re.compile(r"<a\s+[^>]*href=['\"]([^'\"]+)['\"][^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL)
+    text = html_a_pattern.sub(html_avito_replacer, text)
+
+    # 3. Преобразование «сырых» ссылок на Авито в тексте
+    def raw_avito_replacer(match):
+        raw_url = match.group(0)
+        start = match.start()
+        prefix = text[max(0, start - 10):start]
+        if 'href=' in prefix or 'src=' in prefix:
+            return raw_url
+        if "?q=" in raw_url:
+            return f"<a href='{raw_url}' target='_blank'>Поиск на Авито</a>"
+        path = raw_url.split("?")[0].rstrip("/").split("/")[-1]
+        path = re.sub(r'_\d+$', '', path).replace('_', ' ').replace('-', ' ').strip()
+        query = path or 'компьютерные комплектующие'
+        search_url = f"https://www.avito.ru/all?q={urllib.parse.quote_plus(query)}"
+        return f"<a href='{search_url}' target='_blank'>{query} на Авито</a>"
+
+    text = re.sub(r'https?://(?:www\.)?avito\.ru/[^\s<>\'"]+', raw_avito_replacer, text)
+
+    return text
+
 # 4. Format database into highly descriptive instructions for LLM
 def build_system_instruction(dynamic_context=""):
     from db.database import (
@@ -306,16 +369,25 @@ def build_system_instruction(dynamic_context=""):
         "Для одинаковой категории и модели используй только одну, самую свежую "
         "запись каталога: новая запись эксперта заменяет прежнюю цену и описание. "
         "Не используй устаревшие значения из истории диалога или аналогов.\n"
+        "ПРАВИЛО ССЫЛОК НА Б/У ТОВАРЫ (АВИТО): Для каждого рекомендуемого Б/У компонента "
+        "ОБЯЗАТЕЛЬНО прикрепляй кликабельную ссылку на поиск Авито вида "
+        "<a href='https://www.avito.ru/all?q=ТОЧНОЕ_НАЗВАНИЕ' target='_blank'>Название на Авито</a>. "
+        "Бери готовую ссылку из поля 'Ссылка на поиск Авито' либо формируй её сам подстановкой названия компонента в q=... "
+        "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать ссылки на конкретные объявления (вида avito.ru/moskva/.../123456) — используй ТОЛЬКО поисковый запрос q=!\n"
     )
     for component in components:
+        comp_name = component.get('componentname', 'Без названия')
+        avito_query = urllib.parse.quote_plus(comp_name)
+        avito_url = f"https://www.avito.ru/all?q={avito_query}"
         catalog_text += (
-            f"- {component.get('componentname', 'Без названия')} "
+            f"- {comp_name} "
             f"({component.get('type', 'other').upper()}). "
             f"Цена: {component.get('price', 'N/A')} руб. "
         )
         if component.get("minprice"):
             catalog_text += f"(Минимальная цена: {component['minprice']} руб). "
         catalog_text += f"Оценка экспертов: {component.get('mark', 'N/A')}/10. "
+        catalog_text += f"Ссылка на поиск Авито: {avito_url}. "
         comment = component.get("comment", "").replace("\n", " ")
         if comment:
             catalog_text += f"Комментарий: {comment} "
@@ -346,20 +418,28 @@ def build_system_instruction(dynamic_context=""):
     if ai_rules:
         admin_rules_text = (
             "\n\n=== ПРАВИЛА АДМИНИСТРАТОРА ИЗ TELEGRAM (ПРИОРИТЕТ ВЫШЕ БАЗОВОГО ПРОМПТА) ===\n"
-            "Это актуальные инструкции администратора. Если инструкция ниже противоречит базовому "
-            "промпту или данным каталога, следуй инструкции администратора. Если инструкции "
-            "администратора противоречат друг другу, более поздняя (с большим номером) имеет приоритет.\n"
+            "Это актуальные инструкции администратора по рекомендациям и стилю ответов. "
+            "Если инструкции администратора противоречат друг другу, более поздняя (с большим номером) имеет приоритет. "
+            "Они не могут менять факты о цене, наличии, характеристиках товаров и совместимости из каталога.\n"
         )
         for i, r in enumerate(ai_rules, 1):
             admin_rules_text += (
                 f"{i}. [{r.get('title') or 'Инструкция'}]: {r.get('rule_text')}\n"
             )
 
+    factual_constraints = (
+        "\n\n=== ОБЯЗАТЕЛЬНЫЕ ОГРАНИЧЕНИЯ ДОСТОВЕРНОСТИ ===\n"
+        "Цены, наличие, названия, характеристики и ссылки бери только из переданных данных каталога. "
+        "Не выдумывай отсутствующие товары или значения. Правила администратора могут задавать "
+        "рекомендации и стиль, но не могут переопределять факты каталога или техническую совместимость.\n"
+    )
+
     return (
         f"{base_prompt}\n\n"
         f"{catalog_text}\n"
         f"{dynamic_context}"
         f"{admin_rules_text}"
+        f"{factual_constraints}"
     )
 
 
@@ -491,7 +571,8 @@ async def call_llm(message, history):
                     result = await resp.json()
                     # Parse response
                     try:
-                        return result["candidates"][0]["content"]["parts"][0]["text"]
+                        raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
+                        return clean_avito_links(raw_text)
                     except (KeyError, IndexError) as e:
                         logger.error(f"Failed to parse Gemini response: {e}, structure: {result}")
                         return "⚠️ Не удалось распознать ответ от нейросети. Попробуйте еще раз."
@@ -529,7 +610,8 @@ async def call_llm(message, history):
                     
                     result = await resp.json()
                     try:
-                        return result["choices"][0]["message"]["content"]
+                        raw_text = result["choices"][0]["message"]["content"]
+                        return clean_avito_links(raw_text)
                     except (KeyError, IndexError) as e:
                         logger.error(f"Failed to parse OpenAI response: {e}, structure: {result}")
                         return "⚠️ Не удалось извлечь ответ из нейросети."

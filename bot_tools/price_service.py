@@ -36,6 +36,8 @@ def search_price(
             norm_shop = "Ситилинк"
         elif "dns" in s_low or "днс" in s_low:
             norm_shop = "DNS"
+        elif "wildberries" in s_low or "вайлдберриз" in s_low or "вайлдбериз" in s_low or "вб" in s_low or "wb" in s_low:
+            norm_shop = "Wildberries"
         else:
             norm_shop = shop.strip()
 
