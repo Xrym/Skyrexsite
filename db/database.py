@@ -347,6 +347,44 @@ def init_expert_tables():
             )
             logger.info("Migrated assistant_system prompt template with Avito search rules.")
 
+        opinion_prompt_migration = "update_assistant_system_opinion_priority_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (opinion_prompt_migration,),
+        ).fetchone():
+            cursor.execute(
+                """
+                UPDATE prompt_templates
+                SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = 'assistant_system'
+                """,
+                (DEFAULT_PROMPTS["assistant_system"],),
+            )
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (opinion_prompt_migration,),
+            )
+            logger.info("Migrated assistant_system prompt template with expert opinion priorities.")
+
+        opinion_parser_migration = "update_telegram_parser_opinion_flow_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (opinion_parser_migration,),
+        ).fetchone():
+            cursor.execute(
+                """
+                UPDATE prompt_templates
+                SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = 'telegram_parser'
+                """,
+                (DEFAULT_PROMPTS["telegram_parser"],),
+            )
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (opinion_parser_migration,),
+            )
+            logger.info("Migrated telegram_parser prompt template with opinion flow.")
+
         conn.commit()
 
 def _normalized_expert_component_name(component_type: str, component_name: str) -> str:

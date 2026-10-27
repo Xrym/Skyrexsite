@@ -75,7 +75,8 @@ def load_bot_db():
 BOT_DB = load_bot_db()
 
 from bot_tools import search_price, format_price_results
-from db.database import seed_from_bot_db, get_stats, get_connection
+from bot_tools.hardware_matcher import match_expert_assessment, enrich_and_rank_products
+from db.database import seed_from_bot_db, get_stats, get_connection, get_expert_components
 from db.auth_db import (
     init_auth_db, login_user, register_user,
     get_user_by_token, logout_token
@@ -212,6 +213,9 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 if not any(x['id'] == item['id'] for x in specific_results):
                     specific_results.append(item)
                     
+    expert_components = get_expert_components(limit=300)
+    specific_results = enrich_and_rank_products(specific_results, expert_components)
+
     general_build_keywords = ['пк', 'сборк', 'собери', 'компьютер', 'бюджет', 'детал', 'конфигурац', 'купить', 'ценами', 'ситилинк', 'цена', 'сколько']
     is_build_request = any(k in user_message.lower() for k in general_build_keywords)
     budget = extract_budget(user_message)
@@ -225,26 +229,25 @@ def get_parsed_catalog_context(user_message: str) -> str:
             max_mb_price = int(budget * 0.18) if budget else 9999999
             max_ram_price = int(budget * 0.15) if budget else 9999999
 
-            # A. Select Candidate GPUs fitting budget (ordered by price DESC for max performance)
-            gpu_rows = conn.execute(
-                "SELECT * FROM products WHERE category = 'gpu' AND price <= ? ORDER BY price DESC LIMIT 5",
+            # A. Select Candidate GPUs fitting budget (enriched & ranked by expert opinion, then price)
+            raw_gpus = [dict(r) for r in conn.execute(
+                "SELECT * FROM products WHERE category = 'gpu' AND price <= ? ORDER BY price DESC LIMIT 20",
                 (max_gpu_price,)
-            ).fetchall()
-            if not gpu_rows:
-                gpu_rows = conn.execute("SELECT * FROM products WHERE category = 'gpu' ORDER BY price ASC LIMIT 5").fetchall()
-            for r in gpu_rows:
-                cat_items.append(dict(r))
+            ).fetchall()]
+            if not raw_gpus:
+                raw_gpus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'gpu' ORDER BY price ASC LIMIT 20").fetchall()]
+            cat_items.extend(enrich_and_rank_products(raw_gpus, expert_components, limit=5))
 
             # B. Select Candidate CPUs fitting budget (exclude workstation Threadripper > 150k unless requested)
             cpu_filter_threadripper = " AND name NOT LIKE '%Threadripper%' " if (not budget or budget < 1000000) else ""
-            cpu_rows = conn.execute(
-                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} ORDER BY price DESC LIMIT 6",
+            raw_cpus = [dict(r) for r in conn.execute(
+                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} ORDER BY price DESC LIMIT 20",
                 (max_cpu_price,)
-            ).fetchall()
-            if not cpu_rows:
-                cpu_rows = conn.execute("SELECT * FROM products WHERE category = 'cpu' ORDER BY price ASC LIMIT 5").fetchall()
+            ).fetchall()]
+            if not raw_cpus:
+                raw_cpus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'cpu' ORDER BY price ASC LIMIT 20").fetchall()]
             
-            selected_cpus = [dict(r) for r in cpu_rows]
+            selected_cpus = enrich_and_rank_products(raw_cpus, expert_components, limit=6)
             cat_items.extend(selected_cpus)
 
             # C. Detect Sockets of selected candidate CPUs to guarantee 100% MOTHERBOARD COMPATIBILITY
@@ -254,61 +257,57 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 if specs["socket"]:
                     candidate_sockets.add(specs["socket"])
 
-            # D. Select Motherboards matching the candidate sockets
-            all_mbs = conn.execute(
-                "SELECT * FROM products WHERE category = 'motherboard' AND price <= ? ORDER BY price DESC",
+            # D. Select Motherboards matching candidate sockets (ranked by expert mark)
+            all_mbs = [dict(r) for r in conn.execute(
+                "SELECT * FROM products WHERE category = 'motherboard' AND price <= ? ORDER BY price DESC LIMIT 30",
                 (max_mb_price,)
-            ).fetchall()
+            ).fetchall()]
             if not all_mbs:
-                all_mbs = conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price DESC").fetchall()
+                all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price DESC LIMIT 30").fetchall()]
 
             compatible_mbs = []
-            for mb in all_mbs:
-                mb_dict = dict(mb)
+            for mb_dict in all_mbs:
                 specs = detect_hardware_specs(mb_dict)
                 if not candidate_sockets or specs["socket"] in candidate_sockets:
                     mb_dict["detected_socket"] = specs["socket"]
                     mb_dict["detected_ram"] = specs["ram_type"]
                     compatible_mbs.append(mb_dict)
-                if len(compatible_mbs) >= 8:
-                    break
-            cat_items.extend(compatible_mbs)
+
+            cat_items.extend(enrich_and_rank_products(compatible_mbs, expert_components, limit=8))
 
             # E. Detect RAM Types required by selected compatible motherboards (e.g. DDR5 for AM5/LGA 1851)
             required_ram_types = set(mb["detected_ram"] for mb in compatible_mbs if mb.get("detected_ram"))
-            all_rams = conn.execute(
-                "SELECT * FROM products WHERE category = 'ram' AND price <= ? ORDER BY price DESC",
+            all_rams = [dict(r) for r in conn.execute(
+                "SELECT * FROM products WHERE category = 'ram' AND price <= ? ORDER BY price DESC LIMIT 25",
                 (max_ram_price,)
-            ).fetchall()
+            ).fetchall()]
             if not all_rams:
-                all_rams = conn.execute("SELECT * FROM products WHERE category = 'ram' ORDER BY price DESC").fetchall()
+                all_rams = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ram' ORDER BY price DESC LIMIT 25").fetchall()]
 
             compatible_rams = []
-            for r in all_rams:
-                r_dict = dict(r)
+            for r_dict in all_rams:
                 specs = detect_hardware_specs(r_dict)
                 if not required_ram_types or specs["ram_type"] in required_ram_types or not specs["ram_type"]:
                     r_dict["detected_ram"] = specs["ram_type"]
                     compatible_rams.append(r_dict)
-                if len(compatible_rams) >= 6:
-                    break
-            cat_items.extend(compatible_rams)
 
-            # F. Select PSUs (if top GPUs are selected, prioritize high-wattage 750W-1000W+ units)
-            psu_rows = conn.execute("SELECT * FROM products WHERE category = 'psu' ORDER BY price DESC LIMIT 5").fetchall()
-            cat_items.extend([dict(r) for r in psu_rows])
+            cat_items.extend(enrich_and_rank_products(compatible_rams, expert_components, limit=6))
 
-            # G. Select SSDs
-            ssd_rows = conn.execute("SELECT * FROM products WHERE category = 'ssd' ORDER BY price DESC LIMIT 5").fetchall()
-            cat_items.extend([dict(r) for r in ssd_rows])
+            # F. Select PSUs (ranked by expert rating)
+            raw_psus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'psu' ORDER BY price DESC LIMIT 20").fetchall()]
+            cat_items.extend(enrich_and_rank_products(raw_psus, expert_components, limit=5))
 
-            # H. Select Coolers
-            cooler_rows = conn.execute("SELECT * FROM products WHERE category = 'cooler' ORDER BY price DESC LIMIT 5").fetchall()
-            cat_items.extend([dict(r) for r in cooler_rows])
+            # G. Select SSDs (ranked by expert rating)
+            raw_ssds = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ssd' ORDER BY price DESC LIMIT 20").fetchall()]
+            cat_items.extend(enrich_and_rank_products(raw_ssds, expert_components, limit=5))
 
-            # I. Select Cases
-            case_rows = conn.execute("SELECT * FROM products WHERE category = 'case' ORDER BY price DESC LIMIT 5").fetchall()
-            cat_items.extend([dict(r) for r in case_rows])
+            # H. Select Coolers (ranked by expert rating)
+            raw_coolers = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'cooler' ORDER BY price DESC LIMIT 20").fetchall()]
+            cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=5))
+
+            # I. Select Cases (ranked by expert rating)
+            raw_cases = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'case' ORDER BY price DESC LIMIT 20").fetchall()]
+            cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=5))
 
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]
     
@@ -326,9 +325,33 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 spec_tags.append(f"Мощность: {specs['psu_watts']}W")
             tag_str = f" [{ ' | '.join(spec_tags) }]" if spec_tags else ""
 
+            rating_str = ""
+            if p.get("expert_mark") is not None:
+                m_val = p["expert_mark"]
+                c_txt = (p.get("expert_comment") or "").strip()
+                e_name = p.get("expert_name") or ""
+                m_type = p.get("expert_match") or ""
+                if m_val >= 8:
+                    badge = f"⭐️ Топ-оценка эксперта: {m_val}/10"
+                elif m_val >= 6:
+                    badge = f"✅ Одобрено экспертом: {m_val}/10"
+                else:
+                    badge = f"⛔️ НИЗКАЯ ОЦЕНКА ЭКСПЕРТА: {m_val}/10 (НЕ РЕКОМЕНДУЕТСЯ)"
+
+                extra = []
+                if c_txt:
+                    extra.append(f"Вердикт: \"{c_txt}\"")
+                if e_name and m_type == "family":
+                    extra.append(f"правило для всей серии {e_name}")
+                elif e_name and m_type == "edition":
+                    extra.append(f"точное совпадение издания {e_name}")
+
+                sub_info = f" | {' | '.join(extra)}" if extra else ""
+                rating_str = f" [{badge}{sub_info}]"
+
             price_str = f"{p['price']:,} руб".replace(",", " ")
             old_str = f" (старая цена: {p['old_price']:,} руб)".replace(",", " ") if p.get('old_price') else ""
-            context_parts.append(f"- [{p.get('shop', 'ОнлайнТрейд')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {p['url']}")
+            context_parts.append(f"- [{p.get('shop', 'ОнлайнТрейд')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}{rating_str}. Ссылка: {p['url']}")
 
     return "\n".join(context_parts)
 
@@ -412,13 +435,15 @@ def build_system_instruction(dynamic_context=""):
     ai_rules = get_ai_rules(active_only=True)
     base_prompt = get_prompt_template("assistant_system")
 
-    catalog_text = "=== ОФИЦИАЛЬНЫЙ КАТАЛОГ МАГАЗИНА SKYREX (Б/У И БАЗОВЫЕ ПОЗИЦИИ) ===\n\n"
-    catalog_text += "КОМПЛЕКТУЮЩИЕ (В ОСНОВНОМ ВТОРИЧНЫЙ РЫНОК / БУ):\n"
+    catalog_text = "=== БАЗА МНЕНИЙ, ОЦЕНОК И РЕКОМЕНДАЦИЙ ЭКСПЕРТА SKYREX ===\n\n"
     catalog_text += (
-        "Для одинаковой категории и модели используй только одну, самую свежую "
-        "запись каталога: новая запись эксперта заменяет прежнюю цену и описание. "
-        "Не используй устаревшие значения из истории диалога или аналогов.\n"
-        "ПРАВИЛО ССЫЛОК НА Б/У ТОВАРЫ (АВИТО): Для каждого рекомендуемого Б/У компонента "
+        "БАЗА ЭКСПЕРТНЫХ МНЕНИЙ И ОЦЕНОК (ПРИМЕНИМА К НОВЫМ И Б/У КОМПЛЕКТУЮЩИМ):\n"
+        "1. ПРАВИЛО РАСПРОСТРАНЕНИЯ НА ВСЮ СЕРИЮ/МОДЕЛЬ: Оценка (1-10) и комментарий эксперта по конкретному чипсету/модели "
+        "(например, 'RTX 4060', 'Ryzen 5 7500F', 'B650') АВТОМАТИЧЕСКИ ПРИМЕНЯЮТСЯ КО ВСЕМ вендорам и изданиям этого железа "
+        "(Palit, MSI, Gigabyte, Asus и др., как новым в ОнлайнТрейд/WB, так и б/у), если для конкретного издания нет отдельной оценки.\n"
+        "2. ПРИОРИТЕТ 8-10 / ЗАПРЕТ 1-5: В сборки включай модели с высшими оценками (8-10). Модели с оценкой <= 5 категорически не рекомендуй!\n"
+        "3. Если пользователь просит Б/У сборку — используй позиции ниже с указанными ценами и ссылками на поиск Авито.\n"
+        "4. ПРАВИЛО ССЫЛОК НА Б/У ТОВАРЫ (АВИТО): Для каждого рекомендуемого Б/У компонента "
         "ОБЯЗАТЕЛЬНО прикрепляй кликабельную ссылку на поиск Авито вида "
         "<a href='https://www.avito.ru/all?q=ТОЧНОЕ_НАЗВАНИЕ' target='_blank'>Название на Авито</a>. "
         "Бери готовую ссылку из поля 'Ссылка на поиск Авито' либо формируй её сам подстановкой названия компонента в q=... "
@@ -431,15 +456,16 @@ def build_system_instruction(dynamic_context=""):
         catalog_text += (
             f"- {comp_name} "
             f"({component.get('type', 'other').upper()}). "
-            f"Цена: {component.get('price', 'N/A')} руб. "
         )
+        if component.get('price'):
+            catalog_text += f"Ориентир цены: {component['price']} руб. "
         if component.get("minprice"):
             catalog_text += f"(Минимальная цена: {component['minprice']} руб). "
-        catalog_text += f"Оценка экспертов: {component.get('mark', 'N/A')}/10. "
+        catalog_text += f"Экспертная оценка: {component.get('mark', 'N/A')}/10. "
         catalog_text += f"Ссылка на поиск Авито: {avito_url}. "
         comment = component.get("comment", "").replace("\n", " ")
         if comment:
-            catalog_text += f"Комментарий: {comment} "
+            catalog_text += f"Вердикт/мнение эксперта: {comment} "
         analogue = component.get("analogue", "").replace("\n", " ")
         if analogue:
             catalog_text += f"Рекомендуемые аналоги: {analogue}"

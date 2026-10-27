@@ -205,21 +205,22 @@ class TelegramAdminBot:
         if cmd in ("/start", "/help"):
             welcome = (
                 "👋 <b>Панель управления Skyrex Computers</b>\n\n"
-                "Я помогаю наполнять базу комплектующих и обучать ИИ-консультанта на сайте <b>skyrex.pro</b>.\n\n"
+                "Я помогаю вести <b>Базу мнений и оценок эксперта</b> и обучать ИИ-консультанта на сайте <b>skyrex.pro</b>.\n\n"
                 "<b>💡 Как использовать:</b>\n"
-                "• <b>Добавить компонент:</b>\n"
-                "  Напишите название, примерную цену и описание своими словами.\n\n"
-                "• <b>Обучить нейросеть:</b>\n"
-                "  Напишите правило общения или подбора, например:\n"
+                "• <b>Оценка или мнение о модели (применяется ко ВСЕМ вендорам и новым/б-у товарам):</b>\n"
+                "  <i>«RTX 4060 оценка 9 отличная энергоэффективная карта для FullHD»</i>\n"
+                "  <i>«MSI Ventus 2X оценка 5 очень шумная и горячая»</i>\n"
+                "  <i>«Ryzen 5 7500F оценка 10 топ за свои деньги, лучший проц для игр»</i>\n\n"
+                "• <b>Обучить нейросеть правилам диалога:</b>\n"
                 "  <i>«Запомни: в сборках до 60к предлагать только Deepcool PK550D или Montech Gamma, китайские БП запрещены»</i>\n\n"
                 "<b>📋 Доступные команды:</b>\n"
-                "/list — Последние 10 комплектующих в базе\n"
+                "/list — Последние 10 оценок в базе мнений\n"
                 "/rules — Системный промпт и правила ИИ\n"
                 "/add_prompt — Заменить системный промпт\n"
                 "/del_prompt — Сбросить системный промпт к исходному\n"
                 "/prompt — Базовый системный промпт консультанта\n"
                 "/stats — Общая статистика каталога и базы\n"
-                "/del_comp &lt;ID&gt; — Удалить комплектующее\n"
+                "/del_comp &lt;ID&gt; — Удалить оценку комплектующего\n"
                 "/del_rule &lt;ID&gt; — Удалить правило ИИ"
             )
             await self.send_message(chat_id, welcome)
@@ -227,15 +228,16 @@ class TelegramAdminBot:
         elif cmd == "/list":
             comps = get_expert_components(limit=10)
             if not comps:
-                await self.send_message(chat_id, "📭 В базе пока нет комплектующих. Напишите название и цену, чтобы добавить первое!")
+                await self.send_message(chat_id, "📭 В базе мнений пока пусто. Напишите модель и оценку, чтобы добавить первую!")
                 return
-            lines = ["📋 <b>Последние комплектующие в базе:</b>\n"]
+            lines = ["📋 <b>База мнений и экспертных оценок Skyrex:</b>\n"]
             for component in comps:
                 icon = CATEGORY_ICONS.get(component.get("type", "other"), "⚙️")
-                price = f"{component.get('price', 0):,} ₽".replace(",", " ")
+                price = f"{component.get('price', 0):,} ₽".replace(",", " ") if component.get('price') else "б/у ориентир не задан"
                 lines.append(
                     f"<b>#{component['id']}</b> {icon} <b>{component['componentname']}</b>\n"
-                    f"   Цена: {price} | Оценка: ⭐️ {component.get('mark', 'N/A')}/10\n"
+                    f"   Оценка: ⭐️ <b>{component.get('mark', 'N/A')}/10</b> | Цена: {price}\n"
+                    f"   <i>Мнение: {component.get('comment') or 'без комментария'}</i>\n"
                     f"   <i>Удалить: /del_comp {component['id']}</i>\n"
                 )
             await self.send_message(chat_id, "\n".join(lines))
@@ -453,16 +455,21 @@ class TelegramAdminBot:
             )
             comment = component.get("comment") or "Нет комментария"
             card = (
-                "📦 <b>Подтвердите добавление комплектующего:</b>\n\n"
+                "⭐️ <b>Подтвердите добавление в Базу мнений и оценок:</b>\n\n"
                 f"• <b>Тип:</b> {category}\n"
-                f"• <b>Название:</b> <b>{component['name']}</b>\n"
-                f"• <b>Ориентир цены:</b> {price}{min_price}\n"
-                f"• <b>Оценка эксперта:</b> ⭐️ {component.get('mark') or 8}/10\n"
-                f"• <b>Описание:</b> <i>{comment}</i>\n"
+                f"• <b>Модель:</b> <b>{component['name']}</b>\n"
+                f"• <b>Оценка эксперта:</b> ⭐️ <b>{component.get('mark') or 8}/10</b>\n"
             )
+            if component.get('price'):
+                card += f"• <b>Ориентир цены:</b> {price}{min_price}\n"
+            card += f"• <b>Вердикт/мнение:</b> <i>{comment}</i>\n"
             if component.get("analogue"):
                 card += f"• <b>Аналоги:</b> {component['analogue']}\n"
-            card += "\n<i>Сохранить компонент в базу каталога?</i>"
+            card += (
+                "\n💡 <i>Эта оценка и вердикт автоматически распространяются на все исполнения "
+                "(Palit, MSI, Gigabyte и др., как новые в магазинах, так и б/у) на сайте skyrex.pro!</i>\n\n"
+                "<i>Сохранить в базу мнений?</i>"
+            )
             keyboard = {
                 "inline_keyboard": [[
                     {"text": "✅ Сохранить", "callback_data": "confirm_save"},
@@ -556,12 +563,15 @@ class TelegramAdminBot:
                 del self.pending_actions[chat_id]
 
                 await self.answer_callback(cb_id, "Успешно сохранено!")
+                price_str = f" ({component['price']:,} ₽)" if component['price'] else ""
                 await self.edit_message(
                     chat_id,
                     message_id,
-                    f"✅ <b>Комплектующее добавлено в базу!</b> (ID: <code>#{new_id}</code>)\n\n"
-                    f"• <b>{component['componentname']}</b> ({component['price']:,} ₽)\n"
-                    "• ИИ-консультант сможет использовать его при подборе.",
+                    f"✅ <b>Экспертная оценка сохранена в базу мнений!</b> (ID: <code>#{new_id}</code>)\n\n"
+                    f"• <b>{component['componentname']}</b> — ⭐️ <b>{component['mark']}/10</b>{price_str}\n"
+                    f"• <i>Вердикт:</i> <i>{component['comment'] or 'без комментария'}</i>\n\n"
+                    "💡 <i>Оценка и вердикт автоматически действуют на все вендоры (Palit, MSI и т.д.) "
+                    "и новые/б-у товары этой модели на сайте skyrex.pro!</i>",
                 )
 
             elif action_type == "rule":
