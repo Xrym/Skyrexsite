@@ -121,7 +121,13 @@ class TelegramAdminBot:
         }
         if reply_markup:
             data["reply_markup"] = reply_markup
-        return await self.api_request("sendMessage", data)
+        res = await self.api_request("sendMessage", data)
+        if not res.get("ok"):
+            logger.error(f"Failed to send HTML message ({res.get('description')}): {text[:150]}")
+            if "can't parse entities" in str(res.get("description", "")).lower():
+                data.pop("parse_mode", None)
+                res = await self.api_request("sendMessage", data)
+        return res
 
     async def edit_message(self, chat_id: int, message_id: int, text: str, reply_markup: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         data = {
@@ -243,41 +249,65 @@ class TelegramAdminBot:
             await self.send_message(chat_id, "\n".join(lines))
 
         elif cmd == "/rules":
-            prompt_text = get_prompt_template("assistant_system")
-            prompt_chunks = [
-                prompt_text[index:index + 600]
-                for index in range(0, len(prompt_text), 600)
-            ]
-            await self.send_message(
-                chat_id,
-                "🧠 <b>Системный промпт консультанта</b>\n"
-                "Это базовая инструкция. Активные правила ниже добавляются после неё "
-                "и имеют приоритет при конфликте.\n"
-                "Заменить: /add_prompt\nСбросить к исходному: /del_prompt",
-            )
-            for index, chunk in enumerate(prompt_chunks, start=1):
+            if args and args[0].lower() in ("prompt", "full"):
+                prompt_text = get_prompt_template("assistant_system")
+                prompt_chunks = [
+                    prompt_text[index:index + 1500]
+                    for index in range(0, len(prompt_text), 1500)
+                ]
                 await self.send_message(
                     chat_id,
-                    f"<b>Системный промпт, часть {index}/{len(prompt_chunks)}:</b>\n"
-                    f"<pre>{html.escape(chunk)}</pre>",
+                    "🧠 <b>Базовый системный промпт консультанта</b>\n"
+                    "Заменить: /add_prompt | Сбросить: /del_prompt",
                 )
+                for index, chunk in enumerate(prompt_chunks, start=1):
+                    await self.send_message(
+                        chat_id,
+                        f"<b>Системный промпт, часть {index}/{len(prompt_chunks)}:</b>\n"
+                        f"<pre>{html.escape(chunk)}</pre>",
+                    )
+                return
 
             rules = get_ai_rules(active_only=True)
             if not rules:
                 await self.send_message(
                     chat_id,
-                    "🧠 Пока нет дополнительных правил обучения ИИ. "
-                    "Напишите правило обычным сообщением, чтобы добавить.",
+                    "🧠 <b>Активные правила обучения ИИ</b>\n\n"
+                    "Пока нет дополнительных правил. Напишите правило обычным сообщением, чтобы добавить!\n\n"
+                    "<i>Посмотреть базовый системный промпт: /prompt</i>",
                 )
                 return
-            lines = ["🧠 <b>Активные правила обучения ИИ на skyrex.pro:</b>\n"]
+
+            header = f"🧠 <b>Активные правила обучения ИИ на skyrex.pro ({len(rules)} шт.):</b>\n\n"
+            current_chunk = header
+            chunks = []
+
             for r in rules:
-                lines.append(
-                    f"<b>Правило #{r['id']}</b> [{r.get('title') or 'Инструкция'}]:\n"
-                    f"«{r['rule_text']}»\n"
-                    f"<i>Удалить: /del_rule {r['id']}</i>\n"
+                rule_id = r["id"]
+                title = html.escape(r.get("title") or "Инструкция")
+                rule_text = html.escape(r["rule_text"])
+                rule_entry = (
+                    f"<b>Правило #{rule_id}</b> [{title}]:\n"
+                    f"«{rule_text}»\n"
+                    f"<i>Удалить: /del_rule {rule_id}</i>\n\n"
                 )
-            await self.send_message(chat_id, "\n".join(lines))
+                if len(current_chunk) + len(rule_entry) > 3500:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = rule_entry
+                else:
+                    current_chunk += rule_entry
+
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+
+            for chunk in chunks:
+                await self.send_message(chat_id, chunk)
+
+            await self.send_message(
+                chat_id,
+                "💡 <i>Полный системный промпт консультанта доступен по команде /prompt.\n"
+                "Заменить: /add_prompt | Сбросить к исходному: /del_prompt</i>",
+            )
 
         elif cmd == "/add_prompt":
             self.pending_prompt_edits.add(chat_id)
