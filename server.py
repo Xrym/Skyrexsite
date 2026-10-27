@@ -1,14 +1,32 @@
 import os
 import re
 import json
+import time
+import socket
 import logging
 import secrets
 import asyncio
 import urllib.parse
+from urllib.parse import urlparse
+from collections import defaultdict
 from typing import Optional, Dict, Any, List
 import aiohttp
 from aiohttp import web
 import dotenv
+
+# Chat rate limiter: max 20 requests per minute per IP
+CHAT_RATE_LIMITS = defaultdict(list)
+CHAT_MAX_REQUESTS_PER_MINUTE = 20
+
+def check_rate_limit(ip: str) -> bool:
+    """Enforces rate limiting per IP address to avoid API quota exhaustion."""
+    now = time.time()
+    valid_ts = [t for t in CHAT_RATE_LIMITS[ip] if now - t < 60]
+    if len(valid_ts) >= CHAT_MAX_REQUESTS_PER_MINUTE:
+        return False
+    valid_ts.append(now)
+    CHAT_RATE_LIMITS[ip] = valid_ts
+    return True
 
 from tg_admin_bot import TelegramAdminBot
 
@@ -154,11 +172,42 @@ def get_parsed_catalog_context(user_message: str) -> str:
     context_parts = []
     specific_results = []
     
-    # 1. Search for specific items mentioned in user message (e.g. 'RTX 4070', 'Kingston')
+    # 1. Search for specific items mentioned in user message (e.g. 'RTX 4070', 'Ryzen 7500F', 'Kingston')
     if user_message:
-        words = [w for w in re.sub(r'[^\w\s]', ' ', user_message).split() if len(w) >= 3 and not w.isdigit()]
-        for w in words[:5]:
-            found = search_price(query=w, limit=4)
+        raw_text = user_message.lower()
+        search_terms = []
+
+        # Find specific GPU / CPU models (e.g. "RTX 4070", "RX 7800", "GTX 1660", "Ryzen 5 7500F", "i5 13400")
+        hw_patterns = [
+            r'\b(?:rtx|gtx|rx|radeon|geforce)\s*\d{3,5}(?:\s*(?:ti|super|xt|xtx|gre))?\b',
+            r'\b(?:ryzen\s*\d\s*\d{4}[a-z]*|ryzen\s*\d{4}[a-z]*)\b',
+            r'\b(?:core\s*i[3579]\s*\d{4,5}[a-z]*|i[3579]\s*[- ]?\d{4,5}[a-z]*)\b',
+            r'\b(?:b650|b550|b760|z790|z890|b850|a620|x670|x870)\b'
+        ]
+        for pat in hw_patterns:
+            for match in re.finditer(pat, raw_text, re.IGNORECASE):
+                term = match.group(0).strip()
+                if term not in search_terms:
+                    search_terms.append(term)
+
+        # Bigrams of words (e.g. "kingston fury", "deepcool ak620", "be quiet")
+        raw_words = [w for w in re.sub(r'[^\w\s]', ' ', user_message).split() if len(w) >= 2]
+        for i in range(len(raw_words) - 1):
+            pair = f"{raw_words[i]} {raw_words[i+1]}"
+            if len(pair) >= 5 and pair not in search_terms and not (raw_words[i].isdigit() and raw_words[i+1].isdigit()):
+                if any(k in pair.lower() for k in ['rtx', 'gtx', 'rx', 'ryzen', 'intel', 'amd', 'deepcool', 'kingston', 'asus', 'msi', 'gigabyte', 'palit', 'montech', 'cougar', 'be quiet', 'corsair', 'id-cooling', 'samsung', 'adata']):
+                    search_terms.append(pair)
+
+        # Fallback words
+        stopwords = {'сборка', 'собери', 'купить', 'сколько', 'стоит', 'компьютер', 'привет', 'подскажи', 'рублей', 'бюджет'}
+        for w in raw_words:
+            w_lower = w.lower()
+            if len(w) >= 3 and w_lower not in stopwords and not w.isdigit():
+                if w not in search_terms:
+                    search_terms.append(w)
+
+        for term in search_terms[:6]:
+            found = search_price(query=term, limit=4)
             for item in found:
                 if not any(x['id'] == item['id'] for x in specific_results):
                     specific_results.append(item)
@@ -443,8 +492,58 @@ def build_system_instruction(dynamic_context=""):
     )
 
 
+def strip_html_for_history(text: str) -> str:
+    """Removes HTML formatting tags from historical messages so LLM receives clean tokens."""
+    if not text:
+        return ""
+    t = re.sub(r'<br\s*/?>', '\n', text, flags=re.I)
+    t = re.sub(r'<a\s+[^>]*href=[\'"]([^\'"]+)[\'"][^>]*>(.*?)</a>', r'\2 (\1)', t, flags=re.I | re.S)
+    t = re.sub(r'<[^>]+>', '', t)
+    return t.strip()
+
+
+def get_active_proxy(provider: str) -> Optional[str]:
+    """Detects and returns active proxy configuration or None if unreachable/disabled."""
+    llm_proxy = os.getenv("LLM_PROXY", "").strip() or None
+    if llm_proxy and llm_proxy.lower() in ("none", "direct", "false", "off", "no"):
+        llm_proxy = None
+
+    if llm_proxy:
+        try:
+            p = urlparse(llm_proxy)
+            p_host = p.hostname or "127.0.0.1"
+            p_port = p.port or (443 if p.scheme == "https" else 80)
+            with socket.create_connection((p_host, p_port), timeout=0.3):
+                pass
+        except Exception:
+            logger.warning(f"Configured LLM proxy {llm_proxy} is unreachable. Falling back to direct connection.")
+            llm_proxy = None
+
+    if not llm_proxy and provider != "ollama":
+        env_proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+        if env_proxy:
+            try:
+                p = urlparse(env_proxy)
+                p_host = p.hostname or "127.0.0.1"
+                p_port = p.port or (443 if p.scheme == "https" else 80)
+                with socket.create_connection((p_host, p_port), timeout=0.3):
+                    llm_proxy = env_proxy
+            except Exception:
+                pass
+
+        if not llm_proxy:
+            for test_port in (10809, 7890):
+                try:
+                    with socket.create_connection(("127.0.0.1", test_port), timeout=0.2):
+                        llm_proxy = f"http://127.0.0.1:{test_port}"
+                        break
+                except Exception:
+                    pass
+    return llm_proxy
+
+
 # 3. Call LLM provider with retry & timeout protection
-async def call_llm(message, history):
+async def call_llm(message: str, history: list) -> str:
     provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
     api_key = os.getenv("LLM_API_KEY", "").strip()
     model = os.getenv("LLM_MODEL", "").strip()
@@ -485,66 +584,20 @@ async def call_llm(message, history):
                 
         url = f"{base_url.rstrip('/')}/chat/completions"
 
-    # Dynamic context for the message
     dynamic_context = get_parsed_catalog_context(message)
     system_instruction = build_system_instruction(dynamic_context)
+    llm_proxy = get_active_proxy(provider)
 
-    # Proxy detection for LLM (supports Happ, v2ray, Clash, system proxy, or direct)
-    llm_proxy = os.getenv("LLM_PROXY", "").strip() or None
-    if llm_proxy and llm_proxy.lower() in ("none", "direct", "false", "off", "no"):
-        llm_proxy = None
-
-    import socket
-    from urllib.parse import urlparse
-
-    if llm_proxy:
-        # Verify configured proxy is actually reachable (avoids failure when transferring .env to VPS)
-        try:
-            p = urlparse(llm_proxy)
-            p_host = p.hostname or "127.0.0.1"
-            p_port = p.port or (443 if p.scheme == "https" else 80)
-            with socket.create_connection((p_host, p_port), timeout=0.3):
-                pass
-        except Exception:
-            logger.warning(f"Configured LLM proxy {llm_proxy} is unreachable. Falling back to direct connection.")
-            llm_proxy = None
-
-    if not llm_proxy and provider != "ollama":
-        env_proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
-        if env_proxy:
-            try:
-                p = urlparse(env_proxy)
-                p_host = p.hostname or "127.0.0.1"
-                p_port = p.port or (443 if p.scheme == "https" else 80)
-                with socket.create_connection((p_host, p_port), timeout=0.3):
-                    llm_proxy = env_proxy
-            except Exception:
-                pass
-        
-        if not llm_proxy:
-            # Auto-detect local proxy clients on desktop (Happ/v2ray on 10809, Clash on 7890)
-            for test_port in (10809, 7890):
-                try:
-                    with socket.create_connection(("127.0.0.1", test_port), timeout=0.2):
-                        llm_proxy = f"http://127.0.0.1:{test_port}"
-                        break
-                except Exception:
-                    pass
-
-    # Convert frontend history to LLM format
-    # Frontend history format: [{"sender": "user"/"bot", "text": "..."}]
     async with aiohttp.ClientSession(trust_env=True) as session:
         try:
             if provider == "gemini":
-                # Gemini REST Payload
                 contents = []
                 for msg in history:
                     role = "user" if msg.get("sender") == "user" else "model"
                     contents.append({
                         "role": role,
-                        "parts": [{"text": msg.get("text", "")}]
+                        "parts": [{"text": strip_html_for_history(msg.get("text", ""))}]
                     })
-                # Add current message
                 contents.append({
                     "role": "user",
                     "parts": [{"text": message}]
@@ -562,14 +615,13 @@ async def call_llm(message, history):
                 }
                 
                 logger.info(f"Sending request to Gemini API (Model: {model}, Proxy: {llm_proxy or 'direct'})...")
-                async with session.post(url, json=payload, proxy=llm_proxy, timeout=35) as resp:
+                async with session.post(url, json=payload, proxy=llm_proxy, timeout=40) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"Gemini API returned status {resp.status}: {err_text}")
                         return f"⚠️ Ошибка Gemini API ({resp.status}). Пожалуйста, проверьте API-ключ в настройках."
                     
                     result = await resp.json()
-                    # Parse response
                     try:
                         raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
                         return clean_avito_links(raw_text)
@@ -577,12 +629,10 @@ async def call_llm(message, history):
                         logger.error(f"Failed to parse Gemini response: {e}, structure: {result}")
                         return "⚠️ Не удалось распознать ответ от нейросети. Попробуйте еще раз."
             else:
-                # OpenAI-compatible REST Payload
                 messages = [{"role": "system", "content": system_instruction}]
                 for msg in history:
                     role = "user" if msg.get("sender") == "user" else "assistant"
-                    messages.append({"role": role, "content": msg.get("text", "")})
-                # Add current message
+                    messages.append({"role": role, "content": strip_html_for_history(msg.get("text", ""))})
                 messages.append({"role": "user", "content": message})
                 
                 payload = {
@@ -596,13 +646,12 @@ async def call_llm(message, history):
                 if provider != "ollama":
                     headers["Authorization"] = f"Bearer {api_key}"
                 
-                # OpenRouter requires special headers to show app name in dashboard
                 if provider == "openrouter":
                     headers["HTTP-Referer"] = "https://skyrex.ai"
                     headers["X-Title"] = "Skyrex Computers AI"
                 
                 logger.info(f"Sending request to OpenAI-compatible {provider} API (Model: {model}, Proxy: {llm_proxy or 'direct'})...")
-                async with session.post(url, json=payload, headers=headers, proxy=llm_proxy, timeout=35) as resp:
+                async with session.post(url, json=payload, headers=headers, proxy=llm_proxy, timeout=40) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"{provider.upper()} API returned status {resp.status}: {err_text}")
@@ -619,6 +668,139 @@ async def call_llm(message, history):
         except Exception as e:
             logger.error(f"Connection error to {provider}: {e}")
             return f"⚠️ Не удалось подключиться к серверу нейросети ({type(e).__name__}). Проверьте соединение с интернетом."
+
+
+# 4. Stream LLM tokens (Server-Sent Events)
+async def stream_llm(message: str, history: list):
+    """Streams LLM tokens chunk by chunk for OpenRouter/OpenAI/Gemini."""
+    provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+    api_key = os.getenv("LLM_API_KEY", "").strip()
+    model = os.getenv("LLM_MODEL", "").strip()
+
+    if not api_key and provider != "ollama":
+        yield (
+            "⚠️ <b>Сервер запущен, но не настроен API-ключ.</b><br><br>"
+            "Пожалуйста, откройте файл <code>.env</code> в корне папки <code>skyrex-main</code> "
+            "и укажите ваш действующий API-ключ в переменной <code>LLM_API_KEY</code>."
+        )
+        return
+
+    # Setup Defaults
+    if provider == "gemini":
+        if not model:
+            model = "gemini-2.5-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?key={api_key}&alt=sse"
+    else:
+        if provider == "openrouter":
+            base_url = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+            if not model:
+                model = "meta-llama/llama-3.3-70b-instruct:free"
+        elif provider == "groq":
+            base_url = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+            if not model:
+                model = "llama-3.3-70b-versatile"
+        elif provider == "ollama":
+            base_url = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
+            if not model:
+                model = "qwen2.5:7b"
+        else:
+            base_url = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
+            if not model:
+                model = "gpt-4o-mini"
+        url = f"{base_url.rstrip('/')}/chat/completions"
+
+    dynamic_context = get_parsed_catalog_context(message)
+    system_instruction = build_system_instruction(dynamic_context)
+    llm_proxy = get_active_proxy(provider)
+
+    async with aiohttp.ClientSession(trust_env=True) as session:
+        try:
+            if provider == "gemini":
+                contents = []
+                for msg in history:
+                    role = "user" if msg.get("sender") == "user" else "model"
+                    contents.append({
+                        "role": role,
+                        "parts": [{"text": strip_html_for_history(msg.get("text", ""))}]
+                    })
+                contents.append({"role": "user", "parts": [{"text": message}]})
+
+                payload = {
+                    "systemInstruction": {"parts": [{"text": system_instruction}]},
+                    "contents": contents,
+                    "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048}
+                }
+                async with session.post(url, json=payload, proxy=llm_proxy, timeout=60) as resp:
+                    if resp.status != 200:
+                        err_text = await resp.text()
+                        logger.error(f"Gemini API streaming error ({resp.status}): {err_text}")
+                        yield f"⚠️ Ошибка Gemini API ({resp.status}). Проверьте API-ключ."
+                        return
+
+                    async for line_bytes in resp.content:
+                        line = line_bytes.decode('utf-8', errors='ignore').strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        try:
+                            parsed = json.loads(data_str)
+                            candidates = parsed.get("candidates", [])
+                            if candidates:
+                                parts = candidates[0].get("content", {}).get("parts", [])
+                                for part in parts:
+                                    t = part.get("text", "")
+                                    if t:
+                                        yield t
+                        except Exception:
+                            pass
+            else:
+                messages = [{"role": "system", "content": system_instruction}]
+                for msg in history:
+                    role = "user" if msg.get("sender") == "user" else "assistant"
+                    messages.append({"role": role, "content": strip_html_for_history(msg.get("text", ""))})
+                messages.append({"role": "user", "content": message})
+
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 2048,
+                    "stream": True
+                }
+                headers = {}
+                if provider != "ollama":
+                    headers["Authorization"] = f"Bearer {api_key}"
+                if provider == "openrouter":
+                    headers["HTTP-Referer"] = "https://skyrex.ai"
+                    headers["X-Title"] = "Skyrex Computers AI"
+
+                async with session.post(url, json=payload, headers=headers, proxy=llm_proxy, timeout=60) as resp:
+                    if resp.status != 200:
+                        err_text = await resp.text()
+                        logger.error(f"{provider.upper()} API streaming error ({resp.status}): {err_text}")
+                        yield f"⚠️ Ошибка {provider.upper()} API ({resp.status})."
+                        return
+
+                    async for line_bytes in resp.content:
+                        line = line_bytes.decode('utf-8', errors='ignore').strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            parsed = json.loads(data_str)
+                            choices = parsed.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                t = delta.get("content", "")
+                                if t:
+                                    yield t
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error(f"Stream connection error to {provider}: {e}")
+            yield f"⚠️ Ошибка соединения с нейросетью ({type(e).__name__})."
 
 # Optional background price auto-updater (can be enabled via .env)
 auto_scraper_enabled = os.getenv("ENABLE_AUTO_SCRAPER", "false").lower() in ("true", "1", "yes")
@@ -736,6 +918,14 @@ async def handle_auth_logout(request):
 
 async def handle_chat(request):
     try:
+        # Rate limit per IP address
+        remote_ip = request.headers.get("X-Forwarded-For", request.remote or "unknown").split(",")[0].strip()
+        if not check_rate_limit(remote_ip):
+            return web.json_response(
+                {"response": "⏳ Слишком много запросов. Пожалуйста, подождите минуту перед следующим сообщением."},
+                status=429
+            )
+
         # Check authorization token (optional during free beta)
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
@@ -744,9 +934,34 @@ async def handle_chat(request):
         data = await request.json()
         message = data.get("message", "").strip()
         history = data.get("history", [])
+        wants_stream = bool(data.get("stream", False))
         
         if not message:
             return web.json_response({"response": "Сообщение не может быть пустым."})
+
+        if wants_stream:
+            response = web.StreamResponse(
+                status=200,
+                reason='OK',
+                headers={
+                    'Content-Type': 'text/event-stream; charset=utf-8',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Access-Control-Allow-Origin': '*',
+                }
+            )
+            await response.prepare(request)
+            try:
+                async for chunk in stream_llm(message, history):
+                    payload = json.dumps({"chunk": chunk}, ensure_ascii=False)
+                    await response.write(f"data: {payload}\n\n".encode('utf-8'))
+                await response.write(b"data: [DONE]\n\n")
+            except Exception as se:
+                logger.error(f"Error during streaming: {se}")
+                payload = json.dumps({"error": str(se)}, ensure_ascii=False)
+                await response.write(f"data: {payload}\n\n".encode('utf-8'))
+            await response.write_eof()
+            return response
             
         ai_response = await call_llm(message, history)
         return web.json_response({"response": ai_response})
