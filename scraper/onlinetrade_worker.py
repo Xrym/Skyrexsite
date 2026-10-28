@@ -16,7 +16,7 @@ ONLINETRADE_CATEGORIES = {
     },
     "cooler": {
         "title": "Кулеры для процессоров",
-        "slug": "kulery_dlya_protsessorov-c1482"
+        "slug": "kulery_dlya_protsessorov-c338"
     },
     "case": {
         "title": "Корпуса",

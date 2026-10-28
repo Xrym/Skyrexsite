@@ -385,6 +385,25 @@ def init_expert_tables():
             )
             logger.info("Migrated telegram_parser prompt template with opinion flow.")
 
+        card_integrity_migration = "update_assistant_system_card_integrity_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (card_integrity_migration,),
+        ).fetchone():
+            cursor.execute(
+                """
+                UPDATE prompt_templates
+                SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = 'assistant_system'
+                """,
+                (DEFAULT_PROMPTS["assistant_system"],),
+            )
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (card_integrity_migration,),
+            )
+            logger.info("Migrated assistant_system prompt template with product card integrity rule.")
+
         conn.commit()
 
 def _normalized_expert_component_name(component_type: str, component_name: str) -> str:

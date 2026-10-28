@@ -200,7 +200,12 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     search_terms.append(pair)
 
         # Fallback words
-        stopwords = {'сборка', 'собери', 'купить', 'сколько', 'стоит', 'компьютер', 'привет', 'подскажи', 'рублей', 'бюджет'}
+        stopwords = {
+            'сборка', 'собери', 'купить', 'сколько', 'стоит', 'компьютер', 'привет', 'подскажи', 'рублей', 'бюджет',
+            'игровой', 'игровая', 'игровые', 'игрового', 'игры', 'игра', 'гейминг', 'гейминга',
+            'пк', 'комп', 'системник', 'сборки', 'сборку', 'собрать', 'подбери', 'посоветуй',
+            'для', 'руб', 'рублей', 'тысяч', 'тыс', 'к', 'от', 'до', 'хороший', 'мощный', 'новый', 'нового'
+        }
         for w in raw_words:
             w_lower = w.lower()
             if len(w) >= 3 and w_lower not in stopwords and not w.isdigit():
@@ -220,14 +225,31 @@ def get_parsed_catalog_context(user_message: str) -> str:
     is_build_request = any(k in user_message.lower() for k in general_build_keywords)
     budget = extract_budget(user_message)
     
+    # If this is a build request with budget, filter out specific results that exceed 60% of total budget
+    if budget and is_build_request:
+        specific_results = [p for p in specific_results if p.get('price', 0) <= int(budget * 0.60)]
+
     cat_items = []
     if is_build_request or budget or len(specific_results) < 5:
         with get_connection() as conn:
             # Determine target allocations if budget is specified
             max_gpu_price = int(budget * 0.55) if budget else 9999999
             max_cpu_price = int(budget * 0.28) if budget else 9999999
-            max_mb_price = int(budget * 0.18) if budget else 9999999
-            max_ram_price = int(budget * 0.15) if budget else 9999999
+            max_mb_price = int(budget * 0.20) if budget else 9999999
+            max_ram_price = int(budget * 0.16) if budget else 9999999
+            max_ssd_price = int(budget * 0.14) if budget else 9999999
+            max_psu_price = int(budget * 0.12) if budget else 9999999
+            max_case_price = int(budget * 0.10) if budget else 9999999
+            max_cooler_price = int(budget * 0.08) if budget else 9999999
+
+            if budget:
+                # Minimum ceilings so low budgets still find budget-tier parts in the catalog
+                max_mb_price = max(max_mb_price, 8500)
+                max_ram_price = max(max_ram_price, 12500)
+                max_ssd_price = max(max_ssd_price, 6500)
+                max_psu_price = max(max_psu_price, 6000)
+                max_case_price = max(max_case_price, 5000)
+                max_cooler_price = max(max_cooler_price, 3500)
 
             # A. Select Candidate GPUs fitting budget (enriched & ranked by expert opinion, then price)
             raw_gpus = [dict(r) for r in conn.execute(
@@ -245,7 +267,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 (max_cpu_price,)
             ).fetchall()]
             if not raw_cpus:
-                raw_cpus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'cpu' ORDER BY price ASC LIMIT 20").fetchall()]
+                raw_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} ORDER BY price ASC LIMIT 20").fetchall()]
             
             selected_cpus = enrich_and_rank_products(raw_cpus, expert_components, limit=6)
             cat_items.extend(selected_cpus)
@@ -263,7 +285,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 (max_mb_price,)
             ).fetchall()]
             if not all_mbs:
-                all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price DESC LIMIT 30").fetchall()]
+                all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price ASC LIMIT 30").fetchall()]
 
             compatible_mbs = []
             for mb_dict in all_mbs:
@@ -273,7 +295,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     mb_dict["detected_ram"] = specs["ram_type"]
                     compatible_mbs.append(mb_dict)
 
-            cat_items.extend(enrich_and_rank_products(compatible_mbs, expert_components, limit=8))
+            cat_items.extend(enrich_and_rank_products(compatible_mbs, expert_components, limit=6))
 
             # E. Detect RAM Types required by selected compatible motherboards (e.g. DDR5 for AM5/LGA 1851)
             required_ram_types = set(mb["detected_ram"] for mb in compatible_mbs if mb.get("detected_ram"))
@@ -282,7 +304,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 (max_ram_price,)
             ).fetchall()]
             if not all_rams:
-                all_rams = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ram' ORDER BY price DESC LIMIT 25").fetchall()]
+                all_rams = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ram' ORDER BY price ASC LIMIT 25").fetchall()]
 
             compatible_rams = []
             for r_dict in all_rams:
@@ -291,23 +313,43 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     r_dict["detected_ram"] = specs["ram_type"]
                     compatible_rams.append(r_dict)
 
-            cat_items.extend(enrich_and_rank_products(compatible_rams, expert_components, limit=6))
+            cat_items.extend(enrich_and_rank_products(compatible_rams, expert_components, limit=5))
 
-            # F. Select PSUs (ranked by expert rating)
-            raw_psus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'psu' ORDER BY price DESC LIMIT 20").fetchall()]
+            # F. Select PSUs fitting budget (ranked by expert rating)
+            raw_psus = [dict(r) for r in conn.execute(
+                "SELECT * FROM products WHERE category = 'psu' AND price <= ? ORDER BY price DESC LIMIT 20",
+                (max_psu_price,)
+            ).fetchall()]
+            if not raw_psus:
+                raw_psus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'psu' ORDER BY price ASC LIMIT 20").fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_psus, expert_components, limit=5))
 
-            # G. Select SSDs (ranked by expert rating)
-            raw_ssds = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ssd' ORDER BY price DESC LIMIT 20").fetchall()]
+            # G. Select SSDs fitting budget (ranked by expert rating)
+            raw_ssds = [dict(r) for r in conn.execute(
+                "SELECT * FROM products WHERE category = 'ssd' AND price <= ? ORDER BY price DESC LIMIT 20",
+                (max_ssd_price,)
+            ).fetchall()]
+            if not raw_ssds:
+                raw_ssds = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ssd' ORDER BY price ASC LIMIT 20").fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_ssds, expert_components, limit=5))
 
-            # H. Select Coolers (ranked by expert rating)
-            raw_coolers = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'cooler' ORDER BY price DESC LIMIT 20").fetchall()]
-            cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=5))
+            # H. Select Coolers fitting budget (ranked by expert rating, ignore misclassified sound cards)
+            raw_coolers = [dict(r) for r in conn.execute(
+                "SELECT * FROM products WHERE category = 'cooler' AND name NOT LIKE '%звуков%' AND url NOT LIKE '%zvukovye_karty%' AND price <= ? ORDER BY price DESC LIMIT 20",
+                (max_cooler_price,)
+            ).fetchall()]
+            if not raw_coolers:
+                raw_coolers = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'cooler' AND name NOT LIKE '%звуков%' AND url NOT LIKE '%zvukovye_karty%' ORDER BY price ASC LIMIT 20").fetchall()]
+            cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=4))
 
-            # I. Select Cases (ranked by expert rating)
-            raw_cases = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'case' ORDER BY price DESC LIMIT 20").fetchall()]
-            cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=5))
+            # I. Select Cases fitting budget (ranked by expert rating)
+            raw_cases = [dict(r) for r in conn.execute(
+                "SELECT * FROM products WHERE category = 'case' AND price <= ? ORDER BY price DESC LIMIT 20",
+                (max_case_price,)
+            ).fetchall()]
+            if not raw_cases:
+                raw_cases = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'case' ORDER BY price ASC LIMIT 20").fetchall()]
+            cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=4))
 
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]
     
@@ -378,6 +420,19 @@ def clean_avito_links(text: str) -> str:
 
         if "avito.ru" in href:
             if "?q=" in href or "&q=" in href:
+                try:
+                    parsed = urllib.parse.urlparse(href)
+                    params = urllib.parse.parse_qs(parsed.query)
+                    raw_q = params.get('q', [''])[0]
+                    # Fix broken double percent-encoding if any (e.g. %D0%%D0% -> %D0%)
+                    fixed_q = re.sub(r'%([0-9a-fA-F]{2})%', r'%\1', raw_q)
+                    clean_text = urllib.parse.unquote_plus(fixed_q)
+                    clean_text = re.sub(r'<[^>]+>', '', clean_text).strip()
+                    if clean_text:
+                        reencoded_url = f"https://www.avito.ru/all?q={urllib.parse.quote_plus(clean_text)}"
+                        return f"<a href='{reencoded_url}' target='_blank'>{inner_text}</a>"
+                except Exception:
+                    pass
                 if 'target=' not in full_tag:
                     return f"<a href='{href}' target='_blank'>{inner_text}</a>"
                 return full_tag
