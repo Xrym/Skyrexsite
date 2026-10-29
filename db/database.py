@@ -168,7 +168,7 @@ def init_expert_tables():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        from db.prompt_defaults import DEFAULT_PROMPTS
+        from db.prompt_defaults import DEFAULT_PROMPTS, DEFAULT_AI_RULES
 
         for prompt_name, prompt_text in DEFAULT_PROMPTS.items():
             cursor.execute(
@@ -178,6 +178,17 @@ def init_expert_tables():
                 """,
                 (prompt_name, prompt_text),
             )
+
+        rules_count = cursor.execute("SELECT COUNT(*) FROM ai_rules").fetchone()[0]
+        if rules_count == 0:
+            for rule in DEFAULT_AI_RULES:
+                cursor.execute(
+                    """
+                    INSERT INTO ai_rules (title, rule_text, is_active, created_by)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (rule["title"], rule["rule_text"], 1, "system"),
+                )
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS app_migrations (
@@ -404,6 +415,57 @@ def init_expert_tables():
             )
             logger.info("Migrated assistant_system prompt template with product card integrity rule.")
 
+        budget_honesty_migration = "update_assistant_system_budget_honesty_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (budget_honesty_migration,),
+        ).fetchone():
+            cursor.execute(
+                """
+                UPDATE prompt_templates
+                SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = 'assistant_system'
+                """,
+                (DEFAULT_PROMPTS["assistant_system"],),
+            )
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (budget_honesty_migration,),
+            )
+            logger.info("Migrated assistant_system prompt template with platform unity and budget honesty rules.")
+
+        modular_rules_migration = "migrate_prompts_to_modular_rules_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (modular_rules_migration,),
+        ).fetchone():
+            cursor.execute(
+                """
+                UPDATE prompt_templates
+                SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = 'assistant_system'
+                """,
+                (DEFAULT_PROMPTS["assistant_system"],),
+            )
+            cursor.execute("DELETE FROM ai_rules")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'ai_rules'")
+            for rule in DEFAULT_AI_RULES:
+                cursor.execute(
+                    """
+                    INSERT INTO ai_rules (title, rule_text, is_active, created_by)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (rule["title"], rule["rule_text"], 1, "system"),
+                )
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (modular_rules_migration,),
+            )
+            logger.info(
+                "Migrated system prompt to modular AI rules (%d rules seeded).",
+                len(DEFAULT_AI_RULES),
+            )
+
         conn.commit()
 
 def _normalized_expert_component_name(component_type: str, component_name: str) -> str:
@@ -597,6 +659,26 @@ def delete_ai_rule(rule_id: int) -> bool:
         cursor.execute("DELETE FROM ai_rules WHERE id = ?", (rule_id,))
         conn.commit()
         return cursor.rowcount > 0
+
+def reset_ai_rules() -> int:
+    """Restores ai_rules table to default factory rules."""
+    from db.prompt_defaults import DEFAULT_AI_RULES
+
+    init_expert_tables()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ai_rules")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'ai_rules'")
+        for rule in DEFAULT_AI_RULES:
+            cursor.execute(
+                """
+                INSERT INTO ai_rules (title, rule_text, is_active, created_by)
+                VALUES (?, ?, ?, ?)
+                """,
+                (rule["title"], rule["rule_text"], 1, "system"),
+            )
+        conn.commit()
+        return len(DEFAULT_AI_RULES)
 
 def get_stats() -> Dict[str, Any]:
     """Returns database size and breakdown by shops/categories."""

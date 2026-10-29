@@ -18,6 +18,7 @@ from db.database import (
     get_ai_rules,
     get_prompt_template,
     delete_ai_rule,
+    reset_ai_rules,
     reset_prompt_template,
     update_prompt_template,
     get_stats
@@ -221,13 +222,14 @@ class TelegramAdminBot:
                 "  <i>«Запомни: в сборках до 60к предлагать только Deepcool PK550D или Montech Gamma, китайские БП запрещены»</i>\n\n"
                 "<b>📋 Доступные команды:</b>\n"
                 "/list — Последние 10 оценок в базе мнений\n"
-                "/rules — Системный промпт и правила ИИ\n"
+                "/rules — Свод правил ИИ-консультанта\n"
+                "/del_rule &lt;ID&gt; — Удалить конкретное правило\n"
+                "/reset_rules — Восстановить все правила по умолчанию\n"
+                "/prompt — Базовый системный промпт консультанта\n"
                 "/add_prompt — Заменить системный промпт\n"
                 "/del_prompt — Сбросить системный промпт к исходному\n"
-                "/prompt — Базовый системный промпт консультанта\n"
                 "/stats — Общая статистика каталога и базы\n"
-                "/del_comp &lt;ID&gt; — Удалить оценку комплектующего\n"
-                "/del_rule &lt;ID&gt; — Удалить правило ИИ"
+                "/del_comp &lt;ID&gt; — Удалить оценку комплектующего"
             )
             await self.send_message(chat_id, welcome)
 
@@ -305,8 +307,10 @@ class TelegramAdminBot:
 
             await self.send_message(
                 chat_id,
-                "💡 <i>Полный системный промпт консультанта доступен по команде /prompt.\n"
-                "Заменить: /add_prompt | Сбросить к исходному: /del_prompt</i>",
+                "💡 <i>Удалить конкретное правило: /del_rule &lt;ID&gt;\n"
+                "Сбросить все правила к исходным: /reset_rules\n"
+                "Базовый системный промпт консультанта: /prompt\n"
+                "Чтобы добавить новое правило, просто напишите его в чат!</i>",
             )
 
         elif cmd == "/add_prompt":
@@ -388,6 +392,14 @@ class TelegramAdminBot:
                 await self.send_message(chat_id, f"✅ Правило ИИ #{rule_id} успешно удалено. ИИ на сайте больше не будет его использовать.")
             else:
                 await self.send_message(chat_id, f"❌ Правило #{rule_id} не найдено.")
+
+        elif cmd == "/reset_rules":
+            count = reset_ai_rules()
+            await self.send_message(
+                chat_id,
+                f"✅ Все правила ИИ успешно сброшены к эталонным по умолчанию ({count} правил восстановлено).\n"
+                "Список актуальных правил можно просмотреть командой /rules.",
+            )
 
         else:
             await self.send_message(chat_id, "Неизвестная команда. Введите /help для просмотра списка команд.")

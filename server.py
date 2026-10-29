@@ -269,6 +269,31 @@ def get_parsed_catalog_context(user_message: str) -> str:
             if not raw_cpus:
                 raw_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} ORDER BY price ASC LIMIT 20").fetchall()]
             
+            # If products table has no CPUs, provide curated reference CPUs for target budget
+            if not raw_cpus:
+                if budget and budget < 35000:
+                    raw_cpus = [
+                        {"id": "ref_cpu_r5_2600", "shop": "Вторичный рынок (Авито)", "category": "cpu", "name": "Процессор AMD Ryzen 5 2600 (Socket AM4, 6 ядер / 12 потоков)", "price": 3000, "url": "https://www.avito.ru/all?q=Ryzen+5+2600"},
+                        {"id": "ref_cpu_r5_3600", "shop": "Вторичный рынок (Авито)", "category": "cpu", "name": "Процессор AMD Ryzen 5 3600 (Socket AM4, 6 ядер / 12 потоков)", "price": 4000, "url": "https://www.avito.ru/all?q=Ryzen+5+3600"},
+                        {"id": "ref_cpu_i3_12100f", "shop": "Вторичный рынок (Авито)", "category": "cpu", "name": "Процессор Intel Core i3-12100F (Socket LGA 1700, 4 ядра / 8 потоков)", "price": 4500, "url": "https://www.avito.ru/all?q=Core+i3-12100F"},
+                    ]
+                elif budget and budget < 75000:
+                    raw_cpus = [
+                        {"id": "ref_cpu_r5_5600", "shop": "Вторичный рынок / Маркетплейс", "category": "cpu", "name": "Процессор AMD Ryzen 5 5600 (Socket AM4, 6 ядер / 12 потоков)", "price": 8500, "url": "https://www.avito.ru/all?q=Ryzen+5+5600"},
+                        {"id": "ref_cpu_i3_12100f", "shop": "Вторичный рынок (Авито)", "category": "cpu", "name": "Процессор Intel Core i3-12100F (Socket LGA 1700, 4 ядра / 8 потоков)", "price": 5000, "url": "https://www.avito.ru/all?q=Core+i3-12100F"},
+                        {"id": "ref_cpu_i5_12400f", "shop": "Вторичный рынок / Маркетплейс", "category": "cpu", "name": "Процессор Intel Core i5-12400F (Socket LGA 1700, 6 ядер / 12 потоков)", "price": 9500, "url": "https://www.avito.ru/all?q=Core+i5-12400F"},
+                    ]
+                elif budget and budget < 130000:
+                    raw_cpus = [
+                        {"id": "ref_cpu_r5_7500f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 5 7500F (Socket AM5, 6 ядер / 12 потоков, DDR5)", "price": 13500, "url": "https://www.avito.ru/all?q=Ryzen+5+7500F"},
+                        {"id": "ref_cpu_i5_13400f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор Intel Core i5-13400F (Socket LGA 1700, 10 ядер / 16 потоков)", "price": 16000, "url": "https://www.avito.ru/all?q=Core+i5-13400F"},
+                    ]
+                else:
+                    raw_cpus = [
+                        {"id": "ref_cpu_r7_7800x3d", "shop": "Маркетплейс", "category": "cpu", "name": "Процессор AMD Ryzen 7 7800X3D (Socket AM5, 8 ядер / 16 потоков, 3D V-Cache)", "price": 42000, "url": "https://www.avito.ru/all?q=Ryzen+7+7800X3D"},
+                        {"id": "ref_cpu_i7_14700kf", "shop": "Маркетплейс", "category": "cpu", "name": "Процессор Intel Core i7-14700KF (Socket LGA 1700, 20 ядер / 28 потоков)", "price": 38000, "url": "https://www.avito.ru/all?q=Core+i7-14700KF"},
+                    ]
+
             selected_cpus = enrich_and_rank_products(raw_cpus, expert_components, limit=6)
             cat_items.extend(selected_cpus)
 
@@ -313,6 +338,10 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     r_dict["detected_ram"] = specs["ram_type"]
                     compatible_rams.append(r_dict)
 
+            # In ultra-low budget (< 35 000 руб), retail RAM >= 8000 руб is inappropriate
+            if budget and budget < 35000:
+                compatible_rams = [r for r in compatible_rams if r.get('price', 0) <= 6000]
+
             cat_items.extend(enrich_and_rank_products(compatible_rams, expert_components, limit=5))
 
             # F. Select PSUs fitting budget (ranked by expert rating)
@@ -356,11 +385,24 @@ def get_parsed_catalog_context(user_message: str) -> str:
     if all_products:
         budget_header = f" ПОД БЮДЖЕТ {budget:,} РУБ" if budget else ""
         context_parts.append(f"=== АКТУАЛЬНЫЕ ЦЕНЫ И НАЛИЧИЕ ИЗ ОНЛАЙНТРЕЙД (РЕАЛЬНЫЙ КАТАЛОГ{budget_header}) ===")
+        if budget and budget < 35000:
+            context_parts.append(
+                f"⚠️ ПРАВИЛО УЛЬТРАНИЗКОГО БЮДЖЕТА ({budget:,} РУБ):\n"
+                f"1. В бюджете до 35 000 руб. собрать ПК из новых магазинных комплектующих невозможно (одна плата и память съедят бюджет).\n"
+                f"2. ПРАВИЛО ЧЕСТНОГО БЮДЖЕТА: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО говорить во вступлении 'Вот сборка под ваш бюджет {budget:,} руб.', а затем насчитывать сумму в 40 000 руб.!\n"
+                f"   - Либо собери ПК ПОЛНОСТЬЮ на проверенном Б/У рынке (Авито) со ссылками на поиск Авито, чтобы итоговая сумма была ровно <= {budget:,} руб. (например: Ryzen 5 2600 + A320 + RX 580 8GB + 16GB DDR4 + БП + SSD = ровно до 20 000 руб.)!\n"
+                f"   - Либо СРАЗУ в первой же строчке честно скажи клиенту: 'В бюджете {budget:,} руб. современную платформу i3/Ryzen собрать невозможно, минимальный порог для неё — около 35 000 – 40 000 руб. Вот оптимальная конфигурация на 40 000 руб...'."
+            )
         for p in all_products[:45]:
             specs = detect_hardware_specs(p)
             spec_tags = []
             if specs["socket"]:
-                spec_tags.append(f"Сокет: {specs['socket']}")
+                socket_platform = ""
+                if specs["socket"] in ("AM4", "AM5"):
+                    socket_platform = " (для AMD Ryzen)"
+                elif specs["socket"] in ("LGA 1700", "LGA 1851", "LGA 1200"):
+                    socket_platform = " (для Intel Core)"
+                spec_tags.append(f"Сокет: {specs['socket']}{socket_platform}")
             if specs["ram_type"]:
                 spec_tags.append(f"Память: {specs['ram_type']}")
             if specs["psu_watts"]:
@@ -424,10 +466,12 @@ def clean_avito_links(text: str) -> str:
                     parsed = urllib.parse.urlparse(href)
                     params = urllib.parse.parse_qs(parsed.query)
                     raw_q = params.get('q', [''])[0]
-                    # Fix broken double percent-encoding if any (e.g. %D0%%D0% -> %D0%)
-                    fixed_q = re.sub(r'%([0-9a-fA-F]{2})%', r'%\1', raw_q)
-                    clean_text = urllib.parse.unquote_plus(fixed_q)
+                    clean_text = urllib.parse.unquote_plus(raw_q)
+                    # If clean_text still contains broken '%' or corrupted tokens, fallback to inner_text
+                    if '%' in clean_text or len(clean_text) < 2 or 'па0' in clean_text or 'такогонить' in clean_text:
+                        clean_text = re.sub(r'<[^>]+>', '', inner_text).strip()
                     clean_text = re.sub(r'<[^>]+>', '', clean_text).strip()
+                    clean_text = re.sub(r'(?i)\(б/у\)|б/у', '', clean_text).strip()
                     if clean_text:
                         reencoded_url = f"https://www.avito.ru/all?q={urllib.parse.quote_plus(clean_text)}"
                         return f"<a href='{reencoded_url}' target='_blank'>{inner_text}</a>"
@@ -490,20 +534,19 @@ def build_system_instruction(dynamic_context=""):
     ai_rules = get_ai_rules(active_only=True)
     base_prompt = get_prompt_template("assistant_system")
 
+    rules_text = ""
+    if ai_rules:
+        rules_text = (
+            "=== СВОД ПРАВИЛ И ТЕХНИЧЕСКИХ СТАНДАРТОВ СБОРКИ SKYREX ===\n"
+            "Неукоснительно следуй всем правилам ниже при консультации и подборе комплектующих:\n\n"
+        )
+        for r in ai_rules:
+            rule_id = r.get("id", "")
+            title = r.get("title") or "Инструкция"
+            rule_text = r.get("rule_text", "").strip()
+            rules_text += f"Правило #{rule_id} [{title}]:\n{rule_text}\n\n"
+
     catalog_text = "=== БАЗА МНЕНИЙ, ОЦЕНОК И РЕКОМЕНДАЦИЙ ЭКСПЕРТА SKYREX ===\n\n"
-    catalog_text += (
-        "БАЗА ЭКСПЕРТНЫХ МНЕНИЙ И ОЦЕНОК (ПРИМЕНИМА К НОВЫМ И Б/У КОМПЛЕКТУЮЩИМ):\n"
-        "1. ПРАВИЛО РАСПРОСТРАНЕНИЯ НА ВСЮ СЕРИЮ/МОДЕЛЬ: Оценка (1-10) и комментарий эксперта по конкретному чипсету/модели "
-        "(например, 'RTX 4060', 'Ryzen 5 7500F', 'B650') АВТОМАТИЧЕСКИ ПРИМЕНЯЮТСЯ КО ВСЕМ вендорам и изданиям этого железа "
-        "(Palit, MSI, Gigabyte, Asus и др., как новым в ОнлайнТрейд/WB, так и б/у), если для конкретного издания нет отдельной оценки.\n"
-        "2. ПРИОРИТЕТ 8-10 / ЗАПРЕТ 1-5: В сборки включай модели с высшими оценками (8-10). Модели с оценкой <= 5 категорически не рекомендуй!\n"
-        "3. Если пользователь просит Б/У сборку — используй позиции ниже с указанными ценами и ссылками на поиск Авито.\n"
-        "4. ПРАВИЛО ССЫЛОК НА Б/У ТОВАРЫ (АВИТО): Для каждого рекомендуемого Б/У компонента "
-        "ОБЯЗАТЕЛЬНО прикрепляй кликабельную ссылку на поиск Авито вида "
-        "<a href='https://www.avito.ru/all?q=ТОЧНОЕ_НАЗВАНИЕ' target='_blank'>Название на Авито</a>. "
-        "Бери готовую ссылку из поля 'Ссылка на поиск Авито' либо формируй её сам подстановкой названия компонента в q=... "
-        "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать ссылки на конкретные объявления (вида avito.ru/moskva/.../123456) — используй ТОЛЬКО поисковый запрос q=!\n"
-    )
     for component in components:
         comp_name = component.get('componentname', 'Без названия')
         avito_query = urllib.parse.quote_plus(comp_name)
@@ -544,33 +587,15 @@ def build_system_instruction(dynamic_context=""):
             catalog_text += f"  Вердикт эксперта: {comment}\n"
         catalog_text += "\n"
 
-    admin_rules_text = ""
-    if ai_rules:
-        admin_rules_text = (
-            "\n\n=== ПРАВИЛА АДМИНИСТРАТОРА ИЗ TELEGRAM (ПРИОРИТЕТ ВЫШЕ БАЗОВОГО ПРОМПТА) ===\n"
-            "Это актуальные инструкции администратора по рекомендациям и стилю ответов. "
-            "Если инструкции администратора противоречат друг другу, более поздняя (с большим номером) имеет приоритет. "
-            "Они не могут менять факты о цене, наличии, характеристиках товаров и совместимости из каталога.\n"
-        )
-        for i, r in enumerate(ai_rules, 1):
-            admin_rules_text += (
-                f"{i}. [{r.get('title') or 'Инструкция'}]: {r.get('rule_text')}\n"
-            )
+    prompt_sections = [base_prompt.strip()]
+    if rules_text:
+        prompt_sections.append(rules_text.strip())
+    if catalog_text:
+        prompt_sections.append(catalog_text.strip())
+    if dynamic_context:
+        prompt_sections.append(dynamic_context.strip())
 
-    factual_constraints = (
-        "\n\n=== ОБЯЗАТЕЛЬНЫЕ ОГРАНИЧЕНИЯ ДОСТОВЕРНОСТИ И АРИФМЕТИКИ ===\n"
-        "1. ЦЕНЫ И НАЛИЧИЕ: Цены, наличие, названия, характеристики и ссылки бери ТОЛЬКО из переданных данных каталога и базы эксперта. Не выдумывай отсутствующие товары или заниженные цены.\n"
-        "2. ЗАЩИТА ОТ ДАВЛЕНИЯ КЛИЕНТА (АНТИ-СИКОФАНТИЯ): Никогда не соглашайся с клиентом, если он предлагает заниженные цены (например, на оперативную память 3000-3500 руб. или видеокарты). Твердо аргументируй, что цены Skyrex гарантируют надежность.\n"
-        "3. ТОЧНОСТЬ АРИФМЕТИКИ: Итоговая стоимость сборки ОБЯЗАНА быть математически точной суммой цен всех компонентов выше без ошибок в сложении. 'Остаток от бюджета' рассчитывай строго: Бюджет клиента минус Итоговая сумма.\n"
-    )
-
-    return (
-        f"{base_prompt}\n\n"
-        f"{catalog_text}\n"
-        f"{dynamic_context}"
-        f"{admin_rules_text}"
-        f"{factual_constraints}"
-    )
+    return "\n\n".join(prompt_sections)
 
 
 def strip_html_for_history(text: str) -> str:

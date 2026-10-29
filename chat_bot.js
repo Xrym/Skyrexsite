@@ -64,6 +64,46 @@ document.addEventListener("DOMContentLoaded", () => {
         return d.getHours().toString().padStart(2, '0') + ":" + d.getMinutes().toString().padStart(2, '0');
     }
 
+    function sanitizeAvitoUrl(url, linkTitle = "") {
+        if (!url || !url.includes("avito.ru")) return url;
+        let query = "";
+        try {
+            const matchQ = url.match(/[?&]q=([^&#]+)/);
+            if (matchQ && matchQ[1]) {
+                const rawParam = matchQ[1].replace(/\+/g, " ");
+                try {
+                    query = decodeURIComponent(rawParam);
+                } catch (e) {
+                    const sanitized = rawParam.replace(/%(?![0-9a-fA-F]{2})/g, "");
+                    try {
+                        query = decodeURIComponent(sanitized);
+                    } catch (e2) {
+                        query = "";
+                    }
+                }
+            }
+        } catch (e) {
+            query = "";
+        }
+
+        const isCorrupt = !query || query.includes("%") || query.length < 2 || /(?:такогонить|па0)/i.test(query);
+        if (isCorrupt && linkTitle) {
+            query = linkTitle
+                .replace(/<[^>]+>/g, "")
+                .replace(/\(Б\/У\)/gi, "")
+                .replace(/\(б\/у\)/gi, "")
+                .replace(/Б\/У/gi, "")
+                .trim();
+        }
+
+        if (!query) {
+            query = "компьютерные комплектующие";
+        }
+
+        query = query.replace(/\s+/g, " ").trim();
+        return `https://www.avito.ru/all?q=${encodeURIComponent(query)}`;
+    }
+
     /**
      * Resilient hybrid Markdown and HTML parser for bot responses.
      * Safely handles markdown tables, bold, italics, headers, code blocks, lists, and links.
@@ -124,12 +164,23 @@ document.addEventListener("DOMContentLoaded", () => {
         text = text.replace(/(^|[^\*])\*([^\*\n]+)\*([^\*]|$)/g, "$1<i>$2</i>$3");
 
         // 6. Markdown links: [Title](URL) -> <a href='URL' target='_blank'>Title</a>
-        text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, (match, title, url) => {
+            const cleanUrl = url.includes("avito.ru") ? sanitizeAvitoUrl(url, title) : url;
+            return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${title}</a>`;
+        });
+
+        // 6.1. Sanitize any existing HTML <a> tags pointing to Avito
+        text = text.replace(/<a\s+([^>]*?)href=(['"])(https?:\/\/[^'"]*avito\.ru[^'"]*)\2([^>]*)>(.*?)<\/a>/gi, (match, before, quote, url, after, innerText) => {
+            const cleanUrl = sanitizeAvitoUrl(url, innerText);
+            const targetAttr = (before + after).includes("target=") ? "" : ' target="_blank" rel="noopener noreferrer"';
+            return `<a ${before}href="${cleanUrl}"${after}${targetAttr}>${innerText}</a>`;
+        });
 
         // 7. Auto-link bare URLs not inside tags
         text = text.replace(/(^|[^"'])(https?:\/\/[^\s<]+)/g, (match, prefix, url) => {
             if (prefix.includes("href=") || prefix.includes("src=")) return match;
-            return `${prefix}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+            const cleanUrl = url.includes("avito.ru") ? sanitizeAvitoUrl(url) : url;
+            return `${prefix}<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${url}</a>`;
         });
 
         // 8. Unordered lists: lines starting with * or - or •
