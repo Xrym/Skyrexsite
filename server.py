@@ -304,13 +304,13 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 if specs["socket"]:
                     candidate_sockets.add(specs["socket"])
 
-            # D. Select Motherboards matching candidate sockets (ranked by expert mark)
+            # D. Select Motherboards matching candidate sockets (partitioned per socket to guarantee compatibility)
             all_mbs = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'motherboard' AND price <= ? ORDER BY price DESC LIMIT 30",
+                "SELECT * FROM products WHERE category = 'motherboard' AND price <= ? ORDER BY price DESC LIMIT 40",
                 (max_mb_price,)
             ).fetchall()]
             if not all_mbs:
-                all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price ASC LIMIT 30").fetchall()]
+                all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price ASC LIMIT 40").fetchall()]
 
             compatible_mbs = []
             for mb_dict in all_mbs:
@@ -320,10 +320,25 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     mb_dict["detected_ram"] = specs["ram_type"]
                     compatible_mbs.append(mb_dict)
 
-            cat_items.extend(enrich_and_rank_products(compatible_mbs, expert_components, limit=6))
+            selected_mbs = []
+            for target_socket in candidate_sockets:
+                socket_mbs = [m for m in compatible_mbs if m.get("detected_socket") == target_socket]
+                # If budget < 80000, prioritize DDR4 motherboards for LGA 1700 / AM4
+                if budget and budget < 80000 and target_socket in ("LGA 1700", "AM4"):
+                    ddr4_mbs = [m for m in socket_mbs if m.get("detected_ram") == "DDR4"]
+                    if ddr4_mbs:
+                        selected_mbs.extend(enrich_and_rank_products(ddr4_mbs, expert_components, limit=3))
+                    ddr5_mbs = [m for m in socket_mbs if m.get("detected_ram") == "DDR5"]
+                    if ddr5_mbs and len(ddr4_mbs) < 3:
+                        selected_mbs.extend(enrich_and_rank_products(ddr5_mbs, expert_components, limit=1))
+                else:
+                    selected_mbs.extend(enrich_and_rank_products(socket_mbs, expert_components, limit=3))
+
+            cat_items.extend(selected_mbs if selected_mbs else enrich_and_rank_products(compatible_mbs, expert_components, limit=6))
 
             # E. Detect RAM Types required by selected compatible motherboards (e.g. DDR5 for AM5/LGA 1851)
-            required_ram_types = set(mb["detected_ram"] for mb in compatible_mbs if mb.get("detected_ram"))
+            active_mbs = selected_mbs if selected_mbs else compatible_mbs
+            required_ram_types = set(mb["detected_ram"] for mb in active_mbs if mb.get("detected_ram"))
             all_rams = [dict(r) for r in conn.execute(
                 "SELECT * FROM products WHERE category = 'ram' AND price <= ? ORDER BY price DESC LIMIT 25",
                 (max_ram_price,)
@@ -338,9 +353,44 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     r_dict["detected_ram"] = specs["ram_type"]
                     compatible_rams.append(r_dict)
 
+            # In secondary / budget builds, provide verified secondary market reference RAM with direct Avito search links
+            ref_rams = [
+                {
+                    "id": "ref_ram_16gb_ddr4_used",
+                    "shop": "Вторичный рынок (Авито)",
+                    "category": "ram",
+                    "name": "Комплект 16 ГБ DDR4 (2x8 ГБ, 3200MHz)",
+                    "price": 8000,
+                    "url": "https://www.avito.ru/all?q=16Gb+DDR4+2x8"
+                },
+                {
+                    "id": "ref_ram_32gb_ddr4_used",
+                    "shop": "Вторичный рынок (Авито)",
+                    "category": "ram",
+                    "name": "Комплект 32 ГБ DDR4 (2x16 ГБ, 3200MHz)",
+                    "price": 14000,
+                    "url": "https://www.avito.ru/all?q=32Gb+DDR4+2x16"
+                }
+            ]
+            if not budget or budget >= 70000:
+                ref_rams.append({
+                    "id": "ref_ram_32gb_ddr5_used",
+                    "shop": "Вторичный рынок / Каталог",
+                    "category": "ram",
+                    "name": "Комплект 32 ГБ DDR5 (2x16 ГБ, 6000MHz)",
+                    "price": 18000,
+                    "url": "https://www.avito.ru/all?q=32Gb+DDR5+6000MHz"
+                })
+
+            for rr in ref_rams:
+                specs = detect_hardware_specs(rr)
+                rr["detected_ram"] = specs["ram_type"]
+                if not required_ram_types or specs["ram_type"] in required_ram_types:
+                    compatible_rams.insert(0, rr)
+
             # In ultra-low budget (< 35 000 руб), retail RAM >= 8000 руб is inappropriate
             if budget and budget < 35000:
-                compatible_rams = [r for r in compatible_rams if r.get('price', 0) <= 6000]
+                compatible_rams = [r for r in compatible_rams if r.get('price', 0) <= 6000 or 'avito' in r.get('url', '')]
 
             cat_items.extend(enrich_and_rank_products(compatible_rams, expert_components, limit=5))
 

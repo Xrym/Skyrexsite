@@ -183,6 +183,16 @@ document.addEventListener("DOMContentLoaded", () => {
             return `${prefix}<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${url}</a>`;
         });
 
+        // 7.1. Auto-link unlinked RAM in build positions (e.g. "4. Оперативная память (RAM): Комплект 16 ГБ DDR4... — ...")
+        text = text.replace(/((?:^|\n)\s*\d+\.\s*(?:<b>)?(?:Оперативная память|RAM)[^:\n]*:\s*(?:<\/b>)?)(?!<a\s)([^—\n<]+?)\s*(—|-)/gi, (match, prefix, compName, sep) => {
+            const trimmed = compName.trim();
+            if (trimmed.length >= 3 && /ddr/i.test(trimmed)) {
+                const avitoUrl = sanitizeAvitoUrl("https://www.avito.ru/all", trimmed);
+                return `${prefix}<a href="${avitoUrl}" target="_blank" rel="noopener noreferrer">${trimmed}</a> ${sep}`;
+            }
+            return match;
+        });
+
         // 8. Unordered lists: lines starting with * or - or •
         text = text.replace(/(?:^|\n)[ \t]*[*\-•][ \t]+([^\n]+)/g, "\n<li>$1</li>");
         text = text.replace(/(?:<li>[\s\S]*?<\/li>)/g, (match) => {
