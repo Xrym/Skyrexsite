@@ -339,19 +339,34 @@ def get_parsed_catalog_context(user_message: str) -> str:
             # E. Detect RAM Types required by selected compatible motherboards (e.g. DDR5 for AM5/LGA 1851)
             active_mbs = selected_mbs if selected_mbs else compatible_mbs
             required_ram_types = set(mb["detected_ram"] for mb in active_mbs if mb.get("detected_ram"))
+            ram_filter_sodimm = " AND name NOT LIKE '%SODIMM%' AND name NOT LIKE '%SO-DIMM%' AND name NOT LIKE '%ноутбук%' "
             all_rams = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'ram' AND price <= ? ORDER BY price DESC LIMIT 25",
+                f"SELECT * FROM products WHERE category = 'ram' {ram_filter_sodimm} AND price <= ? ORDER BY price DESC LIMIT 25",
                 (max_ram_price,)
             ).fetchall()]
             if not all_rams:
-                all_rams = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ram' ORDER BY price ASC LIMIT 25").fetchall()]
+                all_rams = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ram' {ram_filter_sodimm} ORDER BY price ASC LIMIT 25").fetchall()]
 
-            compatible_rams = []
+            def get_ram_capacity(name):
+                m_cap = re.search(r'(\d+)\s*(?:гб|gb)\b', name, re.I)
+                if m_cap:
+                    return int(m_cap.group(1))
+                return 16
+
+            filtered_market_rams = []
             for r_dict in all_rams:
                 specs = detect_hardware_specs(r_dict)
+                cap = get_ram_capacity(r_dict.get("name", ""))
+                r_dict["detected_capacity"] = cap
+                # Exclude single 8GB sticks priced over 10 000 руб (overpriced marketplace anomalies)
+                if cap <= 8 and r_dict.get("price", 0) > 10000:
+                    continue
                 if not required_ram_types or specs["ram_type"] in required_ram_types or not specs["ram_type"]:
                     r_dict["detected_ram"] = specs["ram_type"]
-                    compatible_rams.append(r_dict)
+                    filtered_market_rams.append(r_dict)
+
+            # Sort market RAMs: largest capacity first, then lowest price (maximum volume per ruble)
+            filtered_market_rams.sort(key=lambda x: (-x.get("detected_capacity", 16), x.get("price", 0)))
 
             # In secondary / budget builds, provide verified secondary market reference RAM with direct Avito search links
             ref_rams = [
@@ -382,17 +397,22 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     "url": "https://www.avito.ru/all?q=32Gb+DDR5+6000MHz"
                 })
 
+            valid_ref_rams = []
             for rr in ref_rams:
                 specs = detect_hardware_specs(rr)
                 rr["detected_ram"] = specs["ram_type"]
+                rr["detected_capacity"] = get_ram_capacity(rr["name"])
                 if not required_ram_types or specs["ram_type"] in required_ram_types:
-                    compatible_rams.insert(0, rr)
+                    valid_ref_rams.append(rr)
+
+            # Guaranteed reference RAM kits first, followed by best-value retail RAM
+            combined_rams = valid_ref_rams + filtered_market_rams
 
             # In ultra-low budget (< 35 000 руб), retail RAM >= 8000 руб is inappropriate
             if budget and budget < 35000:
-                compatible_rams = [r for r in compatible_rams if r.get('price', 0) <= 6000 or 'avito' in r.get('url', '')]
+                combined_rams = [r for r in combined_rams if r.get('price', 0) <= 6000 or 'avito' in r.get('url', '')]
 
-            cat_items.extend(enrich_and_rank_products(compatible_rams, expert_components, limit=5))
+            cat_items.extend(enrich_and_rank_products(combined_rams, expert_components, limit=6))
 
             # F. Select PSUs fitting budget (ranked by expert rating)
             raw_psus = [dict(r) for r in conn.execute(
@@ -403,14 +423,48 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 raw_psus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'psu' ORDER BY price ASC LIMIT 20").fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_psus, expert_components, limit=5))
 
-            # G. Select SSDs fitting budget (ranked by expert rating)
+            # G. Select SSDs fitting budget (diverse prices, prioritizing highest volume for lowest price)
             raw_ssds = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'ssd' AND price <= ? ORDER BY price DESC LIMIT 20",
+                "SELECT * FROM products WHERE category = 'ssd' AND price <= ? ORDER BY price ASC LIMIT 35",
                 (max_ssd_price,)
             ).fetchall()]
             if not raw_ssds:
-                raw_ssds = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ssd' ORDER BY price ASC LIMIT 20").fetchall()]
-            cat_items.extend(enrich_and_rank_products(raw_ssds, expert_components, limit=5))
+                raw_ssds = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ssd' ORDER BY price ASC LIMIT 35").fetchall()]
+
+            def get_ssd_capacity(name):
+                m_tb = re.search(r'(\d+)\s*(?:тб|tb)\b', name, re.I)
+                if m_tb:
+                    return int(m_tb.group(1)) * 1024
+                m_gb = re.search(r'(\d{3,4})\s*(?:гб|gb)\b', name, re.I)
+                if m_gb:
+                    return int(m_gb.group(1))
+                return 512
+
+            for s in raw_ssds:
+                s["detected_capacity"] = get_ssd_capacity(s.get("name", ""))
+
+            # Sort candidate SSDs: highest capacity first, then lowest price (maximum volume for lowest price)
+            ranked_ssds = sorted(raw_ssds, key=lambda x: (-x["detected_capacity"], x.get("price", 0)))
+
+            diverse_ssds = []
+            seen_ids = set()
+            # 1. Best value by volume (largest capacity with lowest price)
+            for s in ranked_ssds:
+                if s["id"] not in seen_ids:
+                    diverse_ssds.append(s)
+                    seen_ids.add(s["id"])
+                    if len(diverse_ssds) >= 3:
+                        break
+
+            # 2. Add variety of price points (budget to higher) so bot sees different price tiers
+            for s in sorted(raw_ssds, key=lambda x: x.get("price", 0)):
+                if s["id"] not in seen_ids:
+                    diverse_ssds.append(s)
+                    seen_ids.add(s["id"])
+                    if len(diverse_ssds) >= 6:
+                        break
+
+            cat_items.extend(enrich_and_rank_products(diverse_ssds, expert_components, limit=6))
 
             # H. Select Coolers fitting budget (ranked by expert rating, ignore misclassified sound cards)
             raw_coolers = [dict(r) for r in conn.execute(
@@ -688,7 +742,7 @@ def get_active_proxy(provider: str) -> Optional[str]:
                 pass
 
         if not llm_proxy:
-            for test_port in (10809, 7890):
+            for test_port in (2080, 10809, 7890, 10808):
                 try:
                     with socket.create_connection(("127.0.0.1", test_port), timeout=0.2):
                         llm_proxy = f"http://127.0.0.1:{test_port}"
@@ -717,7 +771,7 @@ async def call_llm(message: str, history: list) -> str:
     # Setup Defaults
     if provider == "gemini":
         if not model:
-            model = "gemini-2.5-flash"
+            model = "gemini-3.5-flash-lite"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     else:
         # OpenAI-compatible setup
@@ -766,12 +820,26 @@ async def call_llm(message: str, history: list) -> str:
                     "contents": contents,
                     "generationConfig": {
                         "temperature": 0.7,
-                        "maxOutputTokens": 2048
+                        "maxOutputTokens": 8192
                     }
                 }
                 
                 logger.info(f"Sending request to Gemini API (Model: {model}, Proxy: {llm_proxy or 'direct'})...")
-                async with session.post(url, json=payload, proxy=llm_proxy, timeout=40) as resp:
+                async with session.post(url, json=payload, proxy=llm_proxy, timeout=75) as resp:
+                    if resp.status in (429, 503, 500):
+                        err_text = await resp.text()
+                        fallback_model = "gemini-3.5-flash-lite" if model != "gemini-3.5-flash-lite" else "gemini-flash-lite-latest"
+                        logger.warning(f"Gemini API returned status {resp.status} with model {model}. Retrying with {fallback_model}...")
+                        fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={api_key}"
+                        await asyncio.sleep(1.0)
+                        try:
+                            async with session.post(fallback_url, json=payload, proxy=llm_proxy, timeout=75) as fb_resp:
+                                if fb_resp.status == 200:
+                                    fb_res = await fb_resp.json()
+                                    raw_text = fb_res["candidates"][0]["content"]["parts"][0]["text"]
+                                    return clean_avito_links(raw_text)
+                        except Exception as fb_err:
+                            logger.error(f"Gemini fallback error: {fb_err}")
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"Gemini API returned status {resp.status}: {err_text}")
@@ -807,7 +875,7 @@ async def call_llm(message: str, history: list) -> str:
                     headers["X-Title"] = "Skyrex Computers AI"
                 
                 logger.info(f"Sending request to OpenAI-compatible {provider} API (Model: {model}, Proxy: {llm_proxy or 'direct'})...")
-                async with session.post(url, json=payload, headers=headers, proxy=llm_proxy, timeout=40) as resp:
+                async with session.post(url, json=payload, headers=headers, proxy=llm_proxy, timeout=75) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"{provider.upper()} API returned status {resp.status}: {err_text}")
@@ -844,7 +912,7 @@ async def stream_llm(message: str, history: list):
     # Setup Defaults
     if provider == "gemini":
         if not model:
-            model = "gemini-2.5-flash"
+            model = "gemini-3.5-flash-lite"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?key={api_key}&alt=sse"
     else:
         if provider == "openrouter":
@@ -884,9 +952,38 @@ async def stream_llm(message: str, history: list):
                 payload = {
                     "systemInstruction": {"parts": [{"text": system_instruction}]},
                     "contents": contents,
-                    "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048}
+                    "generationConfig": {"temperature": 0.7, "maxOutputTokens": 8192}
                 }
-                async with session.post(url, json=payload, proxy=llm_proxy, timeout=60) as resp:
+                async with session.post(url, json=payload, proxy=llm_proxy, timeout=75) as resp:
+                    if resp.status in (429, 503, 500):
+                        err_text = await resp.text()
+                        fallback_model = "gemini-3.5-flash-lite" if model != "gemini-3.5-flash-lite" else "gemini-flash-lite-latest"
+                        logger.warning(f"Gemini streaming status {resp.status} with {model}, falling back to {fallback_model}...")
+                        fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:streamGenerateContent?key={api_key}&alt=sse"
+                        await asyncio.sleep(1.0)
+                        try:
+                            async with session.post(fallback_url, json=payload, proxy=llm_proxy, timeout=75) as fb_resp:
+                                if fb_resp.status == 200:
+                                    async for line_bytes in fb_resp.content:
+                                        line = line_bytes.decode('utf-8', errors='ignore').strip()
+                                        if not line or not line.startswith("data:"):
+                                            continue
+                                        data_str = line[5:].strip()
+                                        try:
+                                            parsed = json.loads(data_str)
+                                            candidates = parsed.get("candidates", [])
+                                            if candidates:
+                                                parts = candidates[0].get("content", {}).get("parts", [])
+                                                for part in parts:
+                                                    t = part.get("text", "")
+                                                    if t:
+                                                        yield t
+                                        except Exception:
+                                            pass
+                                    return
+                        except Exception as fb_err:
+                            logger.error(f"Gemini streaming fallback error: {fb_err}")
+
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"Gemini API streaming error ({resp.status}): {err_text}")
@@ -930,7 +1027,7 @@ async def stream_llm(message: str, history: list):
                     headers["HTTP-Referer"] = "https://skyrex.ai"
                     headers["X-Title"] = "Skyrex Computers AI"
 
-                async with session.post(url, json=payload, headers=headers, proxy=llm_proxy, timeout=60) as resp:
+                async with session.post(url, json=payload, headers=headers, proxy=llm_proxy, timeout=75) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"{provider.upper()} API streaming error ({resp.status}): {err_text}")
