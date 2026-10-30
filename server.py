@@ -239,7 +239,6 @@ def get_parsed_catalog_context(user_message: str) -> str:
             max_ram_price = int(budget * 0.16) if budget else 9999999
             max_ssd_price = int(budget * 0.14) if budget else 9999999
             max_psu_price = int(budget * 0.12) if budget else 9999999
-            max_case_price = int(budget * 0.10) if budget else 9999999
             max_cooler_price = int(budget * 0.08) if budget else 9999999
 
             if budget:
@@ -248,7 +247,6 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 max_ram_price = max(max_ram_price, 12500)
                 max_ssd_price = max(max_ssd_price, 6500)
                 max_psu_price = max(max_psu_price, 6000)
-                max_case_price = max(max_case_price, 5000)
                 max_cooler_price = max(max_cooler_price, 3500)
 
             # A. Select Candidate GPUs fitting budget (enriched & ranked by expert opinion, then price)
@@ -474,15 +472,6 @@ def get_parsed_catalog_context(user_message: str) -> str:
             if not raw_coolers:
                 raw_coolers = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'cooler' AND name NOT LIKE '%звуков%' AND url NOT LIKE '%zvukovye_karty%' ORDER BY price ASC LIMIT 20").fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=4))
-
-            # I. Select Cases fitting budget (ranked by expert rating)
-            raw_cases = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'case' AND price <= ? ORDER BY price DESC LIMIT 20",
-                (max_case_price,)
-            ).fetchall()]
-            if not raw_cases:
-                raw_cases = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'case' ORDER BY price ASC LIMIT 20").fetchall()]
-            cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=4))
 
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]
     

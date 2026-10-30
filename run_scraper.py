@@ -23,7 +23,7 @@ def main():
         help="Магазин для обновления цен: onlinetrade, wildberries, all (по умолчанию: wildberries)",
     )
     parser.add_argument("--pages", type=int, default=1, help="Количество страниц на категорию (по умолчанию: 1)")
-    parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu cooler case")
+    parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu cooler")
     parser.add_argument("--proxy", type=str, default=None, help="HTTP/SOCKS5 прокси")
     parser.add_argument("--headless", action="store_true", help="Запуск браузера без графического окна")
     parser.add_argument("--min-rating", type=float, default=4.0, help="Минимальный рейтинг товара для WB (по умолчанию: 4.0)")
