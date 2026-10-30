@@ -140,7 +140,140 @@ class TelegramAdminBot:
         }
         if reply_markup is not None:
             data["reply_markup"] = reply_markup
-        return await self.api_request("editMessageText", data)
+        res = await self.api_request("editMessageText", data)
+        if not res.get("ok") and "can't parse entities" in str(res.get("description", "")).lower():
+            data.pop("parse_mode", None)
+            res = await self.api_request("editMessageText", data)
+        return res
+
+    def build_expert_list_view(self, category: str = "all", page: int = 1, page_size: int = 5) -> tuple[str, Dict[str, Any]]:
+        """Формирует интерактивный текст и инлайн-клавиатуру каталога экспертных компонентов."""
+        all_comps = get_expert_components(limit=500)
+
+        # Подсчет количества по категориям
+        cat_counts: Dict[str, int] = {}
+        for c in all_comps:
+            ctype = (c.get("type") or "other").strip().lower()
+            cat_counts[ctype] = cat_counts.get(ctype, 0) + 1
+
+        norm_cat = category.strip().lower()
+        if norm_cat != "all":
+            filtered = [c for c in all_comps if (c.get("type") or "other").strip().lower() == norm_cat]
+        else:
+            filtered = all_comps
+
+        total_items = len(filtered)
+        total_pages = max(1, (total_items + page_size - 1) // page_size)
+        if page > total_pages:
+            page = total_pages
+        if page < 1:
+            page = 1
+
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        page_items = filtered[start_idx:end_idx]
+
+        cat_titles = {
+            "all": "Все компоненты",
+            "gpu": "🎮 Видеокарты",
+            "cpu": "⚡️ Процессоры",
+            "ram": "🧠 ОЗУ / Память",
+            "ssd": "💾 SSD / Накопители",
+            "motherboard": "🔌 Материнские платы",
+            "psu": "🔋 Блоки питания",
+            "cooler": "❄️ Кулеры",
+            "case": "📦 Корпуса",
+            "other": "⚙️ Другое",
+        }
+        title = cat_titles.get(norm_cat, norm_cat.upper())
+
+        lines = [
+            f"📋 <b>База экспертных оценок Skyrex</b>",
+            f"Категория: <b>{title}</b> (Всего: <b>{total_items}</b>)",
+            f"<i>Страница {page} из {total_pages}</i>",
+            "──────────────────────────",
+            ""
+        ]
+
+        if not page_items:
+            lines.append("📭 <i>В этой категории пока нет добавленных комплектующих.</i>")
+        else:
+            for c in page_items:
+                c_icon = CATEGORY_ICONS.get(c.get("type", "other"), "⚙️")
+                c_price = f"{c.get('price', 0):,} ₽".replace(",", " ") if c.get('price') else "б/у цена не задана"
+                mark_stars = f"⭐️ <b>{c.get('mark', 'N/A')}/10</b>"
+                name_esc = html.escape(str(c.get("componentname") or "Без названия"))
+                lines.append(f"<b>#{c['id']}</b> {c_icon} <b>{name_esc}</b>")
+                lines.append(f"   {mark_stars} | 💰 <b>{c_price}</b>")
+                if c.get("comment"):
+                    lines.append(f"   💬 <i>«{html.escape(str(c['comment']))}»</i>")
+                if c.get("analogue"):
+                    lines.append(f"   🔄 <i>Аналоги: {html.escape(str(c['analogue']))}</i>")
+                lines.append("")
+
+        text = "\n".join(lines).strip()
+
+        # Клавиатура
+        keyboard_rows: List[List[Dict[str, str]]] = []
+
+        # Ряд 1: Быстрое удаление компонентов текущей страницы
+        if page_items:
+            del_row = []
+            for c in page_items:
+                del_row.append({
+                    "text": f"🗑 #{c['id']}",
+                    "callback_data": f"ldel:{c['id']}:{norm_cat}:{page}"
+                })
+                if len(del_row) == 5:
+                    keyboard_rows.append(del_row)
+                    del_row = []
+            if del_row:
+                keyboard_rows.append(del_row)
+
+        # Ряд 2: Пагинация
+        nav_row = []
+        if page > 1:
+            nav_row.append({"text": "⬅️ Назад", "callback_data": f"lst:{norm_cat}:{page - 1}"})
+        else:
+            nav_row.append({"text": "⏹ 1-я", "callback_data": "noop"})
+
+        nav_row.append({"text": f"• {page}/{total_pages} •", "callback_data": "noop"})
+
+        if page < total_pages:
+            nav_row.append({"text": "Вперед ➡️", "callback_data": f"lst:{norm_cat}:{page + 1}"})
+        else:
+            nav_row.append({"text": "⏹ Посл.", "callback_data": "noop"})
+
+        keyboard_rows.append(nav_row)
+
+        # Ряд 3: Кнопка "Все"
+        all_label = f"• Все ({len(all_comps)}) •" if norm_cat == "all" else f"Все ({len(all_comps)})"
+        keyboard_rows.append([{"text": all_label, "callback_data": "lst:all:1"}])
+
+        # Ряды 4-5: Категории (сетка по 3 в ряд)
+        cats = [
+            ("gpu", "🎮 GPU"),
+            ("cpu", "⚡️ CPU"),
+            ("ram", "🧠 RAM"),
+            ("ssd", "💾 SSD"),
+            ("psu", "🔋 БП"),
+            ("cooler", "❄️ Кулеры"),
+        ]
+        cat_row = []
+        for c_slug, c_name in cats:
+            c_cnt = cat_counts.get(c_slug, 0)
+            if norm_cat == c_slug:
+                label = f"• {c_name} ({c_cnt}) •"
+            else:
+                label = f"{c_name} ({c_cnt})"
+            cat_row.append({"text": label, "callback_data": f"lst:{c_slug}:1"})
+            if len(cat_row) == 3:
+                keyboard_rows.append(cat_row)
+                cat_row = []
+        if cat_row:
+            keyboard_rows.append(cat_row)
+
+        return text, {"inline_keyboard": keyboard_rows}
 
     async def answer_callback(self, callback_id: str, text: Optional[str] = None) -> Dict[str, Any]:
         data = {"callback_query_id": callback_id}
@@ -221,7 +354,7 @@ class TelegramAdminBot:
                 "• <b>Обучить нейросеть правилам диалога:</b>\n"
                 "  <i>«Запомни: в сборках до 60к предлагать только Deepcool PK550D или Montech Gamma, китайские БП запрещены»</i>\n\n"
                 "<b>📋 Доступные команды:</b>\n"
-                "/list — Последние 10 оценок в базе мнений\n"
+                "/list [категория] — Удобный каталог оценок с фильтрами и кнопками\n"
                 "/rules — Свод правил ИИ-консультанта\n"
                 "/del_rule &lt;ID&gt; — Удалить конкретное правило\n"
                 "/reset_rules — Восстановить все правила по умолчанию\n"
@@ -234,21 +367,28 @@ class TelegramAdminBot:
             await self.send_message(chat_id, welcome)
 
         elif cmd == "/list":
-            comps = get_expert_components(limit=10)
-            if not comps:
-                await self.send_message(chat_id, "📭 В базе мнений пока пусто. Напишите модель и оценку, чтобы добавить первую!")
-                return
-            lines = ["📋 <b>База мнений и экспертных оценок Skyrex:</b>\n"]
-            for component in comps:
-                icon = CATEGORY_ICONS.get(component.get("type", "other"), "⚙️")
-                price = f"{component.get('price', 0):,} ₽".replace(",", " ") if component.get('price') else "б/у ориентир не задан"
-                lines.append(
-                    f"<b>#{component['id']}</b> {icon} <b>{component['componentname']}</b>\n"
-                    f"   Оценка: ⭐️ <b>{component.get('mark', 'N/A')}/10</b> | Цена: {price}\n"
-                    f"   <i>Мнение: {component.get('comment') or 'без комментария'}</i>\n"
-                    f"   <i>Удалить: /del_comp {component['id']}</i>\n"
-                )
-            await self.send_message(chat_id, "\n".join(lines))
+            category = "all"
+            page = 1
+            alias_map = {
+                "видюхи": "gpu", "видеокарты": "gpu", "видеокарта": "gpu", "gpu": "gpu",
+                "процы": "cpu", "процессоры": "cpu", "процессор": "cpu", "cpu": "cpu",
+                "память": "ram", "озу": "ram", "ram": "ram",
+                "диски": "ssd", "накопители": "ssd", "ssd": "ssd",
+                "платы": "motherboard", "материнки": "motherboard", "motherboard": "motherboard", "mb": "motherboard",
+                "бп": "psu", "питание": "psu", "psu": "psu",
+                "кулеры": "cooler", "кулер": "cooler", "cooler": "cooler",
+                "все": "all", "all": "all"
+            }
+            if args:
+                for a in args:
+                    a_lower = a.lower()
+                    if a_lower.isdigit():
+                        page = int(a_lower)
+                    elif a_lower in alias_map:
+                        category = alias_map[a_lower]
+
+            text_msg, reply_markup = self.build_expert_list_view(category=category, page=page)
+            await self.send_message(chat_id, text_msg, reply_markup=reply_markup)
 
         elif cmd == "/rules":
             if args and args[0].lower() in ("prompt", "full"):
@@ -571,6 +711,59 @@ class TelegramAdminBot:
 
         if user_id not in self.admin_ids:
             await self.answer_callback(cb_id, "Доступ запрещен.")
+            return
+
+        if data == "noop":
+            await self.answer_callback(cb_id)
+            return
+
+        if data.startswith("lst:"):
+            parts = data.split(":")
+            category = parts[1]
+            page = int(parts[2])
+            text_msg, reply_markup = self.build_expert_list_view(category=category, page=page)
+            await self.edit_message(chat_id, message_id, text_msg, reply_markup=reply_markup)
+            await self.answer_callback(cb_id)
+            return
+
+        if data.startswith("ldel:"):
+            parts = data.split(":")
+            comp_id = int(parts[1])
+            category = parts[2]
+            page = int(parts[3])
+
+            confirm_kb = {
+                "inline_keyboard": [
+                    [
+                        {"text": f"⚠️ Да, удалить #{comp_id}", "callback_data": f"ldel_ok:{comp_id}:{category}:{page}"},
+                        {"text": "❌ Отмена", "callback_data": f"lst:{category}:{page}"}
+                    ]
+                ]
+            }
+            await self.edit_message(
+                chat_id,
+                message_id,
+                f"❓ <b>Подтверждение удаления</b>\n\n"
+                f"Вы действительно хотите удалить оценку комплектующего <b>#{comp_id}</b> из базы мнений?\n\n"
+                f"<i>ИИ перестанет учитывать эту оценку при подборе комплектующих на сайте.</i>",
+                reply_markup=confirm_kb
+            )
+            await self.answer_callback(cb_id)
+            return
+
+        if data.startswith("ldel_ok:"):
+            parts = data.split(":")
+            comp_id = int(parts[1])
+            category = parts[2]
+            page = int(parts[3])
+
+            if delete_expert_component(comp_id):
+                await self.answer_callback(cb_id, f"✅ Комплектующее #{comp_id} удалено")
+            else:
+                await self.answer_callback(cb_id, f"❌ Комплектующее #{comp_id} не найдено")
+
+            text_msg, reply_markup = self.build_expert_list_view(category=category, page=page)
+            await self.edit_message(chat_id, message_id, text_msg, reply_markup=reply_markup)
             return
 
         if data == "cancel_action":
