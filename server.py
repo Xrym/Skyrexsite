@@ -148,11 +148,12 @@ def detect_hardware_specs(product: dict) -> dict:
         specs["socket"] = "LGA 1151"
 
     # RAM Type
-    if "DDR5" in name:
+    name_upper = name.upper()
+    if "DDR5" in name_upper:
         specs["ram_type"] = "DDR5"
-    elif "DDR4" in name:
+    elif "DDR4" in name_upper:
         specs["ram_type"] = "DDR4"
-    elif "DDR3" in name:
+    elif "DDR3" in name_upper:
         specs["ram_type"] = "DDR3"
     elif specs["socket"] in ("AM5", "LGA 1851"):
         specs["ram_type"] = "DDR5"
@@ -225,29 +226,51 @@ def get_parsed_catalog_context(user_message: str) -> str:
     is_build_request = any(k in user_message.lower() for k in general_build_keywords)
     budget = extract_budget(user_message)
     
-    # If this is a build request with budget, filter out specific results that exceed 60% of total budget
+    # If this is a build request with budget, filter out specific results that exceed realistic GPU/core budget
     if budget and is_build_request:
-        specific_results = [p for p in specific_results if p.get('price', 0) <= int(budget * 0.60)]
+        specific_results = [p for p in specific_results if p.get('price', 0) <= int(budget * 0.70)]
 
     cat_items = []
     if is_build_request or budget or len(specific_results) < 5:
         with get_connection() as conn:
-            # Determine target allocations if budget is specified
-            max_gpu_price = int(budget * 0.55) if budget else 9999999
-            max_cpu_price = int(budget * 0.28) if budget else 9999999
-            max_mb_price = int(budget * 0.20) if budget else 9999999
-            max_ram_price = int(budget * 0.16) if budget else 9999999
-            max_ssd_price = int(budget * 0.14) if budget else 9999999
-            max_psu_price = int(budget * 0.12) if budget else 9999999
-            max_cooler_price = int(budget * 0.08) if budget else 9999999
+            # Dynamic platform baseline & residual budget allocation (no rigid percentage splits).
+            # With DDR5 32GB costing ~40 000 руб, DDR5 platform is viable starting from ~130 000 руб.
+            use_ddr5 = bool(budget and budget >= 130000)
 
+            # Baseline frame costs (actual market floors for quality essentials)
+            est_case_cost = 3000
+            est_cooler_cost = 2000 if (not budget or budget < 140000) else 4000
+            est_psu_cost = 6000 if (not budget or budget < 120000) else (9000 if budget < 180000 else 13000)
+            est_ssd_cost = 6500 if (not budget or budget < 120000) else (9500 if budget < 180000 else 14000)
+
+            if budget and budget < 50000:
+                est_ram_cost = 8000    # 16GB DDR4
+                est_mb_cost = 7500     # A520 / H610
+            elif not use_ddr5:
+                est_ram_cost = 16000 if (budget and budget >= 75000) else 8000  # 32GB or 16GB DDR4
+                est_mb_cost = 9500     # B550 / B760 DDR4
+            else:
+                est_ram_cost = 40000   # 32GB DDR5
+                est_mb_cost = 14500    # B650 / Z790 DDR5
+
+            frame_cost = est_case_cost + est_cooler_cost + est_psu_cost + est_ssd_cost + est_ram_cost + est_mb_cost
+
+            # Residual budget allocated directly to the performance core (GPU + CPU)
             if budget:
-                # Minimum ceilings so low budgets still find budget-tier parts in the catalog
-                max_mb_price = max(max_mb_price, 8500)
-                max_ram_price = max(max_ram_price, 12500)
-                max_ssd_price = max(max_ssd_price, 6500)
-                max_psu_price = max(max_psu_price, 6000)
-                max_cooler_price = max(max_cooler_price, 3500)
+                remaining_for_core = max(budget - frame_cost, 15000)
+                # In gaming PCs: GPU gets up to ~75-80% of core budget, CPU gets up to ~40-45%
+                max_gpu_price = max(int(remaining_for_core * 0.85), 15000)
+                max_cpu_price = max(int(remaining_for_core * 0.45), 8000)
+
+                # Headroom limits for components in catalog search queries (ensuring items are not prematurely filtered out)
+                max_ram_price = int(est_ram_cost * 1.35)
+                max_mb_price = int(est_mb_cost * 1.40)
+                max_psu_price = int(est_psu_cost * 1.35)
+                max_ssd_price = int(est_ssd_cost * 1.35)
+                max_cooler_price = int(est_cooler_cost * 1.50)
+            else:
+                max_gpu_price = max_cpu_price = max_mb_price = max_ram_price = 9999999
+                max_ssd_price = max_psu_price = max_cooler_price = 9999999
 
             # A. Select Candidate GPUs fitting budget (enriched & ranked by expert opinion, then price)
             raw_gpus = [dict(r) for r in conn.execute(
@@ -275,21 +298,23 @@ def get_parsed_catalog_context(user_message: str) -> str:
                         {"id": "ref_cpu_r5_3600", "shop": "Вторичный рынок (Авито)", "category": "cpu", "name": "Процессор AMD Ryzen 5 3600 (Socket AM4, 6 ядер / 12 потоков)", "price": 4000, "url": "https://www.avito.ru/all?q=Ryzen+5+3600"},
                         {"id": "ref_cpu_i3_12100f", "shop": "Вторичный рынок (Авито)", "category": "cpu", "name": "Процессор Intel Core i3-12100F (Socket LGA 1700, 4 ядра / 8 потоков)", "price": 4500, "url": "https://www.avito.ru/all?q=Core+i3-12100F"},
                     ]
-                elif budget and budget < 75000:
+                elif budget and budget < 95000:
                     raw_cpus = [
+                        {"id": "ref_cpu_i5_12400f", "shop": "Вторичный рынок / Маркетплейс", "category": "cpu", "name": "Процессор Intel Core i5-12400F (Socket LGA 1700, 6 ядер / 12 потоков)", "price": 9500, "url": "https://www.avito.ru/all?q=Core+i5-12400F"},
                         {"id": "ref_cpu_r5_5600", "shop": "Вторичный рынок / Маркетплейс", "category": "cpu", "name": "Процессор AMD Ryzen 5 5600 (Socket AM4, 6 ядер / 12 потоков)", "price": 8500, "url": "https://www.avito.ru/all?q=Ryzen+5+5600"},
                         {"id": "ref_cpu_i3_12100f", "shop": "Вторичный рынок (Авито)", "category": "cpu", "name": "Процессор Intel Core i3-12100F (Socket LGA 1700, 4 ядра / 8 потоков)", "price": 5000, "url": "https://www.avito.ru/all?q=Core+i3-12100F"},
-                        {"id": "ref_cpu_i5_12400f", "shop": "Вторичный рынок / Маркетплейс", "category": "cpu", "name": "Процессор Intel Core i5-12400F (Socket LGA 1700, 6 ядер / 12 потоков)", "price": 9500, "url": "https://www.avito.ru/all?q=Core+i5-12400F"},
                     ]
-                elif budget and budget < 130000:
+                elif budget and budget < 135000:
                     raw_cpus = [
-                        {"id": "ref_cpu_r5_7500f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 5 7500F (Socket AM5, 6 ядер / 12 потоков, DDR5)", "price": 13500, "url": "https://www.avito.ru/all?q=Ryzen+5+7500F"},
                         {"id": "ref_cpu_i5_13400f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор Intel Core i5-13400F (Socket LGA 1700, 10 ядер / 16 потоков)", "price": 16000, "url": "https://www.avito.ru/all?q=Core+i5-13400F"},
+                        {"id": "ref_cpu_r5_7500f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 5 7500F (Socket AM5, 6 ядер / 12 потоков, DDR5)", "price": 13500, "url": "https://www.avito.ru/all?q=Ryzen+5+7500F"},
+                        {"id": "ref_cpu_i5_12400f", "shop": "Вторичный рынок / Маркетплейс", "category": "cpu", "name": "Процессор Intel Core i5-12400F (Socket LGA 1700, 6 ядер / 12 потоков)", "price": 9500, "url": "https://www.avito.ru/all?q=Core+i5-12400F"},
                     ]
                 else:
                     raw_cpus = [
                         {"id": "ref_cpu_r7_7800x3d", "shop": "Маркетплейс", "category": "cpu", "name": "Процессор AMD Ryzen 7 7800X3D (Socket AM5, 8 ядер / 16 потоков, 3D V-Cache)", "price": 42000, "url": "https://www.avito.ru/all?q=Ryzen+7+7800X3D"},
                         {"id": "ref_cpu_i7_14700kf", "shop": "Маркетплейс", "category": "cpu", "name": "Процессор Intel Core i7-14700KF (Socket LGA 1700, 20 ядер / 28 потоков)", "price": 38000, "url": "https://www.avito.ru/all?q=Core+i7-14700KF"},
+                        {"id": "ref_cpu_r5_7500f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 5 7500F (Socket AM5, 6 ядер / 12 потоков, DDR5)", "price": 13500, "url": "https://www.avito.ru/all?q=Ryzen+5+7500F"},
                     ]
 
             selected_cpus = enrich_and_rank_products(raw_cpus, expert_components, limit=6)
@@ -321,8 +346,8 @@ def get_parsed_catalog_context(user_message: str) -> str:
             selected_mbs = []
             for target_socket in candidate_sockets:
                 socket_mbs = [m for m in compatible_mbs if m.get("detected_socket") == target_socket]
-                # If budget < 80000, prioritize DDR4 motherboards for LGA 1700 / AM4
-                if budget and budget < 80000 and target_socket in ("LGA 1700", "AM4"):
+                # If budget < 130000, prioritize DDR4 motherboards for LGA 1700 / AM4
+                if budget and budget < 130000 and target_socket in ("LGA 1700", "AM4"):
                     ddr4_mbs = [m for m in socket_mbs if m.get("detected_ram") == "DDR4"]
                     if ddr4_mbs:
                         selected_mbs.extend(enrich_and_rank_products(ddr4_mbs, expert_components, limit=3))
@@ -381,19 +406,26 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     "shop": "Вторичный рынок (Авито)",
                     "category": "ram",
                     "name": "Комплект 32 ГБ DDR4 (2x16 ГБ, 3200MHz)",
-                    "price": 14000,
+                    "price": 16000,
                     "url": "https://www.avito.ru/all?q=32Gb+DDR4+2x16"
-                }
-            ]
-            if not budget or budget >= 70000:
-                ref_rams.append({
+                },
+                {
+                    "id": "ref_ram_16gb_ddr5_used",
+                    "shop": "Вторичный рынок (Авито)",
+                    "category": "ram",
+                    "name": "Комплект 16 ГБ DDR5 (2x8 ГБ, 5600MHz)",
+                    "price": 22000,
+                    "url": "https://www.avito.ru/all?q=16Gb+DDR5+2x8"
+                },
+                {
                     "id": "ref_ram_32gb_ddr5_used",
-                    "shop": "Вторичный рынок / Каталог",
+                    "shop": "Вторичный рынок (Авито)",
                     "category": "ram",
                     "name": "Комплект 32 ГБ DDR5 (2x16 ГБ, 6000MHz)",
-                    "price": 18000,
+                    "price": 40000,
                     "url": "https://www.avito.ru/all?q=32Gb+DDR5+6000MHz"
-                })
+                }
+            ]
 
             valid_ref_rams = []
             for rr in ref_rams:
@@ -405,6 +437,10 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
             # Guaranteed reference RAM kits first, followed by best-value retail RAM
             combined_rams = valid_ref_rams + filtered_market_rams
+
+            # If budget < 130 000 руб and no DDR5 boards are required, strictly exclude DDR5
+            if budget and budget < 130000 and "DDR5" not in required_ram_types:
+                combined_rams = [r for r in combined_rams if r.get("detected_ram") != "DDR5"]
 
             # In ultra-low budget (< 35 000 руб), retail RAM >= 8000 руб is inappropriate
             if budget and budget < 35000:
