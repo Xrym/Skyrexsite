@@ -55,10 +55,11 @@ def main():
         print_header("ЭТАП 1: ВЫБОР МАГАЗИНА")
         print("  [1] Wildberries  --> Видеокарты, SSD, ОЗУ, Материнские платы")
         print("  [2] ОнлайнТрейд  --> Блоки питания, Кулеры и СЖО")
-        print("  [3] Все магазины --> Полный сбор по всем категориям")
+        print("  [3] Авито (Б/У)  --> Автообновление Б/У цен (GPU, CPU, RAM, MB, SSD, PSU)")
+        print("  [4] Все источники --> Полный сбор по магазинам и Авито")
         print("  [0] Выход")
         print()
-        shop_choice = ask_choice("Выберите магазин (1-3, 0)", ["1", "2", "3", "0"], "1")
+        shop_choice = ask_choice("Выберите источник (1-4, 0)", ["1", "2", "3", "4", "0"], "1")
         
         if shop_choice == "0":
             print("\nЗавершение работы.")
@@ -67,7 +68,8 @@ def main():
         shop_map = {
             "1": "wildberries",
             "2": "onlinetrade",
-            "3": "all"
+            "3": "avito",
+            "4": "all"
         }
         shop_val = shop_map[shop_choice]
 
@@ -109,9 +111,31 @@ def main():
             }
             cat_param, cat_desc = ot_cat_map[cat_choice]
 
+        elif shop_val == "avito":
+            print_header("ЭТАП 2: КОМПОНЕНТЫ АВИТО (Б/У)")
+            print("  [1] ВСЕ компоненты (GPU, CPU, RAM, MB, SSD, PSU)")
+            print("  [2] Только Видеокарты (GPU)")
+            print("  [3] Только Процессоры (CPU)")
+            print("  [4] Только Оперативная память (RAM)")
+            print("  [5] Только Материнские платы (Motherboard)")
+            print("  [6] Только SSD накопители (SSD)")
+            print("  [7] Только Блоки питания (PSU)")
+            print()
+            cat_choice = ask_choice("Выберите категорию (1-7)", ["1", "2", "3", "4", "5", "6", "7"], "1")
+            avito_cat_map = {
+                "1": ([], "Все компоненты Авито Б/У (GPU, CPU, RAM, MB, SSD, PSU)"),
+                "2": (["gpu"], "Видеокарты [GPU]"),
+                "3": (["cpu"], "Процессоры [CPU]"),
+                "4": (["ram"], "Оперативная память [RAM]"),
+                "5": (["motherboard"], "Материнские платы [Motherboard]"),
+                "6": (["ssd"], "SSD накопители [SSD]"),
+                "7": (["psu"], "Блоки питания [PSU]"),
+            }
+            cat_param, cat_desc = avito_cat_map[cat_choice]
+
         else: # all
             cat_param = []
-            cat_desc = "Все разрешенные категории (WB: GPU, SSD, RAM, MB | OT: PSU, Cooler)"
+            cat_desc = "Все разрешенные категории (WB, ОнлайнТрейд, Авито Б/У)"
 
         # 3. Глубина сбора
         print_header("ЭТАП 3: ГЛУБИНА СБОРА (СТРАНИЦ НА КАТЕГОРИЮ)")

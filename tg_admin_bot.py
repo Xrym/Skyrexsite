@@ -21,7 +21,8 @@ from db.database import (
     reset_ai_rules,
     reset_prompt_template,
     update_prompt_template,
-    get_stats
+    get_stats,
+    get_catalog_items
 )
 
 logger = logging.getLogger("skyrex_tg_bot")
@@ -67,6 +68,7 @@ class TelegramAdminBot:
         self.pending_actions: Dict[int, Dict[str, Any]] = {}
         self.user_drafts: Dict[int, Dict[str, Any]] = {}
         self.pending_prompt_edits: set[int] = set()
+        self.user_search: Dict[int, str] = {}
 
     async def start(self):
         """Starts long polling loop."""
@@ -146,35 +148,29 @@ class TelegramAdminBot:
             res = await self.api_request("editMessageText", data)
         return res
 
-    def build_expert_list_view(self, category: str = "all", page: int = 1, page_size: int = 5) -> tuple[str, Dict[str, Any]]:
-        """Формирует интерактивный текст и инлайн-клавиатуру каталога экспертных компонентов."""
-        all_comps = get_expert_components(limit=500)
+    def build_catalog_view(
+        self,
+        category: str = "all",
+        source: str = "all",
+        page: int = 1,
+        page_size: int = 5,
+        query: str = ""
+    ) -> tuple[str, Dict[str, Any]]:
+        """Формирует интерактивный текст и инлайн-клавиатуру единого каталога (Новые + Авито Б/У)."""
+        res = get_catalog_items(category=category, source=source, query=query, page=page, page_size=page_size)
+        items = res["items"]
+        total_items = res["total"]
+        curr_page = res["page"]
+        total_pages = res["total_pages"]
 
-        # Подсчет количества по категориям
-        cat_counts: Dict[str, int] = {}
-        for c in all_comps:
-            ctype = (c.get("type") or "other").strip().lower()
-            cat_counts[ctype] = cat_counts.get(ctype, 0) + 1
-
-        norm_cat = category.strip().lower()
-        if norm_cat != "all":
-            filtered = [c for c in all_comps if (c.get("type") or "other").strip().lower() == norm_cat]
-        else:
-            filtered = all_comps
-
-        total_items = len(filtered)
-        total_pages = max(1, (total_items + page_size - 1) // page_size)
-        if page > total_pages:
-            page = total_pages
-        if page < 1:
-            page = 1
-
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        page_items = filtered[start_idx:end_idx]
+        stats = get_stats()
+        by_shop = stats.get("by_shop", {})
+        total_all = stats.get("total_products", 0)
+        new_cnt = by_shop.get("Wildberries", 0) + by_shop.get("ОнлайнТрейд", 0)
+        used_cnt = by_shop.get("Авито (Б/У)", 0)
 
         cat_titles = {
-            "all": "Все компоненты",
+            "all": "Все категории",
             "gpu": "🎮 Видеокарты",
             "cpu": "⚡️ Процессоры",
             "ram": "🧠 ОЗУ / Память",
@@ -185,30 +181,48 @@ class TelegramAdminBot:
             "case": "📦 Корпуса",
             "other": "⚙️ Другое",
         }
-        title = cat_titles.get(norm_cat, norm_cat.upper())
+        source_titles = {
+            "all": f"Все ({total_all})",
+            "new": f"🛒 Новые ({new_cnt})",
+            "used": f"📦 Б/У Авито ({used_cnt})",
+        }
+
+        norm_cat = category.strip().lower()
+        cat_title = cat_titles.get(norm_cat, norm_cat.upper())
+        src_title = source_titles.get(source, source)
 
         lines = [
-            f"📋 <b>База экспертных оценок Skyrex</b>",
-            f"Категория: <b>{title}</b> (Всего: <b>{total_items}</b>)",
-            f"<i>Страница {page} из {total_pages}</i>",
+            "🛒 <b>Единый каталог комплектующих Skyrex</b>",
+            f"Категория: <b>{cat_title}</b> | Фильтр: <b>{src_title}</b>",
+        ]
+        if query:
+            lines.append(f"🔍 Поиск: «<b>{html.escape(query)}</b>» (/search для нового поиска)")
+        lines.extend([
+            f"<i>Страница {curr_page} из {total_pages} (Найдено: <b>{total_items}</b>)</i>",
             "──────────────────────────",
             ""
-        ]
+        ])
 
-        if not page_items:
-            lines.append("📭 <i>В этой категории пока нет добавленных комплектующих.</i>")
+        if not items:
+            lines.append("📭 <i>По выбранным критериям комплектующие не найдены.</i>")
         else:
-            for c in page_items:
-                c_icon = CATEGORY_ICONS.get(c.get("type", "other"), "⚙️")
-                c_price = f"{c.get('price', 0):,} ₽".replace(",", " ") if c.get('price') else "б/у цена не задана"
-                mark_stars = f"⭐️ <b>{c.get('mark', 'N/A')}/10</b>"
-                name_esc = html.escape(str(c.get("componentname") or "Без названия"))
-                lines.append(f"<b>#{c['id']}</b> {c_icon} <b>{name_esc}</b>")
-                lines.append(f"   {mark_stars} | 💰 <b>{c_price}</b>")
-                if c.get("comment"):
-                    lines.append(f"   💬 <i>«{html.escape(str(c['comment']))}»</i>")
-                if c.get("analogue"):
-                    lines.append(f"   🔄 <i>Аналоги: {html.escape(str(c['analogue']))}</i>")
+            for item in items:
+                icon = CATEGORY_ICONS.get(item.get("category", "other"), "⚙️")
+                name_esc = html.escape(str(item.get("name") or "Без названия"))
+                price_str = f"{item['price']:,} ₽".replace(",", " ")
+                shop = item.get("shop", "")
+                if "Авито" in shop:
+                    shop_badge = "📦 <b>Авито (Б/У)</b>"
+                elif "Wildberries" in shop:
+                    shop_badge = "🟣 <b>Wildberries (Новый)</b>"
+                else:
+                    shop_badge = "🛒 <b>ОнлайнТрейд (Новый)</b>"
+                url = item.get("url", "")
+
+                lines.append(f"{icon} <b>{name_esc}</b>")
+                lines.append(f"   💰 <b>{price_str}</b> | {shop_badge}")
+                if url:
+                    lines.append(f"   🔗 <a href='{url}'>Перейти к товару ↗️</a>")
                 lines.append("")
 
         text = "\n".join(lines).strip()
@@ -216,64 +230,60 @@ class TelegramAdminBot:
         # Клавиатура
         keyboard_rows: List[List[Dict[str, str]]] = []
 
-        # Ряд 1: Быстрое удаление компонентов текущей страницы
-        if page_items:
-            del_row = []
-            for c in page_items:
-                del_row.append({
-                    "text": f"🗑 #{c['id']}",
-                    "callback_data": f"ldel:{c['id']}:{norm_cat}:{page}"
-                })
-                if len(del_row) == 5:
-                    keyboard_rows.append(del_row)
-                    del_row = []
-            if del_row:
-                keyboard_rows.append(del_row)
+        # Ряд 1: Фильтр по источникам (Все / Новые / Б/У)
+        src_row = []
+        for s_key, s_label in [("all", "Все"), ("new", "🛒 Новые"), ("used", "📦 Б/У Авито")]:
+            active = "• " if source == s_key else ""
+            src_row.append({
+                "text": f"{active}{s_label}{' •' if active else ''}",
+                "callback_data": f"cat:{norm_cat}:{s_key}:1"
+            })
+        keyboard_rows.append(src_row)
 
-        # Ряд 2: Пагинация
-        nav_row = []
-        if page > 1:
-            nav_row.append({"text": "⬅️ Назад", "callback_data": f"lst:{norm_cat}:{page - 1}"})
-        else:
-            nav_row.append({"text": "⏹ 1-я", "callback_data": "noop"})
-
-        nav_row.append({"text": f"• {page}/{total_pages} •", "callback_data": "noop"})
-
-        if page < total_pages:
-            nav_row.append({"text": "Вперед ➡️", "callback_data": f"lst:{norm_cat}:{page + 1}"})
-        else:
-            nav_row.append({"text": "⏹ Посл.", "callback_data": "noop"})
-
-        keyboard_rows.append(nav_row)
-
-        # Ряд 3: Кнопка "Все"
-        all_label = f"• Все ({len(all_comps)}) •" if norm_cat == "all" else f"Все ({len(all_comps)})"
-        keyboard_rows.append([{"text": all_label, "callback_data": "lst:all:1"}])
-
-        # Ряды 4-5: Категории (сетка по 3 в ряд)
+        # Ряды 2-4: Категории (сетка по 3 в ряд)
         cats = [
             ("gpu", "🎮 GPU"),
             ("cpu", "⚡️ CPU"),
             ("ram", "🧠 RAM"),
+            ("motherboard", "🔌 Платы"),
             ("ssd", "💾 SSD"),
             ("psu", "🔋 БП"),
             ("cooler", "❄️ Кулеры"),
+            ("all", "📋 Все"),
         ]
         cat_row = []
         for c_slug, c_name in cats:
-            c_cnt = cat_counts.get(c_slug, 0)
-            if norm_cat == c_slug:
-                label = f"• {c_name} ({c_cnt}) •"
-            else:
-                label = f"{c_name} ({c_cnt})"
-            cat_row.append({"text": label, "callback_data": f"lst:{c_slug}:1"})
+            active = "• " if norm_cat == c_slug else ""
+            cat_row.append({
+                "text": f"{active}{c_name}{' •' if active else ''}",
+                "callback_data": f"cat:{c_slug}:{source}:1"
+            })
             if len(cat_row) == 3:
                 keyboard_rows.append(cat_row)
                 cat_row = []
         if cat_row:
             keyboard_rows.append(cat_row)
 
+        # Ряд 5: Пагинация
+        nav_row = []
+        if curr_page > 1:
+            nav_row.append({"text": "⬅️ Назад", "callback_data": f"cat:{norm_cat}:{source}:{curr_page - 1}"})
+        else:
+            nav_row.append({"text": "⏹ 1-я", "callback_data": "noop"})
+
+        nav_row.append({"text": f"• {curr_page}/{total_pages} •", "callback_data": "noop"})
+
+        if curr_page < total_pages:
+            nav_row.append({"text": "Вперед ➡️", "callback_data": f"cat:{norm_cat}:{source}:{curr_page + 1}"})
+        else:
+            nav_row.append({"text": "⏹ Посл.", "callback_data": "noop"})
+        keyboard_rows.append(nav_row)
+
         return text, {"inline_keyboard": keyboard_rows}
+
+    def build_expert_list_view(self, category: str = "all", page: int = 1, page_size: int = 5) -> tuple[str, Dict[str, Any]]:
+        """Bridge for backwards-compatibility: redirects to unified catalog view."""
+        return self.build_catalog_view(category=category, source="all", page=page, page_size=page_size)
 
     async def answer_callback(self, callback_id: str, text: Optional[str] = None) -> Dict[str, Any]:
         data = {"callback_query_id": callback_id}
@@ -345,28 +355,23 @@ class TelegramAdminBot:
         if cmd in ("/start", "/help"):
             welcome = (
                 "👋 <b>Панель управления Skyrex Computers</b>\n\n"
-                "Я помогаю вести <b>Базу мнений и оценок эксперта</b> и обучать ИИ-консультанта на сайте <b>skyrex.pro</b>.\n\n"
-                "<b>💡 Как использовать:</b>\n"
-                "• <b>Оценка или мнение о модели (применяется ко ВСЕМ вендорам и новым/б-у товарам):</b>\n"
-                "  <i>«RTX 4060 оценка 9 отличная энергоэффективная карта для FullHD»</i>\n"
-                "  <i>«MSI Ventus 2X оценка 5 очень шумная и горячая»</i>\n"
-                "  <i>«Ryzen 5 7500F оценка 10 топ за свои деньги, лучший проц для игр»</i>\n\n"
-                "• <b>Обучить нейросеть правилам диалога:</b>\n"
-                "  <i>«Запомни: в сборках до 60к предлагать только Deepcool PK550D или Montech Gamma, китайские БП запрещены»</i>\n\n"
+                "Я предоставляю доступ к <b>единому каталогу комплектующих</b> (Wildberries, ОнлайнТрейд, Авито Б/У) и обучающим правилам ИИ-консультанта на <b>skyrex.pro</b>.\n\n"
                 "<b>📋 Доступные команды:</b>\n"
-                "/list [категория] — Удобный каталог оценок с фильтрами и кнопками\n"
-                "/rules — Свод правил ИИ-консультанта\n"
-                "/del_rule &lt;ID&gt; — Удалить конкретное правило\n"
-                "/reset_rules — Восстановить все правила по умолчанию\n"
-                "/prompt — Базовый системный промпт консультанта\n"
-                "/add_prompt — Заменить системный промпт\n"
-                "/del_prompt — Сбросить системный промпт к исходному\n"
-                "/stats — Общая статистика каталога и базы\n"
-                "/del_comp &lt;ID&gt; — Удалить оценку комплектующего"
+                "• /catalog (или /list) — Интерактивный каталог всех товаров с фильтрами по категориям (GPU, CPU, RAM...) и источникам (Новые / Авито Б/У)\n"
+                "• /search &lt;модель&gt; — Быстрый поиск любого комплектующего по каталогу\n"
+                "• /rules — Свод правил ИИ-консультанта\n"
+                "• /del_rule &lt;ID&gt; — Удалить конкретное правило\n"
+                "• /reset_rules — Восстановить эталонные правила по умолчанию\n"
+                "• /prompt — Базовый системный промпт консультанта\n"
+                "• /stats — Общая статистика каталога и базы\n\n"
+                "<b>💡 Обучение ИИ новым правилам:</b>\n"
+                "Отправьте текстом любое обучающее правило, например:\n"
+                "<i>«В сборках до 60к предлагать только DeepCool PK550D или Montech Gamma, китайские БП запрещены»</i>"
             )
             await self.send_message(chat_id, welcome)
 
-        elif cmd == "/list":
+        elif cmd in ("/catalog", "/list"):
+            self.user_search[chat_id] = ""  # reset search query
             category = "all"
             page = 1
             alias_map = {
@@ -387,7 +392,25 @@ class TelegramAdminBot:
                     elif a_lower in alias_map:
                         category = alias_map[a_lower]
 
-            text_msg, reply_markup = self.build_expert_list_view(category=category, page=page)
+            text_msg, reply_markup = self.build_catalog_view(category=category, source="all", page=page)
+            await self.send_message(chat_id, text_msg, reply_markup=reply_markup)
+
+        elif cmd in ("/search", "/find"):
+            if not args:
+                await self.send_message(
+                    chat_id,
+                    "🔍 <b>Поиск по единому каталогу товаров:</b>\n"
+                    "Использование: <code>/search &lt;модель&gt;</code>\n"
+                    "Примеры:\n"
+                    "• <code>/search 4060</code>\n"
+                    "• <code>/search ryzen 7500</code>\n"
+                    "• <code>/search ddr5</code>\n"
+                    "• <code>/search deepcool</code>"
+                )
+                return
+            search_query = " ".join(args).strip()
+            self.user_search[chat_id] = search_query
+            text_msg, reply_markup = self.build_catalog_view(category="all", source="all", page=1, query=search_query)
             await self.send_message(chat_id, text_msg, reply_markup=reply_markup)
 
         elif cmd == "/rules":
@@ -504,12 +527,16 @@ class TelegramAdminBot:
 
         elif cmd == "/stats":
             stats = get_stats()
+            by_shop = stats.get("by_shop", {})
             msg = (
-                "📊 <b>Статистика Skyrex Computers:</b>\n\n"
+                "📊 <b>Статистика единой базы Skyrex Computers:</b>\n\n"
                 f"• 🌐 <b>Сайт:</b> https://skyrex.pro/\n"
-                f"• 🛒 <b>Товаров в каталоге ОнлайнТрейд:</b> {stats.get('total_products', 0):,}\n"
-                f"• 📦 <b>Экспертных комплектующих:</b> {stats.get('expert_components_count', 0)}\n"
-                f"• 🧠 <b>Правил обучения ИИ:</b> {stats.get('ai_rules_count', 0)}\n"
+                f"• 📦 <b>Всего товаров в каталоге:</b> {stats.get('total_products', 0):,}\n"
+                f"  ├ 🛒 ОнлайнТрейд (Новые): {by_shop.get('ОнлайнТрейд', 0)}\n"
+                f"  ├ 🟣 Wildberries (Новые): {by_shop.get('Wildberries', 0)}\n"
+                f"  └ 📦 Авито (Б/У рынок): {by_shop.get('Авито (Б/У)', 0)}\n\n"
+                f"• 🧠 <b>Обучающих правил ИИ:</b> {stats.get('ai_rules_count', 0)}\n"
+                f"• 🏷 <b>Рыночных ориентиров цен:</b> {stats.get('expert_components_count', 0)}\n"
             )
             await self.send_message(chat_id, msg)
 
@@ -717,11 +744,22 @@ class TelegramAdminBot:
             await self.answer_callback(cb_id)
             return
 
+        if data.startswith("cat:"):
+            parts = data.split(":")
+            category = parts[1]
+            source = parts[2]
+            page = int(parts[3])
+            query = self.user_search.get(chat_id, "")
+            text_msg, reply_markup = self.build_catalog_view(category=category, source=source, page=page, query=query)
+            await self.edit_message(chat_id, message_id, text_msg, reply_markup=reply_markup)
+            await self.answer_callback(cb_id)
+            return
+
         if data.startswith("lst:"):
             parts = data.split(":")
             category = parts[1]
             page = int(parts[2])
-            text_msg, reply_markup = self.build_expert_list_view(category=category, page=page)
+            text_msg, reply_markup = self.build_catalog_view(category=category, source="all", page=page)
             await self.edit_message(chat_id, message_id, text_msg, reply_markup=reply_markup)
             await self.answer_callback(cb_id)
             return

@@ -213,46 +213,36 @@ def match_expert_assessment(
 
 def enrich_and_rank_products(
     products: List[Dict[str, Any]],
-    expert_components: List[Dict[str, Any]],
+    expert_components: Optional[List[Dict[str, Any]]] = None,
     limit: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """
-    Enriches scraped products with expert marks & comments, and sorts them:
-    1. Highest expert mark first (10 -> 8 -> 7...)
-    2. Sub-sorted by price within budget
-    3. Items with mark <= 5 are placed at the end or filtered for recommendations.
+    Enriches scraped products with hardware specs and ranks them:
+    1. Sorts products by price descending to prioritize maximum hardware capability within budget.
+    2. Limits to requested item count without artificial or subjective score filtering.
     """
+    if not products:
+        return []
+
     enriched = []
     for p in products:
         item = dict(p)
-        assessment = match_expert_assessment(item["name"], item.get("category", ""), expert_components)
+        assessment = match_expert_assessment(item["name"], item.get("category", ""), expert_components) if expert_components else None
         if assessment:
-            item["expert_mark"] = assessment["mark"]
-            item["expert_comment"] = assessment["comment"]
-            item["expert_name"] = assessment["expert_name"]
-            item["expert_match"] = assessment["match_type"]
+            item["expert_mark"] = assessment.get("mark")
+            item["expert_comment"] = assessment.get("comment", "")
+            item["expert_name"] = assessment.get("expert_name")
+            item["expert_match"] = assessment.get("match_type")
         else:
-            # Default fallback neutral score
-            item["expert_mark"] = item.get("mark") if item.get("mark") is not None else 7
-            item["expert_comment"] = item.get("comment") or ""
+            item["expert_mark"] = None
+            item["expert_comment"] = ""
             item["expert_name"] = None
             item["expert_match"] = None
         enriched.append(item)
 
-    # Separate recommended / acceptable (mark >= 6) from rejected/criticized (mark <= 5)
-    recommended = [p for p in enriched if p["expert_mark"] >= 6]
-    # Primary sort: highest mark first, then highest price (for budget tier utilization)
-    recommended.sort(key=lambda x: (x["expert_mark"], x.get("price", 0)), reverse=True)
+    # Sort by price descending to present best tier options for the budget category
+    enriched.sort(key=lambda x: x.get("price", 0), reverse=True)
 
-    rejected = [p for p in enriched if p["expert_mark"] <= 5]
-    rejected.sort(key=lambda x: (x["expert_mark"], x.get("price", 0)), reverse=True)
-
-    result = recommended
     if limit is not None:
-        result = recommended[:limit]
-        if len(result) < limit and rejected:
-            result.extend(rejected[:limit - len(result)])
-    else:
-        result.extend(rejected)
-
-    return result
+        return enriched[:limit]
+    return enriched

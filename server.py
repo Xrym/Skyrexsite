@@ -538,33 +538,9 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 spec_tags.append(f"Мощность: {specs['psu_watts']}W")
             tag_str = f" [{ ' | '.join(spec_tags) }]" if spec_tags else ""
 
-            rating_str = ""
-            if p.get("expert_mark") is not None:
-                m_val = p["expert_mark"]
-                c_txt = (p.get("expert_comment") or "").strip()
-                e_name = p.get("expert_name") or ""
-                m_type = p.get("expert_match") or ""
-                if m_val >= 8:
-                    badge = f"⭐️ Топ-оценка эксперта: {m_val}/10"
-                elif m_val >= 6:
-                    badge = f"✅ Одобрено экспертом: {m_val}/10"
-                else:
-                    badge = f"⛔️ НИЗКАЯ ОЦЕНКА ЭКСПЕРТА: {m_val}/10 (НЕ РЕКОМЕНДУЕТСЯ)"
-
-                extra = []
-                if c_txt:
-                    extra.append(f"Вердикт: \"{c_txt}\"")
-                if e_name and m_type == "family":
-                    extra.append(f"правило для всей серии {e_name}")
-                elif e_name and m_type == "edition":
-                    extra.append(f"точное совпадение издания {e_name}")
-
-                sub_info = f" | {' | '.join(extra)}" if extra else ""
-                rating_str = f" [{badge}{sub_info}]"
-
             price_str = f"{p['price']:,} руб".replace(",", " ")
             old_str = f" (старая цена: {p['old_price']:,} руб)".replace(",", " ") if p.get('old_price') else ""
-            context_parts.append(f"- [{p.get('shop', 'ОнлайнТрейд')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}{rating_str}. Ссылка: {p['url']}")
+            context_parts.append(f"- [{p.get('shop', 'ОнлайнТрейд')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {p['url']}")
 
     return "\n".join(context_parts)
 
@@ -675,7 +651,7 @@ def build_system_instruction(dynamic_context=""):
             rule_text = r.get("rule_text", "").strip()
             rules_text += f"Правило #{rule_id} [{title}]:\n{rule_text}\n\n"
 
-    catalog_text = "=== БАЗА МНЕНИЙ, ОЦЕНОК И РЕКОМЕНДАЦИЙ ЭКСПЕРТА SKYREX ===\n\n"
+    catalog_text = "=== МЕДИАННЫЕ РЫНОЧНЫЕ ЦЕНЫ КОМПЛЕКТУЮЩИХ (АВИТО Б/У) ===\n\n"
     for component in components:
         comp_name = component.get('componentname', 'Без названия')
         avito_query = urllib.parse.quote_plus(comp_name)
@@ -685,17 +661,10 @@ def build_system_instruction(dynamic_context=""):
             f"({component.get('type', 'other').upper()}). "
         )
         if component.get('price'):
-            catalog_text += f"Ориентир цены: {component['price']} руб. "
+            catalog_text += f"Медианная рыночная цена: {component['price']} руб. "
         if component.get("minprice"):
             catalog_text += f"(Минимальная цена: {component['minprice']} руб). "
-        catalog_text += f"Экспертная оценка: {component.get('mark', 'N/A')}/10. "
-        catalog_text += f"Ссылка на поиск Авито: {avito_url}. "
-        comment = component.get("comment", "").replace("\n", " ")
-        if comment:
-            catalog_text += f"Вердикт/мнение эксперта: {comment} "
-        analogue = component.get("analogue", "").replace("\n", " ")
-        if analogue:
-            catalog_text += f"Рекомендуемые аналоги: {analogue}"
+        catalog_text += f"Ссылка на поиск Авито: {avito_url}."
         catalog_text += "\n"
 
     catalog_text += "\nГОТОВЫЕ ОПТИМИЗИРОВАННЫЕ СБОРКИ ПК (Б/У):\n"

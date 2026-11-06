@@ -17,6 +17,7 @@ chmod +x /var/www/skyrex/update.sh 2>/dev/null || true
 
 echo "[4/4] Restarting skyrex systemd service..."
 systemctl restart skyrex
+systemctl restart skyrex-tg-bot 2>/dev/null || true
 
 echo ""
 echo "[✓] Skyrex successfully updated and restarted!"

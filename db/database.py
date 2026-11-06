@@ -697,3 +697,65 @@ def get_stats() -> Dict[str, Any]:
             "expert_components_count": expert_count,
             "ai_rules_count": rules_count
         }
+
+
+def get_catalog_items(
+    category: str = "all",
+    source: str = "all",
+    query: str = "",
+    page: int = 1,
+    page_size: int = 5
+) -> Dict[str, Any]:
+    """Returns paginated items from unified products table with category, source, and search filters."""
+    init_db()
+    with get_connection() as conn:
+        conditions = []
+        params = []
+        if category and category != "all":
+            conditions.append("category = ?")
+            params.append(category.lower())
+        if source == "new":
+            conditions.append("shop NOT LIKE '%Авито%'")
+        elif source == "used":
+            conditions.append("shop LIKE '%Авито%'")
+        if query and query.strip():
+            conditions.append("(name LIKE ? OR category LIKE ?)")
+            q_clean = f"%{query.strip()}%"
+            params.extend([q_clean, q_clean])
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        count_sql = f"SELECT COUNT(*) FROM products {where_clause}"
+        total = conn.execute(count_sql, params).fetchone()[0]
+
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        curr_page = max(1, min(page, total_pages))
+        offset = (curr_page - 1) * page_size
+
+        items_sql = f"""
+            SELECT id, shop, name, category, price, old_price, available, url 
+            FROM products 
+            {where_clause} 
+            ORDER BY price ASC 
+            LIMIT ? OFFSET ?
+        """
+        rows = conn.execute(items_sql, params + [page_size, offset]).fetchall()
+        items = [
+            {
+                "id": r[0],
+                "shop": r[1],
+                "name": r[2],
+                "category": r[3],
+                "price": r[4],
+                "old_price": r[5],
+                "available": r[6],
+                "url": r[7],
+            }
+            for r in rows
+        ]
+        return {
+            "total": total,
+            "page": curr_page,
+            "total_pages": total_pages,
+            "items": items,
+        }
+

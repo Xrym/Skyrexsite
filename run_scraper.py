@@ -12,15 +12,16 @@ if sys.platform == "win32":
 
 from scraper.onlinetrade_worker import OnlineTradeScraper
 from scraper.wildberries_worker import WildberriesScraper
+from scraper.avito_worker import AvitoScraper
 from db.database import get_stats
 
 def main():
     parser = argparse.ArgumentParser(description="Skyrex PC Parts Price Updater")
     parser.add_argument(
         "--shop",
-        choices=["onlinetrade", "wildberries", "all"],
+        choices=["onlinetrade", "wildberries", "avito", "all"],
         default="wildberries",
-        help="Магазин для обновления цен: onlinetrade, wildberries, all (по умолчанию: wildberries)",
+        help="Магазин для обновления цен: onlinetrade, wildberries, avito, all (по умолчанию: wildberries)",
     )
     parser.add_argument("--pages", type=int, default=1, help="Количество страниц на категорию (по умолчанию: 1)")
     parser.add_argument("--cat", nargs="+", help="Список категорий: gpu cpu motherboard ram ssd psu cooler")
@@ -56,7 +57,7 @@ def main():
     export_path = args.export_excel or args.export_json or args.export_csv
     export_fmt = "xlsx" if args.export_excel else ("json" if args.export_json else ("csv" if args.export_csv else None))
 
-    shops = ["wildberries", "onlinetrade"] if args.shop == "all" else [args.shop]
+    shops = ["wildberries", "onlinetrade", "avito"] if args.shop == "all" else [args.shop]
     for shop in shops:
         print(f"\n===> Обновление цен: {shop}...")
         if shop == "wildberries":
@@ -75,6 +76,12 @@ def main():
         elif shop == "onlinetrade":
             scraper = OnlineTradeScraper(headless=args.headless)
             scraper.run_scrape_cycle(categories=args.cat, max_pages=args.pages)
+        elif shop == "avito":
+            scraper = AvitoScraper(
+                headless=args.headless,
+                proxy=args.proxy
+            )
+            scraper.run_scrape_cycle(categories=args.cat)
 
     print("\n" + "=" * 60)
     print("[*] АКТУАЛЬНОЕ СОСТОЯНИЕ БАЗЫ ДАННЫХ CATALOG.DB:")
