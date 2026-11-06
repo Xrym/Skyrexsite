@@ -53,3 +53,4 @@ for chip, prices in sorted(grouped.items()):
         print(f"{chip.upper()}: median {med:,} руб (count: {len(prices)}, min: {min(prices):,}, max: {max(prices):,})")
 
 con.close()
+

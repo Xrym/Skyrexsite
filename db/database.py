@@ -466,6 +466,42 @@ def init_expert_tables():
                 len(DEFAULT_AI_RULES),
             )
 
+        autonomous_migration = "migrate_to_avito_medians_and_autonomous_evaluation_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (autonomous_migration,),
+        ).fetchone():
+            cursor.execute(
+                """
+                UPDATE prompt_templates
+                SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = 'assistant_system'
+                """,
+                (DEFAULT_PROMPTS["assistant_system"],),
+            )
+            cursor.execute("DELETE FROM ai_rules")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'ai_rules'")
+            for rule in DEFAULT_AI_RULES:
+                cursor.execute(
+                    """
+                    INSERT INTO ai_rules (title, rule_text, is_active, created_by)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (rule["title"], rule["rule_text"], 1, "system"),
+                )
+            cursor.execute("""
+                UPDATE expert_components
+                SET mark = NULL,
+                    comment = 'Медианный рыночный ориентир цен (Авито Б/У)',
+                    analogue = '',
+                    updated_at = CURRENT_TIMESTAMP
+            """)
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (autonomous_migration,),
+            )
+            logger.info("Applied migration: migrate_to_avito_medians_and_autonomous_evaluation_v1")
+
         conn.commit()
 
 def _normalized_expert_component_name(component_type: str, component_name: str) -> str:

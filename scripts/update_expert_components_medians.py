@@ -128,3 +128,4 @@ for row_id, ctype, cname, old_price, old_mark, old_comment in rows:
 con.commit()
 print("All expert_components updated successfully!")
 con.close()
+
