@@ -241,6 +241,12 @@ class OnlineTradeScraper:
             elif category_key == "psu":
                 if "bloki_pitaniya" not in url_l:
                     continue
+                # Whitelist: Powercase PW, DeepCool GAMERSTORM PF (>=600W), 1STPLAYER NGDP (<=1000W)
+                is_pw = "powercase" in name_l and bool(re.search(r'\bpw[- ]?\d{3}', name_l))
+                is_pf = ("gamerstorm" in name_l or "deepcool" in name_l) and bool(re.search(r'\bpf[- ]?(?:600|650|700|750|800|850)', name_l))
+                is_ngdp = "1stplayer" in name_l and "ngdp" in name_l and "1200" not in name_l
+                if not (is_pw or is_pf or is_ngdp):
+                    continue
 
             products.append({
                 "id": itm["id"],
@@ -288,6 +294,12 @@ class OnlineTradeScraper:
                         continue
                 elif category_key == "psu":
                     if "bloki_pitaniya" not in url_l:
+                        continue
+                    # Whitelist: Powercase PW, DeepCool GAMERSTORM PF (>=600W), 1STPLAYER NGDP (<=1000W)
+                    is_pw = "powercase" in name_l and bool(re.search(r'\bpw[- ]?\d{3}', name_l))
+                    is_pf = ("gamerstorm" in name_l or "deepcool" in name_l) and bool(re.search(r'\bpf[- ]?(?:600|650|700|750|800|850)', name_l))
+                    is_ngdp = "1stplayer" in name_l and "ngdp" in name_l and "1200" not in name_l
+                    if not (is_pw or is_pf or is_ngdp):
                         continue
 
                 products.append({

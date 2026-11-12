@@ -42,3 +42,4 @@ def check(db_path='catalog.db'):
 
 if __name__ == '__main__':
     check()
+

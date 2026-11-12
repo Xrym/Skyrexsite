@@ -90,6 +90,17 @@ def init_db():
         cursor.execute(f"DELETE FROM products_fts WHERE id IN (SELECT id FROM products WHERE {cpu_bundle_filter});")
         cursor.execute(f"DELETE FROM products WHERE {cpu_bundle_filter};")
 
+        # 6. Automatic purge of unapproved PSUs (keep only Powercase PW, GamerStorm PF >=600W, 1STPLAYER NGDP <=1000W)
+        psu_junk_filter = """
+            category = 'psu' AND NOT (
+                (name LIKE '%Powercase%' AND (name LIKE '%PW500%' OR name LIKE '%PW600%' OR name LIKE '%PW700%' OR name LIKE '%PW 500%' OR name LIKE '%PW 600%' OR name LIKE '%PW 700%' OR name LIKE '%PW-500%' OR name LIKE '%PW-600%' OR name LIKE '%PW-700%'))
+                OR ((name LIKE '%GAMERSTORM%' OR name LIKE '%Deepcool%' OR name LIKE '%DeepCool%') AND (name LIKE '%PF600%' OR name LIKE '%PF650%' OR name LIKE '%PF700%' OR name LIKE '%PF750%' OR name LIKE '%PF800%' OR name LIKE '%PF850%' OR name LIKE '%PF 600%' OR name LIKE '%PF 650%' OR name LIKE '%PF 700%' OR name LIKE '%PF 750%' OR name LIKE '%PF 800%' OR name LIKE '%PF 850%'))
+                OR (name LIKE '%1STPLAYER%' AND name LIKE '%NGDP%' AND name NOT LIKE '%1200%')
+            )
+        """
+        cursor.execute(f"DELETE FROM products_fts WHERE id IN (SELECT id FROM products WHERE {psu_junk_filter});")
+        cursor.execute(f"DELETE FROM products WHERE {psu_junk_filter};")
+
         conn.commit()
     logger.info(f"Database initialized at {DB_PATH}")
 
@@ -123,6 +134,14 @@ def upsert_products(products: List[Dict[str, Any]]):
                     "+", "32gb", "16gb", "ddr5", "ddr4"
                 ]
                 if any(bad in name_l for bad in cpu_bad):
+                    continue
+
+            # Strict guard for PSUs: only Powercase PW, GamerStorm PF (>=600W), 1STPLAYER NGDP (<=1000W)
+            if cat == "psu":
+                is_pw = "powercase" in name_l and bool(re.search(r'\bpw[- ]?\d{3}', name_l))
+                is_pf = ("gamerstorm" in name_l or "deepcool" in name_l) and bool(re.search(r'\bpf[- ]?(?:600|650|700|750|800|850)', name_l))
+                is_ngdp = "1stplayer" in name_l and "ngdp" in name_l and "1200" not in name_l
+                if not (is_pw or is_pf or is_ngdp):
                     continue
 
             p_data = {
@@ -811,6 +830,12 @@ def get_catalog_items(
                 conditions.append("url NOT LIKE '%zvukovye_karty%' AND name NOT LIKE '%звуков%' AND url NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' AND name NOT LIKE '%radeon%'")
             elif category.lower() == "cpu":
                 conditions.append("(name NOT LIKE '%комплект%' AND name NOT LIKE '%komplekt%' AND name NOT LIKE '%материн%' AND name NOT LIKE '%плата%' AND name NOT LIKE '%plata%' AND name NOT LIKE '%motherboard%' AND name NOT LIKE '%b450%' AND name NOT LIKE '%b550%' AND name NOT LIKE '%b650%' AND name NOT LIKE '%b760%' AND name NOT LIKE '%b850%' AND name NOT LIKE '%h610%' AND name NOT LIKE '%a620%' AND name NOT LIKE '%z790%' AND name NOT LIKE '%x870%' AND name NOT LIKE '%с кулером%' AND name NOT LIKE '%s kulerom%' AND name NOT LIKE '%snowman%' AND name NOT LIKE '%vodyanka%' AND name NOT LIKE '%bashnya%' AND name NOT LIKE '%сборк%' AND name NOT LIKE '%sbork%' AND name NOT LIKE '%игровой пк%' AND name NOT LIKE '%+%' AND name NOT LIKE '%32gb%' AND name NOT LIKE '%16gb%' AND name NOT LIKE '%ddr5%' AND name NOT LIKE '%ddr4%')")
+            elif category.lower() == "psu":
+                conditions.append("""(
+                    (name LIKE '%Powercase%' AND (name LIKE '%PW500%' OR name LIKE '%PW600%' OR name LIKE '%PW700%' OR name LIKE '%PW 500%' OR name LIKE '%PW 600%' OR name LIKE '%PW 700%' OR name LIKE '%PW-500%' OR name LIKE '%PW-600%' OR name LIKE '%PW-700%'))
+                    OR ((name LIKE '%GAMERSTORM%' OR name LIKE '%Deepcool%' OR name LIKE '%DeepCool%') AND (name LIKE '%PF600%' OR name LIKE '%PF650%' OR name LIKE '%PF700%' OR name LIKE '%PF750%' OR name LIKE '%PF800%' OR name LIKE '%PF850%' OR name LIKE '%PF 600%' OR name LIKE '%PF 650%' OR name LIKE '%PF 700%' OR name LIKE '%PF 750%' OR name LIKE '%PF 800%' OR name LIKE '%PF 850%'))
+                    OR (name LIKE '%1STPLAYER%' AND name LIKE '%NGDP%' AND name NOT LIKE '%1200%')
+                )""")
         if source == "new":
             conditions.append("shop NOT LIKE '%Авито%'")
         elif source == "used":

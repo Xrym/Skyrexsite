@@ -478,13 +478,20 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
             cat_items.extend(enrich_and_rank_products(combined_rams, expert_components, limit=6))
 
-            # F. Select PSUs fitting budget (ranked by expert rating)
+            # F. Select PSUs fitting budget (strictly approved whitelisted models: Powercase PW, GamerStorm PF >=600W, 1STPLAYER NGDP <=1000W)
+            psu_whitelist = """
+                AND (
+                    (name LIKE '%Powercase%' AND (name LIKE '%PW500%' OR name LIKE '%PW600%' OR name LIKE '%PW700%' OR name LIKE '%PW 500%' OR name LIKE '%PW 600%' OR name LIKE '%PW 700%' OR name LIKE '%PW-500%' OR name LIKE '%PW-600%' OR name LIKE '%PW-700%'))
+                    OR ((name LIKE '%GAMERSTORM%' OR name LIKE '%Deepcool%' OR name LIKE '%DeepCool%') AND (name LIKE '%PF600%' OR name LIKE '%PF650%' OR name LIKE '%PF700%' OR name LIKE '%PF750%' OR name LIKE '%PF800%' OR name LIKE '%PF850%' OR name LIKE '%PF 600%' OR name LIKE '%PF 650%' OR name LIKE '%PF 700%' OR name LIKE '%PF 750%' OR name LIKE '%PF 800%' OR name LIKE '%PF 850%'))
+                    OR (name LIKE '%1STPLAYER%' AND name LIKE '%NGDP%' AND name NOT LIKE '%1200%')
+                )
+            """
             raw_psus = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'psu' AND price <= ? ORDER BY price DESC LIMIT 20",
+                f"SELECT * FROM products WHERE category = 'psu' AND price <= ? {psu_whitelist} ORDER BY price DESC LIMIT 20",
                 (max_psu_price,)
             ).fetchall()]
             if not raw_psus:
-                raw_psus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'psu' ORDER BY price ASC LIMIT 20").fetchall()]
+                raw_psus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'psu' {psu_whitelist} ORDER BY price ASC LIMIT 20").fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_psus, expert_components, limit=5))
 
             # G. Select SSDs fitting budget (diverse prices, prioritizing highest volume for lowest price)
