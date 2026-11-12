@@ -16,7 +16,7 @@ ONLINETRADE_CATEGORIES = {
     },
     "cooler": {
         "title": "Кулеры для процессоров",
-        "slug": "kulery_dlya_protsessorov-c338"
+        "slug": "kulery_dlya_protsessorov-c1492"
     }
 }
 
@@ -230,6 +230,18 @@ class OnlineTradeScraper:
 
         products = []
         for itm in raw_items:
+            name_l = itm["name"].lower()
+            url_l = itm["url"].lower()
+            # Strict category sanitization
+            if category_key == "cooler":
+                if any(bad in name_l for bad in ["звуков", "звук", "audio", "geforce", "radeon", "rtx", "gtx", "rx "]):
+                    continue
+                if any(bad in url_l for bad in ["zvukovye_karty", "videokarty"]):
+                    continue
+            elif category_key == "psu":
+                if "bloki_pitaniya" not in url_l:
+                    continue
+
             products.append({
                 "id": itm["id"],
                 "shop": "ОнлайнТрейд",
@@ -267,6 +279,17 @@ class OnlineTradeScraper:
             raw_title = re.sub(r'<[^>]+>', '', title_raw).strip()
             clean_title = re.sub(r'^[\s"\'«»„“”•\-\–\—]+|[\s"\'«»„“”]+$', '', raw_title).strip()
             if clean_price > 0 and len(clean_title) >= 3:
+                name_l = clean_title.lower()
+                url_l = url.lower()
+                if category_key == "cooler":
+                    if any(bad in name_l for bad in ["звуков", "звук", "audio", "geforce", "radeon", "rtx", "gtx", "rx "]):
+                        continue
+                    if any(bad in url_l for bad in ["zvukovye_karty", "videokarty"]):
+                        continue
+                elif category_key == "psu":
+                    if "bloki_pitaniya" not in url_l:
+                        continue
+
                 products.append({
                     "id": f"onlinetrade_{pid}",
                     "shop": "ОнлайнТрейд",

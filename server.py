@@ -500,13 +500,21 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
             cat_items.extend(enrich_and_rank_products(diverse_ssds, expert_components, limit=6))
 
-            # H. Select Coolers fitting budget (ranked by expert rating, ignore misclassified sound cards)
+            # H. Select Coolers fitting budget (ranked by expert rating, ignore misclassified non-cooler items)
+            cooler_filter = (
+                "WHERE category = 'cooler' "
+                "AND name NOT LIKE '%звуков%' AND url NOT LIKE '%zvukovye_karty%' AND name NOT LIKE '%audio%' "
+                "AND url NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' AND name NOT LIKE '%radeon%' "
+                "AND name NOT LIKE '%rtx%' AND name NOT LIKE '%gtx%'"
+            )
             raw_coolers = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'cooler' AND name NOT LIKE '%звуков%' AND url NOT LIKE '%zvukovye_karty%' AND price <= ? ORDER BY price DESC LIMIT 20",
+                f"SELECT * FROM products {cooler_filter} AND price <= ? ORDER BY price DESC LIMIT 20",
                 (max_cooler_price,)
             ).fetchall()]
             if not raw_coolers:
-                raw_coolers = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'cooler' AND name NOT LIKE '%звуков%' AND url NOT LIKE '%zvukovye_karty%' ORDER BY price ASC LIMIT 20").fetchall()]
+                raw_coolers = [dict(r) for r in conn.execute(
+                    f"SELECT * FROM products {cooler_filter} ORDER BY price ASC LIMIT 20"
+                ).fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=4))
 
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]

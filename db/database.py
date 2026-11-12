@@ -57,6 +57,24 @@ def init_db():
             );
         """)
         
+        # 4. Automatic purge of misclassified junk (sound cards, GPUs in cooler category)
+        cursor.execute("""
+            DELETE FROM products_fts WHERE id IN (
+                SELECT id FROM products 
+                WHERE url LIKE '%zvukovye_karty%' 
+                   OR name LIKE '%звуков%' 
+                   OR name LIKE '%audio usb%' 
+                   OR (category = 'cooler' AND (url LIKE '%videokarty%' OR name LIKE '%geforce%' OR name LIKE '%radeon%' OR name LIKE '%rtx%' OR name LIKE '%gtx%'))
+            );
+        """)
+        cursor.execute("""
+            DELETE FROM products 
+            WHERE url LIKE '%zvukovye_karty%' 
+               OR name LIKE '%звуков%' 
+               OR name LIKE '%audio usb%' 
+               OR (category = 'cooler' AND (url LIKE '%videokarty%' OR name LIKE '%geforce%' OR name LIKE '%radeon%' OR name LIKE '%rtx%' OR name LIKE '%gtx%'));
+        """)
+
         conn.commit()
     logger.info(f"Database initialized at {DB_PATH}")
 
@@ -68,6 +86,17 @@ def upsert_products(products: List[Dict[str, Any]]):
     with get_connection() as conn:
         cursor = conn.cursor()
         for p in products:
+            cat = p.get("category", "other").lower()
+            name_l = p.get("name", "").lower()
+            url_l = p.get("url", "").lower()
+
+            # Strict guard against sound cards and non-coolers
+            if cat == "cooler":
+                if any(bad in name_l for bad in ["звуков", "звук", "audio usb"]) or "zvukovye_karty" in url_l:
+                    continue
+                if "videokarty" in url_l or any(bad in name_l for bad in ["geforce", "radeon", "rtx", "gtx"]):
+                    continue
+
             p_data = {
                 "id": p["id"],
                 "shop": p.get("shop", "DNS"),
@@ -750,6 +779,8 @@ def get_catalog_items(
         if category and category != "all":
             conditions.append("category = ?")
             params.append(category.lower())
+            if category.lower() == "cooler":
+                conditions.append("url NOT LIKE '%zvukovye_karty%' AND name NOT LIKE '%звуков%' AND url NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' AND name NOT LIKE '%radeon%'")
         if source == "new":
             conditions.append("shop NOT LIKE '%Авито%'")
         elif source == "used":
