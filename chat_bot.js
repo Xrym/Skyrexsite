@@ -204,6 +204,10 @@ document.addEventListener("DOMContentLoaded", () => {
         // 9. Blockquotes: > quote
         text = text.replace(/^>\s+(.+)$/gm, "<blockquote>$1</blockquote>");
 
+        // 9.1. Prevent glued numbered items and headers (e.g. "руб.2. Материнская плата" -> "руб.<br>2. Материнская плата")
+        text = text.replace(/([^\n>])\s*(\b\d+\.\s*(?:<b>)?[А-ЯA-Z])/g, "$1<br>$2");
+        text = text.replace(/([^\n>])\s*(Конфигурация ПК под ваш бюджет|Вот сбалансированная|Вот оптимальная|Точная суммарная стоимость|Примечание эксперта|Примечание)/gi, "$1<br><br>$2");
+
         // 10. Clean newlines: convert newlines to <br> unless adjacent to block tags
         text = text.replace(/([^\n>])\n([^\n<])/g, "$1<br>$2");
 

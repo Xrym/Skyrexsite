@@ -641,6 +641,10 @@ def clean_avito_links(text: str) -> str:
         text,
         flags=re.IGNORECASE
     )
+    # Предотвращение слипания нумерованных позиций сборки (руб.2. Материнская плата -> руб.<br>2. Материнская плата)
+    text = re.sub(r'([^\n>])\s*(\b\d+\.\s*(?:<b>)?[А-ЯA-Z])', r'\1<br>\2', text)
+    # Предотвращение слипания заголовка конфигурации (.Конфигурация -> .<br><br>Конфигурация)
+    text = re.sub(r'([^\n>])\s*(Конфигурация ПК под ваш бюджет|Вот сбалансированная|Вот оптимальная)', r'\1<br><br>\2', text, flags=re.IGNORECASE)
 
     return text
 
@@ -788,7 +792,7 @@ async def call_llm(message: str, history: list) -> str:
     # Setup Defaults
     if provider == "gemini":
         if not model:
-            model = "gemini-3.5-flash-lite"
+            model = "gemini-flash-lite-latest"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     else:
         # OpenAI-compatible setup
@@ -837,7 +841,8 @@ async def call_llm(message: str, history: list) -> str:
                     "contents": contents,
                     "generationConfig": {
                         "temperature": 0.7,
-                        "maxOutputTokens": 8192
+                        "maxOutputTokens": 8192,
+                        "thinkingConfig": {"thinkingBudget": 512}
                     }
                 }
                 
@@ -929,7 +934,7 @@ async def stream_llm(message: str, history: list):
     # Setup Defaults
     if provider == "gemini":
         if not model:
-            model = "gemini-3.5-flash-lite"
+            model = "gemini-flash-lite-latest"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?key={api_key}&alt=sse"
     else:
         if provider == "openrouter":
@@ -969,12 +974,16 @@ async def stream_llm(message: str, history: list):
                 payload = {
                     "systemInstruction": {"parts": [{"text": system_instruction}]},
                     "contents": contents,
-                    "generationConfig": {"temperature": 0.7, "maxOutputTokens": 8192}
+                    "generationConfig": {
+                        "temperature": 0.7,
+                        "maxOutputTokens": 8192,
+                        "thinkingConfig": {"thinkingBudget": 512}
+                    }
                 }
                 async with session.post(url, json=payload, proxy=llm_proxy, timeout=75) as resp:
                     if resp.status in (429, 503, 500):
                         err_text = await resp.text()
-                        fallback_model = "gemini-3.5-flash-lite" if model != "gemini-3.5-flash-lite" else "gemini-flash-lite-latest"
+                        fallback_model = "gemini-flash-lite-latest" if model != "gemini-flash-lite-latest" else "gemini-3.5-flash-lite"
                         logger.warning(f"Gemini streaming status {resp.status} with {model}, falling back to {fallback_model}...")
                         fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:streamGenerateContent?key={api_key}&alt=sse"
                         await asyncio.sleep(1.0)
@@ -988,6 +997,10 @@ async def stream_llm(message: str, history: list):
                                         data_str = line[5:].strip()
                                         try:
                                             parsed = json.loads(data_str)
+                                            if parsed.get("error"):
+                                                logger.warning(f"Mid-stream fallback Gemini error: {parsed['error']}")
+                                                yield "<br><br>⚠️ <i>[Ответ временно приостановлен из-за нагрузки на сервер Gemini. Нажмите «Продолжай»]</i>"
+                                                return
                                             candidates = parsed.get("candidates", [])
                                             if candidates:
                                                 parts = candidates[0].get("content", {}).get("parts", [])
@@ -1014,6 +1027,10 @@ async def stream_llm(message: str, history: list):
                         data_str = line[5:].strip()
                         try:
                             parsed = json.loads(data_str)
+                            if parsed.get("error"):
+                                logger.warning(f"Mid-stream Gemini error: {parsed['error']}")
+                                yield "<br><br>⚠️ <i>[Ответ временно приостановлен из-за нагрузки на сервер Gemini. Нажмите «Продолжай»]</i>"
+                                return
                             candidates = parsed.get("candidates", [])
                             if candidates:
                                 parts = candidates[0].get("content", {}).get("parts", [])
