@@ -13,6 +13,25 @@ cur.execute("""
 """)
 avito_rows = cur.fetchall()
 
+cpu_bundle_bad = [
+    "комплект", "komplekt", "komlpekt", "combo", "bundle",
+    "материн", "плата", "plata", "motherboard", "мать",
+    "b450", "b550", "b650", "b760", "b850", "b840", "h610", "h510", "h410", "a520", "a620", "z790", "x870",
+    "с кулером", "s kulerom", "с охлажд", "snowman", "vodyanka", "водянка", "bashnya", "башня",
+    "сборк", "sbork", "готовые сборки", "игровой пк", "igrovoy pk",
+    "+", "32gb", "16gb", "ddr5", "ddr4"
+]
+
+# Filter out CPU bundles from median calculations
+filtered_avito_rows = []
+for name, cat, price in avito_rows:
+    if cat == 'cpu':
+        nl = name.lower()
+        if any(b in nl for b in cpu_bundle_bad):
+            continue
+    filtered_avito_rows.append((name, cat, price))
+avito_rows = filtered_avito_rows
+
 chips = [
     # GPUs
     'rtx 4090', 'rtx 4080 super', 'rtx 4080', 'rtx 4070 ti super', 'rtx 4070 ti', 'rtx 4070 super', 'rtx 4070',
@@ -72,10 +91,10 @@ fallback_medians = {
     'ryzen 5 5500': 5800,
     'ryzen 5 5600': 10500,
     'i5-12400f': 11000,
-    'ryzen 5 7500f': 11700,
-    'i5-13400f': 16500,
-    'i5-14600k': 21000,
-    'ryzen 7 7800x3d': 40000,
+    'ryzen 5 7500f': 11350,
+    'i5-13400f': 12000,
+    'i5-14600k': 20500,
+    'ryzen 7 7800x3d': 32500,
     'ddr4 16gb': 8000,
     'ddr4 32gb': 19500,
     'ddr5 16gb': 21000,

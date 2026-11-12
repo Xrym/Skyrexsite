@@ -281,14 +281,44 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 raw_gpus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'gpu' ORDER BY price ASC LIMIT 20").fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_gpus, expert_components, limit=5))
 
-            # B. Select Candidate CPUs fitting budget (exclude workstation Threadripper > 150k unless requested)
+            # B. Select Candidate CPUs fitting budget (strictly standalone CPUs only, exclude bundles & workstation Threadripper)
             cpu_filter_threadripper = " AND name NOT LIKE '%Threadripper%' " if (not budget or budget < 1000000) else ""
+            cpu_filter_bundle = (
+                " AND name NOT LIKE '%комплект%' "
+                " AND name NOT LIKE '%komplekt%' "
+                " AND name NOT LIKE '%материн%' "
+                " AND name NOT LIKE '%плата%' "
+                " AND name NOT LIKE '%plata%' "
+                " AND name NOT LIKE '%motherboard%' "
+                " AND name NOT LIKE '%b450%' "
+                " AND name NOT LIKE '%b550%' "
+                " AND name NOT LIKE '%b650%' "
+                " AND name NOT LIKE '%b760%' "
+                " AND name NOT LIKE '%b850%' "
+                " AND name NOT LIKE '%h610%' "
+                " AND name NOT LIKE '%a620%' "
+                " AND name NOT LIKE '%z790%' "
+                " AND name NOT LIKE '%x870%' "
+                " AND name NOT LIKE '%с кулером%' "
+                " AND name NOT LIKE '%s kulerom%' "
+                " AND name NOT LIKE '%snowman%' "
+                " AND name NOT LIKE '%vodyanka%' "
+                " AND name NOT LIKE '%bashnya%' "
+                " AND name NOT LIKE '%сборк%' "
+                " AND name NOT LIKE '%sbork%' "
+                " AND name NOT LIKE '%игровой пк%' "
+                " AND name NOT LIKE '%+%' "
+                " AND name NOT LIKE '%32gb%' "
+                " AND name NOT LIKE '%16gb%' "
+                " AND name NOT LIKE '%ddr5%' "
+                " AND name NOT LIKE '%ddr4%' "
+            )
             raw_cpus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} ORDER BY price DESC LIMIT 20",
+                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price DESC LIMIT 20",
                 (max_cpu_price,)
             ).fetchall()]
             if not raw_cpus:
-                raw_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} ORDER BY price ASC LIMIT 20").fetchall()]
+                raw_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC LIMIT 20").fetchall()]
             
             # If products table has no CPUs, provide curated reference CPUs for target budget
             if not raw_cpus:
@@ -306,15 +336,15 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     ]
                 elif budget and budget < 135000:
                     raw_cpus = [
-                        {"id": "ref_cpu_i5_13400f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор Intel Core i5-13400F (Socket LGA 1700, 10 ядер / 16 потоков)", "price": 16000, "url": "https://www.avito.ru/all?q=Core+i5-13400F"},
-                        {"id": "ref_cpu_r5_7500f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 5 7500F (Socket AM5, 6 ядер / 12 потоков, DDR5)", "price": 13500, "url": "https://www.avito.ru/all?q=Ryzen+5+7500F"},
+                        {"id": "ref_cpu_i5_13400f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор Intel Core i5-13400F (Socket LGA 1700, 10 ядер / 16 потоков)", "price": 12000, "url": "https://www.avito.ru/all?q=Core+i5-13400F"},
+                        {"id": "ref_cpu_r5_7500f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 5 7500F (Socket AM5, 6 ядер / 12 потоков, DDR5)", "price": 11500, "url": "https://www.avito.ru/all?q=Ryzen+5+7500F"},
                         {"id": "ref_cpu_i5_12400f", "shop": "Вторичный рынок / Маркетплейс", "category": "cpu", "name": "Процессор Intel Core i5-12400F (Socket LGA 1700, 6 ядер / 12 потоков)", "price": 9500, "url": "https://www.avito.ru/all?q=Core+i5-12400F"},
                     ]
                 else:
                     raw_cpus = [
-                        {"id": "ref_cpu_r7_7800x3d", "shop": "Маркетплейс", "category": "cpu", "name": "Процессор AMD Ryzen 7 7800X3D (Socket AM5, 8 ядер / 16 потоков, 3D V-Cache)", "price": 42000, "url": "https://www.avito.ru/all?q=Ryzen+7+7800X3D"},
+                        {"id": "ref_cpu_r7_7800x3d", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 7 7800X3D (Socket AM5, 8 ядер / 16 потоков, 3D V-Cache)", "price": 32500, "url": "https://www.avito.ru/all?q=Ryzen+7+7800X3D"},
                         {"id": "ref_cpu_i7_14700kf", "shop": "Маркетплейс", "category": "cpu", "name": "Процессор Intel Core i7-14700KF (Socket LGA 1700, 20 ядер / 28 потоков)", "price": 38000, "url": "https://www.avito.ru/all?q=Core+i7-14700KF"},
-                        {"id": "ref_cpu_r5_7500f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 5 7500F (Socket AM5, 6 ядер / 12 потоков, DDR5)", "price": 13500, "url": "https://www.avito.ru/all?q=Ryzen+5+7500F"},
+                        {"id": "ref_cpu_r5_7500f", "shop": "Маркетплейс / Вторичка", "category": "cpu", "name": "Процессор AMD Ryzen 5 7500F (Socket AM5, 6 ядер / 12 потоков, DDR5)", "price": 11500, "url": "https://www.avito.ru/all?q=Ryzen+5+7500F"},
                     ]
 
             selected_cpus = enrich_and_rank_products(raw_cpus, expert_components, limit=6)

@@ -75,6 +75,21 @@ def init_db():
                OR (category = 'cooler' AND (url LIKE '%videokarty%' OR name LIKE '%geforce%' OR name LIKE '%radeon%' OR name LIKE '%rtx%' OR name LIKE '%gtx%'));
         """)
 
+        # 5. Automatic purge of CPU bundles / combos (CPU + motherboard / cooler / whole PC)
+        cpu_bundle_filter = """
+            category = 'cpu' AND (
+                name LIKE '%комплект%' OR name LIKE '%komplekt%' OR name LIKE '%komlpekt%' OR name LIKE '%combo%' OR name LIKE '%bundle%'
+                OR name LIKE '%материн%' OR name LIKE '%плата%' OR name LIKE '%plata%' OR name LIKE '%motherboard%' OR name LIKE '%мать%'
+                OR name LIKE '%b450%' OR name LIKE '%b550%' OR name LIKE '%b650%' OR name LIKE '%b760%' OR name LIKE '%b850%' OR name LIKE '%b840%' 
+                OR name LIKE '%h610%' OR name LIKE '%h510%' OR name LIKE '%h410%' OR name LIKE '%a520%' OR name LIKE '%a620%' OR name LIKE '%z790%' OR name LIKE '%z690%' OR name LIKE '%x570%' OR name LIKE '%x670%' OR name LIKE '%x870%'
+                OR name LIKE '%с кулером%' OR name LIKE '%s kulerom%' OR name LIKE '%с охлажд%' OR name LIKE '%snowman%' OR name LIKE '%vodyanka%' OR name LIKE '%водянка%' OR name LIKE '%bashnya%' OR name LIKE '%башня%'
+                OR name LIKE '%сборк%' OR name LIKE '%sbork%' OR name LIKE '%готовые сборки%' OR name LIKE '%игровой пк%' OR name LIKE '%igrovoy pk%'
+                OR name LIKE '%+%' OR name LIKE '%32gb%' OR name LIKE '%16gb%' OR name LIKE '%ddr5%' OR name LIKE '%ddr4%'
+            )
+        """
+        cursor.execute(f"DELETE FROM products_fts WHERE id IN (SELECT id FROM products WHERE {cpu_bundle_filter});")
+        cursor.execute(f"DELETE FROM products WHERE {cpu_bundle_filter};")
+
         conn.commit()
     logger.info(f"Database initialized at {DB_PATH}")
 
@@ -95,6 +110,19 @@ def upsert_products(products: List[Dict[str, Any]]):
                 if any(bad in name_l for bad in ["звуков", "звук", "audio usb"]) or "zvukovye_karty" in url_l:
                     continue
                 if "videokarty" in url_l or any(bad in name_l for bad in ["geforce", "radeon", "rtx", "gtx"]):
+                    continue
+
+            # Strict guard against CPU combos/bundles (motherboards, coolers, whole PC builds)
+            if cat == "cpu":
+                cpu_bad = [
+                    "комплект", "komplekt", "komlpekt", "combo", "bundle",
+                    "материн", "плата", "plata", "motherboard", "мать",
+                    "b450", "b550", "b650", "b760", "b850", "b840", "h610", "h510", "h410", "a520", "a620", "z790", "z690", "x570", "x670", "x870",
+                    "с кулером", "s kulerom", "с охлажд", "snowman", "vodyanka", "водянка", "bashnya", "башня",
+                    "сборк", "sbork", "готовые сборки", "игровой пк", "igrovoy pk",
+                    "+", "32gb", "16gb", "ddr5", "ddr4"
+                ]
+                if any(bad in name_l for bad in cpu_bad):
                     continue
 
             p_data = {
@@ -781,6 +809,8 @@ def get_catalog_items(
             params.append(category.lower())
             if category.lower() == "cooler":
                 conditions.append("url NOT LIKE '%zvukovye_karty%' AND name NOT LIKE '%звуков%' AND url NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' AND name NOT LIKE '%radeon%'")
+            elif category.lower() == "cpu":
+                conditions.append("(name NOT LIKE '%комплект%' AND name NOT LIKE '%komplekt%' AND name NOT LIKE '%материн%' AND name NOT LIKE '%плата%' AND name NOT LIKE '%plata%' AND name NOT LIKE '%motherboard%' AND name NOT LIKE '%b450%' AND name NOT LIKE '%b550%' AND name NOT LIKE '%b650%' AND name NOT LIKE '%b760%' AND name NOT LIKE '%b850%' AND name NOT LIKE '%h610%' AND name NOT LIKE '%a620%' AND name NOT LIKE '%z790%' AND name NOT LIKE '%x870%' AND name NOT LIKE '%с кулером%' AND name NOT LIKE '%s kulerom%' AND name NOT LIKE '%snowman%' AND name NOT LIKE '%vodyanka%' AND name NOT LIKE '%bashnya%' AND name NOT LIKE '%сборк%' AND name NOT LIKE '%sbork%' AND name NOT LIKE '%игровой пк%' AND name NOT LIKE '%+%' AND name NOT LIKE '%32gb%' AND name NOT LIKE '%16gb%' AND name NOT LIKE '%ddr5%' AND name NOT LIKE '%ddr4%')")
         if source == "new":
             conditions.append("shop NOT LIKE '%Авито%'")
         elif source == "used":
