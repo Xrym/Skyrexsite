@@ -79,7 +79,14 @@ class TelegramAdminBot:
 
         self.is_running = True
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40))
-        logger.info(f"Telegram Admin Bot starting for admins: {self.admin_ids}...")
+
+        # Validate bot token on startup
+        me = await self.api_request("getMe")
+        if not me.get("ok"):
+            logger.error(f"❌ CRITICAL: Telegram Bot Token is INVALID or REJECTED by Telegram: {me.get('error_code')} - {me.get('description')}")
+        else:
+            bot_info = me.get("result", {})
+            logger.info(f"✅ Telegram Admin Bot connected as @{bot_info.get('username')} for admins: {self.admin_ids}")
         
         offset = 0
         while self.is_running:
@@ -113,6 +120,14 @@ class TelegramAdminBot:
         res = await self.api_request("getUpdates", {"offset": offset, "timeout": timeout})
         if res.get("ok"):
             return res.get("result", [])
+        err_desc = res.get("description", "Unknown error")
+        err_code = res.get("error_code")
+        if err_code == 401:
+            logger.error(f"❌ Telegram API returned 401 Unauthorized. The bot token '{self.token[:10]}...' is invalid or revoked in @BotFather!")
+            await asyncio.sleep(10)
+        else:
+            logger.warning(f"Telegram getUpdates error {err_code}: {err_desc}")
+            await asyncio.sleep(3)
         return []
 
     async def send_message(self, chat_id: int, text: str, reply_markup: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
