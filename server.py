@@ -846,34 +846,35 @@ async def call_llm(message: str, history: list) -> str:
                     }
                 }
                 
-                logger.info(f"Sending request to Gemini API (Model: {model}, Proxy: {llm_proxy or 'direct'})...")
-                async with session.post(url, json=payload, proxy=llm_proxy, timeout=75) as resp:
-                    if resp.status in (429, 503, 500):
-                        err_text = await resp.text()
-                        fallback_model = "gemini-3.5-flash-lite" if model != "gemini-3.5-flash-lite" else "gemini-flash-lite-latest"
-                        logger.warning(f"Gemini API returned status {resp.status} with model {model}. Retrying with {fallback_model}...")
-                        fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent?key={api_key}"
-                        await asyncio.sleep(1.0)
+                models_to_try = [model]
+                for fb in ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]:
+                    if fb not in models_to_try:
+                        models_to_try.append(fb)
+
+                last_error = ""
+                for try_model in models_to_try:
+                    try_url = f"https://generativelanguage.googleapis.com/v1beta/models/{try_model}:generateContent?key={api_key}"
+                    for attempt in range(2):
+                        logger.info(f"Sending request to Gemini API (Model: {try_model}, Attempt: {attempt+1}, Proxy: {llm_proxy or 'direct'})...")
                         try:
-                            async with session.post(fallback_url, json=payload, proxy=llm_proxy, timeout=75) as fb_resp:
-                                if fb_resp.status == 200:
-                                    fb_res = await fb_resp.json()
-                                    raw_text = fb_res["candidates"][0]["content"]["parts"][0]["text"]
-                                    return clean_avito_links(raw_text)
-                        except Exception as fb_err:
-                            logger.error(f"Gemini fallback error: {fb_err}")
-                    if resp.status != 200:
-                        err_text = await resp.text()
-                        logger.error(f"Gemini API returned status {resp.status}: {err_text}")
-                        return f"⚠️ Ошибка Gemini API ({resp.status}). Пожалуйста, проверьте API-ключ в настройках."
-                    
-                    result = await resp.json()
-                    try:
-                        raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
-                        return clean_avito_links(raw_text)
-                    except (KeyError, IndexError) as e:
-                        logger.error(f"Failed to parse Gemini response: {e}, structure: {result}")
-                        return "⚠️ Не удалось распознать ответ от нейросети. Попробуйте еще раз."
+                            async with session.post(try_url, json=payload, proxy=llm_proxy, timeout=75) as resp:
+                                if resp.status == 200:
+                                    result = await resp.json()
+                                    candidates = result.get("candidates", [])
+                                    if candidates:
+                                        parts = candidates[0].get("content", {}).get("parts", [])
+                                        if parts and "text" in parts[0]:
+                                            return clean_avito_links(parts[0]["text"])
+                                last_error = f"Status {resp.status}"
+                                if resp.status in (429, 503, 500):
+                                    await asyncio.sleep(1.5)
+                                    continue
+                                break
+                        except Exception as req_err:
+                            last_error = str(req_err)
+                            await asyncio.sleep(1.0)
+
+                return f"⚠️ Сервер Gemini временно перегружен ({last_error}). Пожалуйста, попробуйте отправить запрос еще раз."
             else:
                 messages = [{"role": "system", "content": system_instruction}]
                 for msg in history:
@@ -980,17 +981,21 @@ async def stream_llm(message: str, history: list):
                         "thinkingConfig": {"thinkingBudget": 512}
                     }
                 }
-                async with session.post(url, json=payload, proxy=llm_proxy, timeout=75) as resp:
-                    if resp.status in (429, 503, 500):
-                        err_text = await resp.text()
-                        fallback_model = "gemini-flash-lite-latest" if model != "gemini-flash-lite-latest" else "gemini-3.5-flash-lite"
-                        logger.warning(f"Gemini streaming status {resp.status} with {model}, falling back to {fallback_model}...")
-                        fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:streamGenerateContent?key={api_key}&alt=sse"
-                        await asyncio.sleep(1.0)
+                models_to_try = [model]
+                for fb in ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]:
+                    if fb not in models_to_try:
+                        models_to_try.append(fb)
+
+                connected = False
+                for try_model in models_to_try:
+                    try_url = f"https://generativelanguage.googleapis.com/v1beta/models/{try_model}:streamGenerateContent?key={api_key}&alt=sse"
+                    for attempt in range(2):
+                        logger.info(f"Streaming request to Gemini API (Model: {try_model}, Attempt: {attempt+1}, Proxy: {llm_proxy or 'direct'})...")
                         try:
-                            async with session.post(fallback_url, json=payload, proxy=llm_proxy, timeout=75) as fb_resp:
-                                if fb_resp.status == 200:
-                                    async for line_bytes in fb_resp.content:
+                            async with session.post(try_url, json=payload, proxy=llm_proxy, timeout=75) as resp:
+                                if resp.status == 200:
+                                    connected = True
+                                    async for line_bytes in resp.content:
                                         line = line_bytes.decode('utf-8', errors='ignore').strip()
                                         if not line or not line.startswith("data:"):
                                             continue
@@ -998,7 +1003,7 @@ async def stream_llm(message: str, history: list):
                                         try:
                                             parsed = json.loads(data_str)
                                             if parsed.get("error"):
-                                                logger.warning(f"Mid-stream fallback Gemini error: {parsed['error']}")
+                                                logger.warning(f"Mid-stream Gemini error: {parsed['error']}")
                                                 yield "<br><br>⚠️ <i>[Ответ временно приостановлен из-за нагрузки на сервер Gemini. Нажмите «Продолжай»]</i>"
                                                 return
                                             candidates = parsed.get("candidates", [])
@@ -1011,35 +1016,17 @@ async def stream_llm(message: str, history: list):
                                         except Exception:
                                             pass
                                     return
-                        except Exception as fb_err:
-                            logger.error(f"Gemini streaming fallback error: {fb_err}")
-
-                    if resp.status != 200:
-                        err_text = await resp.text()
-                        logger.error(f"Gemini API streaming error ({resp.status}): {err_text}")
-                        yield f"⚠️ Ошибка Gemini API ({resp.status}). Проверьте API-ключ."
+                                elif resp.status in (429, 503, 500):
+                                    await asyncio.sleep(1.5)
+                                    continue
+                                break
+                        except Exception as stream_err:
+                            logger.warning(f"Stream connect attempt failed: {stream_err}")
+                            await asyncio.sleep(1.0)
+                    if connected:
                         return
 
-                    async for line_bytes in resp.content:
-                        line = line_bytes.decode('utf-8', errors='ignore').strip()
-                        if not line or not line.startswith("data:"):
-                            continue
-                        data_str = line[5:].strip()
-                        try:
-                            parsed = json.loads(data_str)
-                            if parsed.get("error"):
-                                logger.warning(f"Mid-stream Gemini error: {parsed['error']}")
-                                yield "<br><br>⚠️ <i>[Ответ временно приостановлен из-за нагрузки на сервер Gemini. Нажмите «Продолжай»]</i>"
-                                return
-                            candidates = parsed.get("candidates", [])
-                            if candidates:
-                                parts = candidates[0].get("content", {}).get("parts", [])
-                                for part in parts:
-                                    t = part.get("text", "")
-                                    if t:
-                                        yield t
-                        except Exception:
-                            pass
+                yield "⚠️ Сервис нейросети временно испытывает пиковую нагрузку. Пожалуйста, повторите запрос через несколько секунд."
             else:
                 messages = [{"role": "system", "content": system_instruction}]
                 for msg in history:
