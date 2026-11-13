@@ -1105,7 +1105,7 @@ async def call_llm(message: str, history: list) -> str:
                 }
                 
                 models_to_try = [model]
-                for fb in ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]:
+                for fb in ["gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-1.5-flash"]:
                     if fb not in models_to_try:
                         models_to_try.append(fb)
 
@@ -1240,7 +1240,7 @@ async def stream_llm(message: str, history: list):
                     }
                 }
                 models_to_try = [model]
-                for fb in ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]:
+                for fb in ["gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-1.5-flash"]:
                     if fb not in models_to_try:
                         models_to_try.append(fb)
 
