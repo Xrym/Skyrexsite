@@ -125,30 +125,30 @@ def detect_hardware_specs(product: dict) -> dict:
     """Detects CPU/Motherboard socket, RAM generation (DDR4/DDR5), and PSU wattage."""
     name = product.get("name", "")
     cat = product.get("category", "")
+    name_upper = name.upper()
     specs = {
         "socket": None,
         "ram_type": None,
         "psu_watts": None
     }
     
-    # Socket detection
-    if "AM5" in name or "Socket AM5" in name or re.search(r'Ryzen\s*(?:5|7|9)\s*(?:7\d{3}|8\d{3}|9\d{3})', name, re.I) or re.search(r'\b(?:X870|B850|B650|A620|X670)\b', name):
+    # Socket detection (case-insensitive, supports all model prefixes and micro-ATX M variants)
+    if "AM5" in name_upper or re.search(r'Ryzen\s*(?:5|7|9)\s*(?:7\d{3}|8\d{3}|9\d{3})', name, re.I) or re.search(r'\b(?:X870|B850|B650|A620|X670)', name, re.I):
         specs["socket"] = "AM5"
-    elif "AM4" in name or "Socket AM4" in name or re.search(r'Ryzen\s*(?:3|5|7|9)\s*(?:1\d{3}|2\d{3}|3\d{3}|4\d{3}|5\d{3})', name, re.I) or re.search(r'\b(?:B550|A520|B450|X570|A320)\b', name):
+    elif "AM4" in name_upper or re.search(r'Ryzen\s*(?:3|5|7|9)\s*(?:1\d{3}|2\d{3}|3\d{3}|4\d{3}|5\d{3})', name, re.I) or re.search(r'\b(?:B550|A520|B450|X570|A320)', name, re.I):
         specs["socket"] = "AM4"
-    elif "1851" in name or "LGA 1851" in name or "LGA1851" in name or re.search(r'\b(?:Z890|B860)\b', name) or "Ultra 9" in name or "Ultra 7" in name or "Ultra 5" in name:
+    elif "1851" in name or re.search(r'\b(?:Z890|B860)', name, re.I) or "ULTRA 9" in name_upper or "ULTRA 7" in name_upper or "ULTRA 5" in name_upper:
         specs["socket"] = "LGA 1851"
-    elif "1700" in name or "LGA 1700" in name or "LGA1700" in name or re.search(r'i[3579]\s*(?:12\d{3}|13\d{3}|14\d{3})', name, re.I) or re.search(r'\b(?:B760|Z790|H610|W680|Z690|B660)\b', name):
+    elif "1700" in name or re.search(r'i[3579]\s*[- ]?(?:12\d{3}|13\d{3}|14\d{3})', name, re.I) or re.search(r'\b(?:B760|Z790|H610|W680|Z690|B660)', name, re.I):
         specs["socket"] = "LGA 1700"
-    elif "sTR5" in name or "Threadripper" in name:
+    elif "STR5" in name_upper or "THREADRIPPER" in name_upper:
         specs["socket"] = "sTR5"
-    elif "1200" in name or "LGA 1200" in name:
+    elif "1200" in name or re.search(r'i[3579]\s*[- ]?(?:10\d{3}|11\d{3})', name, re.I) or re.search(r'\b(?:B460|B560|H410|H510|Z490|Z590)', name, re.I):
         specs["socket"] = "LGA 1200"
-    elif "1151" in name or "LGA 1151" in name:
+    elif "1151" in name or re.search(r'i[3579]\s*[- ]?(?:6\d{3}|7\d{3}|8\d{3}|9\d{3})', name, re.I) or re.search(r'\b(?:H110|B250|B360|B365|Z370|Z390)', name, re.I):
         specs["socket"] = "LGA 1151"
 
     # RAM Type
-    name_upper = name.upper()
     if "DDR5" in name_upper:
         specs["ram_type"] = "DDR5"
     elif "DDR4" in name_upper:
@@ -157,7 +157,7 @@ def detect_hardware_specs(product: dict) -> dict:
         specs["ram_type"] = "DDR3"
     elif specs["socket"] in ("AM5", "LGA 1851"):
         specs["ram_type"] = "DDR5"
-    elif specs["socket"] == "AM4":
+    elif specs["socket"] in ("AM4", "LGA 1200", "LGA 1151"):
         specs["ram_type"] = "DDR4"
 
     # PSU Watts
