@@ -364,7 +364,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
             psu_whitelist = """
                 AND (
                     (name LIKE '%Powercase%' AND (name LIKE '%PW500%' OR name LIKE '%PW600%' OR name LIKE '%PW700%' OR name LIKE '%PW 500%' OR name LIKE '%PW 600%' OR name LIKE '%PW 700%' OR name LIKE '%PW-500%' OR name LIKE '%PW-600%' OR name LIKE '%PW-700%'))
-                    OR ((name LIKE '%GAMERSTORM%' OR name LIKE '%Deepcool%' OR name LIKE '%DeepCool%') AND (name LIKE '%PF600%' OR name LIKE '%PF650%' OR name LIKE '%PF700%' OR name LIKE '%PF750%' OR name LIKE '%PF800%' OR name LIKE '%PF850%' OR name LIKE '%PF 600%' OR name LIKE '%PF 650%' OR name LIKE '%PF 700%' OR name LIKE '%PF 750%' OR name LIKE '%PF 800%' OR name LIKE '%PF 850%'))
+                    OR (name LIKE '%GAMERSTORM%' AND (name LIKE '%PF600%' OR name LIKE '%PF650%' OR name LIKE '%PF700%' OR name LIKE '%PF750%' OR name LIKE '%PF800%' OR name LIKE '%PF850%' OR name LIKE '%PF 600%' OR name LIKE '%PF 650%' OR name LIKE '%PF 700%' OR name LIKE '%PF 750%' OR name LIKE '%PF 800%' OR name LIKE '%PF 850%' OR name LIKE '%PF%X%' OR name LIKE '%PF%D%'))
                     OR (name LIKE '%1STPLAYER%' AND name LIKE '%NGDP%' AND name NOT LIKE '%1200%')
                 )
             """
@@ -490,7 +490,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 f"   - Процессоры: Wildberries или Авито (Б/У)\n"
                 f"   - SSD: Wildberries, Авито (Б/У) или ОнлайнТрейд\n"
                 f"   - Материнские платы: Wildberries, Авито (Б/У) или DNS\n"
-                f"   - Блоки питания: ОнлайнТрейд или Wildberries (только модели Powercase, GamerStorm PF, 1stPlayer NGDP)\n"
+                f"   - Блоки питания: ОнлайнТрейд или Wildberries (только модели Powercase PW, GamerStorm PF600X+, 1stPlayer NGDP — обычные DeepCool не использовать)\n"
                 f"   - Кулеры для процессоров: ОнлайнТрейд или Wildberries\n"
                 f"   - Корпус: ОнлайнТрейд или Wildberries (выбирай реальную модель корпуса из каталога)"
             )
