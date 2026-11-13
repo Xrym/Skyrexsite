@@ -233,28 +233,31 @@ def get_parsed_catalog_context(user_message: str) -> str:
     cat_items = []
     if is_build_request or budget or len(specific_results) < 5:
         with get_connection() as conn:
-            if budget:
-                # Dynamic component price bounds based on market reality
-                # (ensures GPU and core platform components strictly leave room for the full 8-item build)
-                if budget <= 45000:
-                    max_gpu_price = max(int(budget * 0.35), 7000)
-                    max_cpu_price = max(int(budget * 0.22), 6000)
-                elif budget <= 70000:
-                    max_gpu_price = int(budget * 0.44)
-                    max_cpu_price = int(budget * 0.25)
-                else:
-                    max_gpu_price = int(budget * 0.52)
-                    max_cpu_price = int(budget * 0.30)
+            # Dynamic market minimum entry prices queried directly from live catalog.db (no hardcoded numbers)
+            market_mins = {}
+            for cat in ['cpu', 'gpu', 'motherboard', 'ram', 'ssd', 'psu', 'cooler', 'case']:
+                row_min = conn.execute(
+                    "SELECT MIN(price) FROM products WHERE category = ? AND price >= 500 AND available = 1",
+                    (cat,)
+                ).fetchone()
+                market_mins[cat] = int(row_min[0]) if (row_min and row_min[0]) else 1000
 
-                max_mb_price = max(int(budget * 0.18), 4500)
-                max_ram_price = max(int(budget * 0.16), 4000)
-                max_psu_price = max(int(budget * 0.14), 4000)
-                max_ssd_price = max(int(budget * 0.12), 2500)
-                max_cooler_price = max(int(budget * 0.06), 1500)
-                max_case_price = max(int(budget * 0.12), 3800)
-            else:
-                max_gpu_price = max_cpu_price = max_mb_price = max_ram_price = 9999999
-                max_psu_price = max_ssd_price = max_cooler_price = max_case_price = 9999999
+            total_market_mins = sum(market_mins.values())
+
+            def get_dynamic_max_price(category: str) -> int:
+                if not budget:
+                    return 9999999
+                other_min = total_market_mins - market_mins.get(category, 0)
+                return max(budget - other_min, market_mins.get(category, 0))
+
+            max_gpu_price = get_dynamic_max_price('gpu')
+            max_cpu_price = get_dynamic_max_price('cpu')
+            max_mb_price = get_dynamic_max_price('motherboard')
+            max_ram_price = get_dynamic_max_price('ram')
+            max_psu_price = get_dynamic_max_price('psu')
+            max_ssd_price = get_dynamic_max_price('ssd')
+            max_cooler_price = get_dynamic_max_price('cooler')
+            max_case_price = get_dynamic_max_price('case')
 
             # A. Select Candidate GPUs fitting budget (accessible value first, filter office display adapters)
             gpu_junk_filter = (
@@ -276,12 +279,13 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     f"SELECT * FROM products WHERE category = 'gpu' {gpu_junk_filter} ORDER BY price ASC LIMIT 20"
                 ).fetchall()]
             
-            # Sample across catalog percentiles up to max_gpu_price
-            if len(all_gpus) > 10:
-                step = max(len(all_gpus) // 8, 1)
-                raw_gpus = all_gpus[::step][:8]
+            # Sample across catalog percentiles up to max_gpu_price (from budget value to top performer)
+            if len(all_gpus) > 8:
+                step_g = len(all_gpus) - 1
+                percentiles_g = [0, step_g // 6, 2 * step_g // 6, 3 * step_g // 6, 4 * step_g // 6, 5 * step_g // 6, step_g]
+                raw_gpus = [all_gpus[i] for i in percentiles_g]
             else:
-                raw_gpus = all_gpus[:8]
+                raw_gpus = all_gpus
             cat_items.extend(enrich_and_rank_products(raw_gpus, expert_components, limit=8))
 
             # B. Select Candidate CPUs fitting budget (stepped spread, standalone CPUs only)
@@ -324,11 +328,12 @@ def get_parsed_catalog_context(user_message: str) -> str:
             if not all_cpus:
                 all_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC LIMIT 20").fetchall()]
 
-            if len(all_cpus) > 8:
-                step_cpu = max(len(all_cpus) // 7, 1)
-                raw_cpus = all_cpus[::step_cpu][:7]
+            if len(all_cpus) > 7:
+                step_c = len(all_cpus) - 1
+                percentiles_c = [0, step_c // 5, 2 * step_c // 5, 3 * step_c // 5, 4 * step_c // 5, step_c]
+                raw_cpus = [all_cpus[i] for i in percentiles_c]
             else:
-                raw_cpus = all_cpus[:7]
+                raw_cpus = all_cpus
 
             selected_cpus = enrich_and_rank_products(raw_cpus, expert_components, limit=6)
             cat_items.extend(selected_cpus)
