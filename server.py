@@ -235,15 +235,23 @@ def get_parsed_catalog_context(user_message: str) -> str:
         with get_connection() as conn:
             if budget:
                 # Dynamic component price bounds based on market reality
-                # (prevents offering 36k GPUs or 30k CPUs for a 40k build)
-                max_gpu_price = max(int(budget * 0.52), 15000)
-                max_cpu_price = max(int(budget * 0.32), 7000)
-                max_mb_price = max(int(budget * 0.22), 5500)
-                max_ram_price = max(int(budget * 0.20), 4500)
-                max_psu_price = max(int(budget * 0.16), 4500)
-                max_ssd_price = max(int(budget * 0.15), 3000)
-                max_cooler_price = max(int(budget * 0.08), 1800)
-                max_case_price = max(int(budget * 0.12), 4000)
+                # (ensures GPU and core platform components strictly leave room for the full 8-item build)
+                if budget <= 45000:
+                    max_gpu_price = max(int(budget * 0.35), 7000)
+                    max_cpu_price = max(int(budget * 0.22), 6000)
+                elif budget <= 70000:
+                    max_gpu_price = int(budget * 0.44)
+                    max_cpu_price = int(budget * 0.25)
+                else:
+                    max_gpu_price = int(budget * 0.52)
+                    max_cpu_price = int(budget * 0.30)
+
+                max_mb_price = max(int(budget * 0.18), 4500)
+                max_ram_price = max(int(budget * 0.16), 4000)
+                max_psu_price = max(int(budget * 0.14), 4000)
+                max_ssd_price = max(int(budget * 0.12), 2500)
+                max_cooler_price = max(int(budget * 0.06), 1500)
+                max_case_price = max(int(budget * 0.12), 3800)
             else:
                 max_gpu_price = max_cpu_price = max_mb_price = max_ram_price = 9999999
                 max_psu_price = max_ssd_price = max_cooler_price = max_case_price = 9999999

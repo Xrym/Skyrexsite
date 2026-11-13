@@ -28,3 +28,4 @@ function collapseMultipleBuildDrafts(raw) {
 
 console.log('=== JS RESULT ===');
 console.log(collapseMultipleBuildDrafts(sample));
+
