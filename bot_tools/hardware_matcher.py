@@ -231,6 +231,11 @@ def resolve_avito_median_price(
 
     # 1. RAM specialized matching
     if cat == "ram":
+        # High-frequency gaming DDR5 (6000MHz+, CL30-CL36) has a distinct premium tier (20-25k) and should not be collapsed to standard DDR5
+        is_high_speed_ddr5 = ("ddr5" in nl or "6000" in nl or "6400" in nl) and any(x in nl for x in ["6000", "6400", "7200", "cl30", "cl32", "cl36"])
+        if is_high_speed_ddr5 and raw_price >= 15000:
+            return int(round(raw_price / 100) * 100)
+
         is_ddr5 = "ddr5" in nl or any(freq in nl for freq in ["4800", "5200", "5600", "6000", "6400", "7200"])
         is_32 = any(x in nl for x in ["32gb", "32 gb", "32гб", "32 гб", "2x16", "2х16", "2*16"])
         target_key = "оперативная память ddr5 32gb" if (is_ddr5 and is_32) else (

@@ -36,3 +36,4 @@ def sync_avito_prices_in_db(db_path: str = "catalog.db"):
 if __name__ == "__main__":
     db_file = sys.argv[1] if len(sys.argv) > 1 else "catalog.db"
     sync_avito_prices_in_db(db_file)
+
