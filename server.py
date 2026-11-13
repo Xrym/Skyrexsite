@@ -1343,7 +1343,7 @@ async def init_app():
     app.router.add_get('/index.html', handle_index)
     
     # Explicitly whitelisted assets ONLY (Never expose project root!)
-    app.router.add_get(r'/{filename:(?:style\.css|app\.js|auth\.js|chat_bot\.js)}', handle_safe_static)
+    app.router.add_get(r'/{filename:(?:style\.css|app\.js|auth\.js|chat_bot\.js|rig_visualizer\.js)}', handle_safe_static)
     assets_dir = os.path.join(PROJECT_ROOT, 'assets')
     if os.path.exists(assets_dir):
         app.router.add_static('/assets/', path=assets_dir)
