@@ -34,38 +34,37 @@ if sys.platform == "win32":
 AVITO_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "gpu": {
         "title": "Видеокарты",
-        "default_min_price": 2000,
         "items": [
-            {"name": "AMD Radeon RX 580 8GB", "query": "RX 580 8GB", "min_price": 2500, "max_price": 14000},
-            {"name": "NVIDIA GeForce GTX 1660 Super", "query": "GTX 1660 Super", "min_price": 5000, "max_price": 22000},
-            {"name": "AMD Radeon RX 6600", "query": "RX 6600", "min_price": 9000, "max_price": 32000},
-            {"name": "NVIDIA GeForce RTX 2060 Super", "query": "RTX 2060 Super", "min_price": 9000, "max_price": 32000},
-            {"name": "AMD Radeon RX 6600 XT", "query": "RX 6600 XT", "min_price": 11000, "max_price": 36000},
-            {"name": "NVIDIA GeForce RTX 3060 12GB", "query": "RTX 3060 12GB", "min_price": 14000, "max_price": 45000},
-            {"name": "NVIDIA GeForce RTX 3070", "query": "RTX 3070", "min_price": 16000, "max_price": 55000},
-            {"name": "NVIDIA GeForce RTX 4060", "query": "RTX 4060", "min_price": 18000, "max_price": 55000},
-            {"name": "NVIDIA GeForce RTX 5050", "query": "RTX 5050", "min_price": 18000, "max_price": 52000},
-            {"name": "NVIDIA GeForce RTX 5060", "query": "RTX 5060", "min_price": 25000, "max_price": 65000},
+            {"name": "AMD Radeon RX 580 8GB", "query": "RX 580 8GB"},
+            {"name": "NVIDIA GeForce GTX 1660 Super", "query": "GTX 1660 Super"},
+            {"name": "AMD Radeon RX 6600", "query": "RX 6600"},
+            {"name": "NVIDIA GeForce RTX 2060 Super", "query": "RTX 2060 Super"},
+            {"name": "AMD Radeon RX 6600 XT", "query": "RX 6600 XT"},
+            {"name": "NVIDIA GeForce RTX 3060 12GB", "query": "RTX 3060 12GB"},
+            {"name": "NVIDIA GeForce RTX 3070", "query": "RTX 3070"},
+            {"name": "NVIDIA GeForce RTX 4060", "query": "RTX 4060"},
+            {"name": "NVIDIA GeForce RTX 5050", "query": "RTX 5050"},
+            {"name": "NVIDIA GeForce RTX 5060", "query": "RTX 5060"},
         ],
         "exclude": [
             "ноутбук", "чехол", "райзер", "кабель", "переходник", "подставка", "наклейка",
             "держатель", "коробка", "радиатор", "вентилятор", "кулер", "не рабочий",
-            "на запчасти", "артефакт", "донор", "прогретая", "прогрев", "кирпич"
+            "на запчасти", "артефакт", "донор", "прогретая", "прогрев", "кирпич",
+            "ремонт", "скупка", "куплю", "обмен", "аренда"
         ]
     },
     "cpu": {
         "title": "Процессоры",
-        "default_min_price": 1500,
         "items": [
-            {"name": "Intel Core i3-12100F", "query": "i3 12100F", "min_price": 2500, "max_price": 10000},
-            {"name": "AMD Ryzen 5 3600", "query": "Ryzen 5 3600", "min_price": 2500, "max_price": 9000},
-            {"name": "AMD Ryzen 5 5500", "query": "Ryzen 5 5500", "min_price": 3500, "max_price": 12000},
-            {"name": "AMD Ryzen 5 5600", "query": "Ryzen 5 5600", "min_price": 4500, "max_price": 16000},
-            {"name": "Intel Core i5-12400F", "query": "i5 12400F", "min_price": 5500, "max_price": 18000},
-            {"name": "Intel Core i5-13400F", "query": "i5 13400F", "min_price": 7500, "max_price": 24000},
-            {"name": "AMD Ryzen 5 7500F", "query": "Ryzen 5 7500F", "min_price": 7500, "max_price": 24000},
-            {"name": "Intel Core i5-14600KF", "query": "i5 14600KF", "min_price": 13000, "max_price": 34000},
-            {"name": "AMD Ryzen 7 7800X3D", "query": "Ryzen 7 7800X3D", "min_price": 22000, "max_price": 65000},
+            {"name": "Intel Core i3-12100F", "query": "i3 12100F"},
+            {"name": "AMD Ryzen 5 3600", "query": "Ryzen 5 3600"},
+            {"name": "AMD Ryzen 5 5500", "query": "Ryzen 5 5500"},
+            {"name": "AMD Ryzen 5 5600", "query": "Ryzen 5 5600"},
+            {"name": "Intel Core i5-12400F", "query": "i5 12400F"},
+            {"name": "Intel Core i5-13400F", "query": "i5 13400F"},
+            {"name": "AMD Ryzen 5 7500F", "query": "Ryzen 5 7500F"},
+            {"name": "Intel Core i5-14600KF", "query": "i5 14600KF"},
+            {"name": "AMD Ryzen 7 7800X3D", "query": "Ryzen 7 7800X3D"},
         ],
         "exclude": [
             "кулер", "kuler", "башня", "bashnya", "с кулером", "s kulerom", "vodyanka", "водянка",
@@ -74,41 +73,38 @@ AVITO_CATEGORIES: Dict[str, Dict[str, Any]] = {
             "пк в сборе", "компьютер", "сборка", "sborka", "sborki", "игровой пк", "igrovoy pk", "готовые сборки",
             "коробка", "ножки", "не рабочий", "на запчасти", "донор", "погнуты",
             "b450", "b550", "b650", "b760", "b850", "b840", "h610", "h510", "h410", "a520", "a620", "z790", "z690", "x570", "x670", "x870",
-            "+", "snowman", "32gb", "16gb", "ddr5", "ddr4"
+            "+", "snowman", "32gb", "16gb", "ddr5", "ddr4", "ремонт", "скупка", "куплю"
         ]
     },
     "ram": {
         "title": "Оперативная память",
-        "default_min_price": 1500,
         "items": [
-            {"name": "Оперативная память 16 ГБ DDR4", "query": "DDR4 16Gb 2x8", "min_price": 2500, "max_price": 12000},
-            {"name": "Оперативная память DDR4 32 ГБ", "query": "DDR4 32Gb 2x16", "min_price": 5000, "max_price": 18000},
-            {"name": "DDR5 16GB", "query": "DDR5 16Gb", "min_price": 3000, "max_price": 14000},
-            {"name": "Оперативная память DDR5 32GB", "query": "DDR5 32Gb 2x16", "min_price": 6500, "max_price": 24000},
+            {"name": "Оперативная память 16 ГБ DDR4", "query": "DDR4 16Gb 2x8"},
+            {"name": "Оперативная память DDR4 32 ГБ", "query": "DDR4 32Gb 2x16"},
+            {"name": "DDR5 16GB", "query": "DDR5 16Gb"},
+            {"name": "Оперативная память DDR5 32GB", "query": "DDR5 32Gb 2x16"},
         ],
-        "exclude": ["ноутбук", "sodimm", "so-dimm", "серверная", "ecc", "reg", "чехол", "радиатор"]
+        "exclude": ["ноутбук", "sodimm", "so-dimm", "серверная", "ecc", "reg", "чехол", "радиатор", "ремонт", "скупка", "куплю"]
     },
     "motherboard": {
         "title": "Материнские платы",
-        "default_min_price": 2000,
         "items": [
-            {"name": "Материнская плата AM4 A520", "query": "A520 AM4", "min_price": 2500, "max_price": 11000},
-            {"name": "Материнская плата AM4 B550", "query": "B550 AM4", "min_price": 4000, "max_price": 19000},
-            {"name": "Материнская плата LGA 1700 H610", "query": "H610 LGA 1700", "min_price": 3000, "max_price": 14000},
-            {"name": "Материнская плата LGA 1700 B760", "query": "B760 LGA 1700", "min_price": 4500, "max_price": 22000},
-            {"name": "Материнская плата AM5 B650", "query": "B650 AM5", "min_price": 6000, "max_price": 29000},
+            {"name": "Материнская плата AM4 A520", "query": "A520 AM4"},
+            {"name": "Материнская плата AM4 B550", "query": "B550 AM4"},
+            {"name": "Материнская плата LGA 1700 H610", "query": "H610 LGA 1700"},
+            {"name": "Материнская плата LGA 1700 B760", "query": "B760 LGA 1700"},
+            {"name": "Материнская плата AM5 B650", "query": "B650 AM5"},
         ],
-        "exclude": ["ноутбук", "заглушка", "пайка", "процессор", "комплект", "не рабочая", "на запчасти", "донор", "погнут"]
+        "exclude": ["ноутбук", "заглушка", "пайка", "процессор", "комплект", "не рабочая", "на запчасти", "донор", "погнут", "ремонт", "скупка", "куплю"]
     },
     "ssd": {
         "title": "SSD накопители",
-        "default_min_price": 1000,
         "items": [
-            {"name": "SSD M.2 NVMe 256GB", "query": "SSD M.2 256Gb", "min_price": 1000, "max_price": 6500},
-            {"name": "SSD M.2 NVMe 512GB", "query": "SSD M.2 512Gb", "min_price": 1800, "max_price": 11000},
-            {"name": "SSD M.2 NVMe 1TB", "query": "SSD M.2 1Tb", "min_price": 3500, "max_price": 18000},
+            {"name": "SSD M.2 NVMe 256GB", "query": "SSD M.2 256Gb"},
+            {"name": "SSD M.2 NVMe 512GB", "query": "SSD M.2 512Gb"},
+            {"name": "SSD M.2 NVMe 1TB", "query": "SSD M.2 1Tb"},
         ],
-        "exclude": ["бокс", "корпус", "радиатор", "переходник", "шлейф", "адаптер", "чехол", "hdd", "жесткий"]
+        "exclude": ["бокс", "корпус", "радиатор", "переходник", "шлейф", "адаптер", "чехол", "hdd", "жесткий", "ремонт", "скупка", "куплю"]
     }
 }
 
@@ -281,11 +277,9 @@ class AvitoScraper:
         """Парсит конкретную модель (например 'Ryzen 5 5600' или 'RTX 3060')."""
         target_name = target_item["name"]
         query = target_item["query"]
-        min_p = target_item.get("min_price", 1000)
-        max_p = target_item.get("max_price", 999999)
 
-        # Поиск по России с фильтром минимальной цены для отсева мелочей
-        search_url = f"https://www.avito.ru/all?q={query.replace(' ', '+')}&pmin={min_p}&pmax={max_p}&s=101"
+        # Поиск по всей России без искусственных ценовых рамок
+        search_url = f"https://www.avito.ru/all?q={query.replace(' ', '+')}&s=101"
         logger.info(f"[{AVITO_CATEGORIES[category_key]['title']}] Поиск: '{query}' ({search_url})")
 
         try:
@@ -343,7 +337,8 @@ class AvitoScraper:
         prices = []
         for c in raw_cards:
             price = c["price"]
-            if not (min_p <= price <= max_p):
+            # Санитарный фильтр: отсекаем только фейковые объявления за 1 руб / договорные цены
+            if not price or price < 500:
                 continue
             if not self.is_valid_item(c["name"], category_key):
                 continue

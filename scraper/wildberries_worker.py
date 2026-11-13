@@ -60,8 +60,8 @@ WILDBERRIES_CATEGORIES = {
     },
     "psu": {
         "title": "Блоки питания",
-        "query": "блок питания для пк 80 plus",
-        "keywords": ["блок питания", "power supply", "atx", "600w", "650w", "700w", "750w", "850w", "1000w"],
+        "query": "блок питания Powercase Gamerstorm 1stPlayer NGDP",
+        "keywords": ["powercase", "gamerstorm", "pf600", "pf650", "pf700", "pf750", "pf800", "pf850", "1stplayer", "ngdp"],
         "exclude": ["ноутбук", "роутер", "светодиодн", "лент", "тестер", "кабель", "переходник", "шнур", "корпус", "разветвитель"]
     },
     "case": {

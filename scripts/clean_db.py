@@ -30,3 +30,4 @@ for r in cursor.execute("SELECT category, shop, count(*) FROM products GROUP BY 
     print(f"{r[0]:<15} | {r[1]:<25} | count: {r[2]}")
 
 conn.close()
+

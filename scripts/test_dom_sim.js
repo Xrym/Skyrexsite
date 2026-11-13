@@ -80,3 +80,4 @@ console.log('GPU name:', window.SkyrexRig.state.items.gpu.name);
 console.log('RAM name:', window.SkyrexRig.state.items.ram.name);
 console.log('Rendered HTML contains CPU name:', dom['skyrex-pc-visualizer'].innerHTML.includes('Intel Core i5-13400F'));
 console.log('Rendered HTML contains ? in CPU name:', dom['skyrex-pc-visualizer'].innerHTML.includes('title="?"'));
+

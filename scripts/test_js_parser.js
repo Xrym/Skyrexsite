@@ -83,3 +83,4 @@ console.log("Keys found:", Object.keys(newItems));
 for (const [k, v] of Object.entries(newItems)) {
     console.log(`  ${k}: ${v.name} | ${v.price} | ${v.shop} | ${v.url}`);
 }
+
