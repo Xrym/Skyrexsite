@@ -233,17 +233,42 @@ def get_parsed_catalog_context(user_message: str) -> str:
     cat_items = []
     if is_build_request or budget or len(specific_results) < 5:
         with get_connection() as conn:
-            max_item_price = budget if budget else 9999999
+            if budget:
+                # Dynamic component price bounds based on market reality
+                # (prevents offering 36k GPUs or 30k CPUs for a 40k build)
+                max_gpu_price = max(int(budget * 0.52), 15000)
+                max_cpu_price = max(int(budget * 0.32), 7000)
+                max_mb_price = max(int(budget * 0.22), 5500)
+                max_ram_price = max(int(budget * 0.20), 4500)
+                max_psu_price = max(int(budget * 0.16), 4500)
+                max_ssd_price = max(int(budget * 0.15), 3000)
+                max_cooler_price = max(int(budget * 0.08), 1800)
+                max_case_price = max(int(budget * 0.12), 4000)
+            else:
+                max_gpu_price = max_cpu_price = max_mb_price = max_ram_price = 9999999
+                max_psu_price = max_ssd_price = max_cooler_price = max_case_price = 9999999
 
-            # A. Select Candidate GPUs fitting budget (stepped spread across the entire market spectrum, accessible value first)
+            # A. Select Candidate GPUs fitting budget (accessible value first, filter office display adapters)
+            gpu_junk_filter = (
+                " AND name NOT LIKE '%GT210%' AND name NOT LIKE '%GT 210%' "
+                " AND name NOT LIKE '%GT710%' AND name NOT LIKE '%GT 710%' "
+                " AND name NOT LIKE '%GT730%' AND name NOT LIKE '%GT 730%' "
+                " AND name NOT LIKE '%GT740%' AND name NOT LIKE '%GT 740%' "
+                " AND name NOT LIKE '%GT1030%' AND name NOT LIKE '%GT 1030%' "
+                " AND name NOT LIKE '%N210%' "
+                " AND name NOT LIKE '%CMP40%' AND name NOT LIKE '%CMP 40%' "
+                " AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' "
+            )
             all_gpus = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'gpu' AND price <= ? ORDER BY price ASC",
-                (max_item_price,)
+                f"SELECT * FROM products WHERE category = 'gpu' AND price <= ? {gpu_junk_filter} ORDER BY price ASC",
+                (max_gpu_price,)
             ).fetchall()]
             if not all_gpus:
-                all_gpus = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'gpu' ORDER BY price ASC LIMIT 20").fetchall()]
+                all_gpus = [dict(r) for r in conn.execute(
+                    f"SELECT * FROM products WHERE category = 'gpu' {gpu_junk_filter} ORDER BY price ASC LIMIT 20"
+                ).fetchall()]
             
-            # Sample across catalog percentiles (from top performers to budget value)
+            # Sample across catalog percentiles up to max_gpu_price
             if len(all_gpus) > 10:
                 step = max(len(all_gpus) // 8, 1)
                 raw_gpus = all_gpus[::step][:8]
@@ -286,7 +311,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
             all_cpus = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC",
-                (max_item_price,)
+                (max_cpu_price,)
             ).fetchall()]
             if not all_cpus:
                 all_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC LIMIT 20").fetchall()]
@@ -310,7 +335,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
             # D. Select Motherboards matching candidate sockets (partitioned per socket to guarantee compatibility, best value first)
             all_mbs = [dict(r) for r in conn.execute(
                 "SELECT * FROM products WHERE category = 'motherboard' AND price <= ? ORDER BY price ASC LIMIT 50",
-                (max_item_price,)
+                (max_mb_price,)
             ).fetchall()]
             if not all_mbs:
                 all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price ASC LIMIT 50").fetchall()]
@@ -336,7 +361,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
             ram_filter_sodimm = " AND name NOT LIKE '%SODIMM%' AND name NOT LIKE '%SO-DIMM%' AND name NOT LIKE '%ноутбук%' "
             all_rams = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products WHERE category = 'ram' {ram_filter_sodimm} AND price <= ? ORDER BY price ASC LIMIT 25",
-                (max_item_price,)
+                (max_ram_price,)
             ).fetchall()]
             if not all_rams:
                 all_rams = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ram' {ram_filter_sodimm} ORDER BY price ASC LIMIT 25").fetchall()]
@@ -370,11 +395,25 @@ def get_parsed_catalog_context(user_message: str) -> str:
             """
             raw_psus = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products WHERE category = 'psu' AND price <= ? {psu_whitelist} ORDER BY price ASC LIMIT 20",
-                (max_item_price,)
+                (max_psu_price,)
             ).fetchall()]
             if not raw_psus:
                 raw_psus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'psu' {psu_whitelist} ORDER BY price ASC LIMIT 20").fetchall()]
-            cat_items.extend(enrich_and_rank_products(raw_psus, expert_components, limit=5))
+            diverse_psus = []
+            seen_p_ids = set()
+            for p in sorted(raw_psus, key=lambda x: x.get("price", 0)):
+                if p["id"] not in seen_p_ids:
+                    diverse_psus.append(p)
+                    seen_p_ids.add(p["id"])
+                    if len(diverse_psus) >= 2:
+                        break
+            for p in enrich_and_rank_products(raw_psus, expert_components, limit=5):
+                if p["id"] not in seen_p_ids:
+                    diverse_psus.append(p)
+                    seen_p_ids.add(p["id"])
+                    if len(diverse_psus) >= 5:
+                        break
+            cat_items.extend(diverse_psus if diverse_psus else enrich_and_rank_products(raw_psus, expert_components, limit=5))
 
             # G. Select SSDs fitting budget (strictly authentic M.2 NVMe, no junk/broken/multi-item ads)
             ssd_filter = (
@@ -392,7 +431,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
             )
             raw_ssds = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} AND price <= ? ORDER BY price ASC LIMIT 35",
-                (max_item_price,)
+                (max_ssd_price,)
             ).fetchall()]
             if not raw_ssds:
                 raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} ORDER BY price ASC LIMIT 35").fetchall()]
@@ -441,7 +480,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
             )
             raw_coolers = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products {cooler_filter} AND price <= ? ORDER BY price ASC LIMIT 20",
-                (max_item_price,)
+                (max_cooler_price,)
             ).fetchall()]
             if not raw_coolers:
                 raw_coolers = [dict(r) for r in conn.execute(
@@ -452,7 +491,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
             # I. Select Cases directly from catalog (purely from parsed products, no requirements)
             raw_cases = [dict(r) for r in conn.execute(
                 "SELECT * FROM products WHERE category = 'case' AND price <= ? ORDER BY price ASC LIMIT 20",
-                (max_item_price,)
+                (max_case_price,)
             ).fetchall()]
             if not raw_cases:
                 raw_cases = [dict(r) for r in conn.execute(
@@ -567,16 +606,71 @@ def clean_single_final_build(raw: str) -> str:
 
     return f"{intro}\n\n<b>Вот оптимальная конфигурация ПК под ваш бюджет:</b>\n{final_build}"
 
+def sync_exact_total_sum(text: str) -> str:
+    """Парсит цены из всех позиций сборки (Процессор, Плата, Кулер, Память, Видеокарта, SSD, БП, Корпус)
+    и заменяет строку 'Точная суммарная стоимость:' на математически точную сумму без галлюцинаций.
+    """
+    if not text:
+        return text
+
+    # Ищем строки нумерованных позиций сборки: например '1. Процессор ... — 10 800 руб.'
+    # Поддерживаем как разделение по переводам строк, так и по <br> / <li>
+    normalized = re.sub(r'<\/?(?:li|ul|ol)[^>]*>', '\n', text)
+    normalized = re.sub(r'<br\s*\/?>', '\n', normalized)
+    lines = normalized.split('\n')
+    item_prices = []
+
+    item_pattern = re.compile(
+        r'^\s*(\d+)[\.\)]\s*(?:<b>)?\s*(.*?)\s*(?:—|–|-)\s*([\d\s\xa0]{3,})\s*(?:руб|₽)',
+        re.IGNORECASE
+    )
+
+    for line in lines:
+        line_clean = line.strip()
+        m = item_pattern.search(line_clean)
+        if m:
+            num = int(m.group(1))
+            if 1 <= num <= 8:
+                raw_p = re.sub(r'[\s\xa0]', '', m.group(3))
+                if raw_p.isdigit():
+                    p_val = int(raw_p)
+                    if 500 <= p_val <= 300000:
+                        item_prices.append((num, p_val))
+
+    # Если распознано минимум 4 компонента сборки, считаем точную сумму
+    if len(item_prices) >= 4:
+        unique_pos = {}
+        for num, p in item_prices:
+            unique_pos[num] = p
+
+        exact_sum = sum(unique_pos.values())
+        formatted_sum = f"{exact_sum:,} руб.".replace(",", " ")
+
+        total_regex = re.compile(
+            r'((?:<b>)?\s*(?:Точная суммарная стоимость|Итоговая стоимость|Суммарная стоимость|Итого|Стоимость сборки)[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?([^\n<]+)(?:<\/b>)?',
+            re.IGNORECASE
+        )
+        if total_regex.search(text):
+            text = total_regex.sub(rf'\g<1><b>{formatted_sum}</b>', text)
+        else:
+            text += f"\n\n<b>Точная суммарная стоимость:</b> {formatted_sum}"
+
+    return text
+
 def clean_marketplace_links(text: str) -> str:
     """Гарантирует, что ВСЕ ссылки (Авито, Wildberries, ОнлайнТрейд, DNS) ведут на страницу поиска
     по названию компонента в поисковой строке, а не на прямые/устаревшие карточки товаров.
+    Также синхронизирует итоговую сумму с математически точным расчетом позиций.
     """
     if not text:
         return text
 
     text = clean_single_final_build(text)
 
-    # 1. Преобразование Markdown-ссылок [текст](url) в чистый HTML с поисковой ссылкой
+    # 1. Заменяем любые упоминания 'Deepcool GAMERSTORM' / 'DeepCool GAMERSTORM' на 'GamerStorm'
+    text = re.sub(r'(?i)deepcool\s+gamerstorm', 'GamerStorm', text)
+
+    # 2. Преобразование Markdown-ссылок [текст](url) в чистый HTML с поисковой ссылкой
     def md_link_replacer(match):
         title = match.group(1)
         url = match.group(2)
@@ -592,7 +686,7 @@ def clean_marketplace_links(text: str) -> str:
 
     text = re.sub(r'\[([^\]]+)\]\((https?://[^\)]+)\)', md_link_replacer, text)
 
-    # 2. Коррекция HTML-ссылок <a href='...'>текст</a>
+    # 3. Коррекция HTML-ссылок <a href='...'>текст</a>
     def html_link_replacer(match):
         full_tag = match.group(0)
         href = match.group(1)
@@ -615,9 +709,6 @@ def clean_marketplace_links(text: str) -> str:
 
     html_a_pattern = re.compile(r"<a\s+[^>]*href=['\"]([^'\"]+)['\"][^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL)
     text = html_a_pattern.sub(html_link_replacer, text)
-    return text
-
-    text = re.sub(r'https?://(?:www\.)?avito\.ru/[^\s<>\'"]+', raw_avito_replacer, text)
 
     # 4. Предотвращение слипания ключевых блоков текста (Точная сумма, Примечание, Советы по проверке)
     text = re.sub(
@@ -630,6 +721,9 @@ def clean_marketplace_links(text: str) -> str:
     text = re.sub(r'([^\n>])\s*(\b\d+\.\s*(?:<b>)?[А-ЯA-Z])', r'\1<br>\2', text)
     # Предотвращение слипания заголовка конфигурации (.Конфигурация -> .<br><br>Конфигурация)
     text = re.sub(r'([^\n>])\s*(Конфигурация ПК под ваш бюджет|Вот сбалансированная|Вот оптимальная)', r'\1<br><br>\2', text, flags=re.IGNORECASE)
+
+    # 5. Математически точная синхронизация итоговой суммы
+    text = sync_exact_total_sum(text)
 
     return text
 

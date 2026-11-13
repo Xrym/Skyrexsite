@@ -757,6 +757,7 @@
                         else if (url.includes("onlinetrade.ru")) shop = "ОнлайнТрейд";
                         else if (url.includes("dns-shop.ru")) shop = "DNS";
 
+                        const currentPart = this.state.items[cat.key] || {};
                         let searchUrl = url;
                         const cleanItemName = (name || currentPart.name || "").replace(/<[^>]+>/g, "").replace(/\(Б\/У\)/gi, "").replace(/\(б\/у\)/gi, "").trim();
                         if (cleanItemName && cleanItemName !== "?") {
@@ -767,7 +768,6 @@
                             else searchUrl = `https://www.avito.ru/all?q=${enc}`;
                         }
 
-                        const currentPart = this.state.items[cat.key] || {};
                         newItems[cat.key] = {
                             id: cat.key,
                             category: currentPart.category || cat.key.toUpperCase(),
