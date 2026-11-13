@@ -307,13 +307,13 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 if specs["socket"]:
                     candidate_sockets.add(specs["socket"])
 
-            # D. Select Motherboards matching candidate sockets (partitioned per socket to guarantee compatibility)
+            # D. Select Motherboards matching candidate sockets (partitioned per socket to guarantee compatibility, best value first)
             all_mbs = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'motherboard' AND price <= ? ORDER BY price DESC LIMIT 40",
+                "SELECT * FROM products WHERE category = 'motherboard' AND price <= ? ORDER BY price ASC LIMIT 50",
                 (max_item_price,)
             ).fetchall()]
             if not all_mbs:
-                all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price ASC LIMIT 40").fetchall()]
+                all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price ASC LIMIT 50").fetchall()]
 
             compatible_mbs = []
             for mb_dict in all_mbs:

@@ -81,3 +81,12 @@ console.log('RAM name:', window.SkyrexRig.state.items.ram.name);
 console.log('Rendered HTML contains CPU name:', dom['skyrex-pc-visualizer'].innerHTML.includes('Intel Core i5-13400F'));
 console.log('Rendered HTML contains ? in CPU name:', dom['skyrex-pc-visualizer'].innerHTML.includes('title="?"'));
 
+if (fs.existsSync('C:/Users/user/.gemini/antigravity/brain/bf0f4570-ab64-46b8-8aee-18763b1c4198/.system_generated/tasks/task-2404.log')) {
+    const liveLog = fs.readFileSync('C:/Users/user/.gemini/antigravity/brain/bf0f4570-ab64-46b8-8aee-18763b1c4198/.system_generated/tasks/task-2404.log', 'utf8');
+    window.SkyrexRig.updateFromAiResponse(liveLog);
+    console.log('\n--- LIVE HTML LOG TEST ---');
+    console.log('Live Log total:', window.SkyrexRig.state.total);
+    console.log('Items parsed:', Object.keys(window.SkyrexRig.state.items).map(k => `${k}: ${window.SkyrexRig.state.items[k].name} (${window.SkyrexRig.state.items[k].price})`));
+}
+
+

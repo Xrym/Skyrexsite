@@ -632,9 +632,10 @@
                 this.container = document.getElementById("skyrex-pc-visualizer");
             }
 
-            // Pre-normalize text: ensure numbered items start on fresh line even if glued
-            let norm = responseText.replace(/([^\n>])\s*(\b\d+[\.\)]\s*(?:<b>)?[А-ЯA-Z])/g, "$1\n$2");
+            // Pre-normalize text: strip list tags and ensure numbered items start on fresh line even if glued
+            let norm = responseText.replace(/<\/?(?:ul|ol|li)[^>]*>/gi, "\n");
             norm = norm.replace(/<br\s*\/?>/gi, "\n");
+            norm = norm.replace(/([^\n>])\s*(\b\d+[\.\)]\s*(?:<b>)?[А-ЯA-Z])/g, "$1\n$2");
 
             const lines = norm.split("\n");
             const newItems = {};
@@ -657,8 +658,6 @@
 
                 // Check numbered list format: e.g. "1. Процессор..." or "2) Видеокарта..."
                 for (const cat of catPatterns) {
-                    if (newItems[cat.key]) continue; // already matched
-
                     if (new RegExp(`^\\s*\\d+[\\.\\)]\\s*.*?${cat.regex.source}`, 'i').test(lineClean)) {
                         // Extract Link & Name (support both HTML <a> and Markdown [Title](URL))
                         let url = "";
@@ -710,9 +709,9 @@
                 }
             }
 
-            // Extract Total Price if present or calculate
-            const mTotal = responseText.match(/(?:суммарная стоимость|итого|стоимость сборки).*?([\d\s\xa0]{4,})\s*(?:руб|₽)/i);
-            let total = mTotal ? mTotal[1].replace(/[\s\xa0]/g, '') : null;
+            // Extract Total Price if present or calculate (pick the final match in case of recalculation)
+            const allTotals = [...responseText.matchAll(/(?:суммарная стоимость|итого|стоимость сборки).*?([\d\s\xa0]{4,})\s*(?:руб|₽)/gi)];
+            let total = allTotals.length > 0 ? allTotals[allTotals.length - 1][1].replace(/[\s\xa0]/g, '') : null;
 
             // If at least 1 component was parsed, update the rig dynamically!
             if (foundCount >= 1) {
