@@ -240,28 +240,29 @@ def get_parsed_catalog_context(user_message: str) -> str:
             # Baseline frame costs (actual market floors for quality essentials)
             est_case_cost = 3000
             est_cooler_cost = 2000 if (not budget or budget < 140000) else 4000
-            est_psu_cost = 6000 if (not budget or budget < 120000) else (9000 if budget < 180000 else 13000)
-            est_ssd_cost = 6500 if (not budget or budget < 120000) else (9500 if budget < 180000 else 14000)
+            est_psu_cost = 4500 if (not budget or budget < 100000) else (6500 if budget < 160000 else 10000)
+            est_ssd_cost = 4000 if (not budget or budget < 100000) else (6500 if budget < 160000 else 11000)
 
             if budget and budget < 50000:
                 est_ram_cost = 6500    # 16GB DDR4 budget
                 est_mb_cost = 7000     # A520 / H610
             elif not use_ddr5:
                 # Under 95k budget, high-speed 16GB DDR4 (2x8GB) (~7500-8000 руб) is ideal to reserve budget for strong GPU
-                est_ram_cost = 11000 if (budget and budget >= 95000) else 8000  # 32GB or 16GB DDR4
+                est_ram_cost = 11000 if (budget and budget >= 95000) else 7500  # 32GB or 16GB DDR4
                 est_mb_cost = 9500     # B550 / B760 DDR4
             else:
-                est_ram_cost = 24000 if (budget and budget < 160000) else 36000   # 32GB DDR5
-                est_mb_cost = 14500    # B650 / Z790 DDR5
+                est_ram_cost = 13000 if (budget and budget < 160000) else 24000   # 32GB DDR5
+                est_mb_cost = 12500    # B650 / Z790 DDR5
 
             frame_cost = est_case_cost + est_cooler_cost + est_psu_cost + est_ssd_cost + est_ram_cost + est_mb_cost
 
             # Residual budget allocated directly to the performance core (GPU + CPU)
             if budget:
                 remaining_for_core = max(budget - frame_cost, 15000)
-                # In gaming PCs: GPU gets up to ~75-80% of core budget, CPU gets up to ~40-45%
-                max_gpu_price = max(int(remaining_for_core * 0.85), 15000)
-                max_cpu_price = max(int(remaining_for_core * 0.45), 8000)
+                # Cap GPU at 42% for budgets < 120k so GPU never crowds out the rest of the build
+                gpu_pct = 0.42 if budget < 120000 else 0.48
+                max_gpu_price = max(int(budget * gpu_pct), 15000)
+                max_cpu_price = max(int(remaining_for_core * 0.42), 8000)
 
                 # Headroom limits for components in catalog search queries (ensuring items are not prematurely filtered out)
                 # Cap RAM strictly so overpriced DDR4 kits (e.g. 21 500 руб) don't eat 25% of an 80k budget
