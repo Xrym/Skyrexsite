@@ -53,10 +53,10 @@ def main():
     while True:
         # 1. Выбор магазина
         print_header("ЭТАП 1: ВЫБОР МАГАЗИНА")
-        print("  [1] Wildberries  --> Видеокарты, SSD, ОЗУ, Материнские платы")
-        print("  [2] ОнлайнТрейд  --> Блоки питания, Кулеры и СЖО")
-        print("  [3] Авито (Б/У)  --> Автообновление Б/У цен (GPU, CPU, RAM, MB, SSD, PSU)")
-        print("  [4] Все источники --> Полный сбор по магазинам и Авито")
+        print("  [1] Wildberries  --> Видеокарты, Процессоры, Материнки, ОЗУ, SSD, БП, Корпуса, Кулеры")
+        print("  [2] ОнлайнТрейд  --> Блоки питания, Кулеры и СЖО, SSD диски, Корпуса")
+        print("  [3] Авито (Б/У)  --> Автообновление Б/У цен (GPU, CPU, RAM, Motherboard, SSD)")
+        print("  [4] Все источники --> Полный сбор по новой матрице источников")
         print("  [0] Выход")
         print()
         shop_choice = ask_choice("Выберите источник (1-4, 0)", ["1", "2", "3", "4", "0"], "1")
@@ -79,57 +79,67 @@ def main():
 
         if shop_val == "wildberries":
             print_header("ЭТАП 2: КОМПОНЕНТЫ WILDBERRIES")
-            print("  [1] ВСЕ категории WB (GPU, SSD, RAM, Материнки)")
+            print("  [1] ВСЕ категории WB (GPU, CPU, Motherboard, RAM, SSD, PSU, Case, Cooler)")
             print("  [2] Только Видеокарты (GPU)")
-            print("  [3] Только SSD накопители (SSD)")
-            print("  [4] Только Оперативная память (RAM)")
-            print("  [5] Только Материнские платы (Motherboard)")
+            print("  [3] Только Процессоры (CPU)")
+            print("  [4] Только Материнские платы (Motherboard)")
+            print("  [5] Только Оперативная память (RAM)")
+            print("  [6] Только SSD накопители (SSD)")
+            print("  [7] Только Блоки питания (PSU)")
+            print("  [8] Только Корпуса для ПК (Case)")
+            print("  [9] Только Кулеры и СЖО (Cooler)")
             print()
-            cat_choice = ask_choice("Выберите категорию (1-5)", ["1", "2", "3", "4", "5"], "1")
+            cat_choice = ask_choice("Выберите категорию (1-9)", ["1", "2", "3", "4", "5", "6", "7", "8", "9"], "1")
             
             wb_cat_map = {
-                "1": ([], "Все категории WB (GPU, SSD, RAM, Motherboard)"),
+                "1": ([], "Все категории WB (GPU, CPU, MB, RAM, SSD, PSU, Case, Cooler)"),
                 "2": (["gpu"], "Видеокарты [GPU]"),
-                "3": (["ssd"], "SSD накопители [SSD]"),
-                "4": (["ram"], "Оперативная память [RAM]"),
-                "5": (["motherboard"], "Материнские платы [Motherboard]")
+                "3": (["cpu"], "Процессоры [CPU]"),
+                "4": (["motherboard"], "Материнские платы [Motherboard]"),
+                "5": (["ram"], "Оперативная память [RAM]"),
+                "6": (["ssd"], "SSD накопители [SSD]"),
+                "7": (["psu"], "Блоки питания [PSU]"),
+                "8": (["case"], "Корпуса для ПК [Case]"),
+                "9": (["cooler"], "Кулеры и СЖО [Cooler]"),
             }
             cat_param, cat_desc = wb_cat_map[cat_choice]
 
         elif shop_val == "onlinetrade":
             print_header("ЭТАП 2: КОМПОНЕНТЫ ОНЛАЙНТРЕЙД")
-            print("  [1] ВСЕ категории ОнлайнТрейд (БП, Кулеры)")
+            print("  [1] ВСЕ категории ОнлайнТрейд (PSU, Cooler, SSD, Case)")
             print("  [2] Только Блоки питания (PSU)")
             print("  [3] Только Кулеры и СЖО (Cooler)")
+            print("  [4] Только SSD накопители (SSD)")
+            print("  [5] Только Корпуса для ПК (Case)")
             print()
-            cat_choice = ask_choice("Выберите категорию (1-3)", ["1", "2", "3"], "1")
+            cat_choice = ask_choice("Выберите категорию (1-5)", ["1", "2", "3", "4", "5"], "1")
 
             ot_cat_map = {
-                "1": ([], "Все категории ОнлайнТрейд (PSU, Cooler)"),
+                "1": ([], "Все категории ОнлайнТрейд (PSU, Cooler, SSD, Case)"),
                 "2": (["psu"], "Блоки питания [PSU]"),
-                "3": (["cooler"], "Кулеры и СЖО [Cooler]")
+                "3": (["cooler"], "Кулеры и СЖО [Cooler]"),
+                "4": (["ssd"], "SSD накопители [SSD]"),
+                "5": (["case"], "Корпуса для ПК [Case]")
             }
             cat_param, cat_desc = ot_cat_map[cat_choice]
 
         elif shop_val == "avito":
             print_header("ЭТАП 2: КОМПОНЕНТЫ АВИТО (Б/У)")
-            print("  [1] ВСЕ компоненты (GPU, CPU, RAM, MB, SSD, PSU)")
+            print("  [1] ВСЕ компоненты Авито (GPU, CPU, RAM, Motherboard, SSD)")
             print("  [2] Только Видеокарты (GPU)")
             print("  [3] Только Процессоры (CPU)")
             print("  [4] Только Оперативная память (RAM)")
             print("  [5] Только Материнские платы (Motherboard)")
             print("  [6] Только SSD накопители (SSD)")
-            print("  [7] Только Блоки питания (PSU)")
             print()
-            cat_choice = ask_choice("Выберите категорию (1-7)", ["1", "2", "3", "4", "5", "6", "7"], "1")
+            cat_choice = ask_choice("Выберите категорию (1-6)", ["1", "2", "3", "4", "5", "6"], "1")
             avito_cat_map = {
-                "1": ([], "Все компоненты Авито Б/У (GPU, CPU, RAM, MB, SSD, PSU)"),
+                "1": ([], "Все компоненты Авито Б/У (GPU, CPU, RAM, MB, SSD)"),
                 "2": (["gpu"], "Видеокарты [GPU]"),
                 "3": (["cpu"], "Процессоры [CPU]"),
                 "4": (["ram"], "Оперативная память [RAM]"),
                 "5": (["motherboard"], "Материнские платы [Motherboard]"),
                 "6": (["ssd"], "SSD накопители [SSD]"),
-                "7": (["psu"], "Блоки питания [PSU]"),
             }
             cat_param, cat_desc = avito_cat_map[cat_choice]
 

@@ -17,6 +17,14 @@ ONLINETRADE_CATEGORIES = {
     "cooler": {
         "title": "Кулеры для процессоров",
         "slug": "kulery_dlya_protsessorov-c1492"
+    },
+    "ssd": {
+        "title": "SSD накопители",
+        "slug": "ssd_diski-c294"
+    },
+    "case": {
+        "title": "Корпуса для ПК",
+        "slug": "kompyuternye_korpusa-c1323"
     }
 }
 
@@ -247,6 +255,16 @@ class OnlineTradeScraper:
                 is_ngdp = "1stplayer" in name_l and "ngdp" in name_l and "1200" not in name_l
                 if not (is_pw or is_pf or is_ngdp):
                     continue
+            elif category_key == "ssd":
+                if "ssd_diski" not in url_l:
+                    continue
+                if any(bad in name_l for bad in ["бокс", "чехол", "карман", "переходник", "адаптер", "радиатор"]):
+                    continue
+            elif category_key == "case":
+                if "korpusa" not in url_l:
+                    continue
+                if any(bad in name_l for bad in ["чехол", "для hdd", "для ssd", "подставка", "держатель", "панель", "салазки"]):
+                    continue
 
             products.append({
                 "id": itm["id"],
@@ -300,6 +318,16 @@ class OnlineTradeScraper:
                     is_pf = ("gamerstorm" in name_l or "deepcool" in name_l) and bool(re.search(r'\bpf[- ]?(?:600|650|700|750|800|850)', name_l))
                     is_ngdp = "1stplayer" in name_l and "ngdp" in name_l and "1200" not in name_l
                     if not (is_pw or is_pf or is_ngdp):
+                        continue
+                elif category_key == "ssd":
+                    if "ssd_diski" not in url_l:
+                        continue
+                    if any(bad in name_l for bad in ["бокс", "чехол", "карман", "переходник", "адаптер", "радиатор"]):
+                        continue
+                elif category_key == "case":
+                    if "korpusa" not in url_l:
+                        continue
+                    if any(bad in name_l for bad in ["чехол", "для hdd", "для ssd", "подставка", "держатель", "панель", "салазки"]):
                         continue
 
                 products.append({

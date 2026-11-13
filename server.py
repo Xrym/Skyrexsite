@@ -554,6 +554,19 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 ).fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=4))
 
+            # I. Select Cases fitting budget
+            max_case_price = 4500 if (not budget or budget < 100000) else (7000 if budget < 180000 else 12000)
+            raw_cases = [dict(r) for r in conn.execute(
+                "SELECT * FROM products WHERE category = 'case' AND price <= ? ORDER BY price ASC LIMIT 10",
+                (max_case_price,)
+            ).fetchall()]
+            if not raw_cases:
+                raw_cases = [dict(r) for r in conn.execute(
+                    "SELECT * FROM products WHERE category = 'case' ORDER BY price ASC LIMIT 10"
+                ).fetchall()]
+            if raw_cases:
+                cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=3))
+
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]
     
     if all_products:
