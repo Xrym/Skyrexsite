@@ -586,6 +586,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (isFirstToken) {
                     showTyping(false);
                     appendMessage("bot", accumulatedText || "⚠️ Ассистент не сформировал ответ.");
+                    if (accumulatedText && window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
+                        window.SkyrexRig.updateFromAiResponse(accumulatedText);
+                    }
                 } else {
                     // Update state with final text
                     const lastBotMsg = state.messages[state.messages.length - 1];
@@ -596,6 +599,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (botContentDiv) {
                         botContentDiv.innerHTML = parseBotContent(accumulatedText);
                     }
+                    if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
+                        window.SkyrexRig.updateFromAiResponse(accumulatedText);
+                    }
                 }
             } else {
                 // B. STANDARD JSON RESPONSE FALLBACK
@@ -603,6 +609,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 showTyping(false);
                 if (data && data.response) {
                     appendMessage("bot", data.response);
+                    if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
+                        window.SkyrexRig.updateFromAiResponse(data.response);
+                    }
                 } else {
                     appendMessage("bot", "⚠️ К сожалению, не удалось получить ответ от ассистента.");
                 }
@@ -676,6 +685,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 state.messages = [];
                 chatBody.innerHTML = "";
                 sendGreeting();
+                if (window.SkyrexRig && typeof window.SkyrexRig.resetToDefault === "function") {
+                    window.SkyrexRig.resetToDefault();
+                }
             }
         });
     }
