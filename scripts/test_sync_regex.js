@@ -10,3 +10,4 @@ const repl = (str) => str.replace(/((?:<b>)?(?:Точная суммарная �
 console.log('1:', repl(sample1));
 console.log('2:', repl(sample2));
 console.log('3:', repl(sample3));
+

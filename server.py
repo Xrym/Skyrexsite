@@ -376,13 +376,26 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 raw_psus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'psu' {psu_whitelist} ORDER BY price ASC LIMIT 20").fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_psus, expert_components, limit=5))
 
-            # G. Select SSDs fitting budget (diverse prices, prioritizing highest volume for lowest price)
+            # G. Select SSDs fitting budget (strictly authentic M.2 NVMe, no junk/broken/multi-item ads)
+            ssd_filter = (
+                " AND (name LIKE '%m.2%' OR name LIKE '%m2%' OR name LIKE '%nvme%') "
+                " AND name NOT LIKE '%sata%' "
+                " AND name NOT LIKE '%msata%' "
+                " AND name NOT LIKE '%нерабоч%' "
+                " AND name NOT LIKE '%под ремонт%' "
+                " AND name NOT LIKE '%на запчаст%' "
+                " AND name NOT LIKE '%диски%' "
+                " AND name NOT LIKE '%m225%' "
+                " AND name NOT LIKE '%ngff%' "
+                " AND name NOT LIKE '%/ 256%' "
+                " AND name NOT LIKE '%/ 512%' "
+            )
             raw_ssds = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'ssd' AND price <= ? ORDER BY price ASC LIMIT 35",
+                f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} AND price <= ? ORDER BY price ASC LIMIT 35",
                 (max_item_price,)
             ).fetchall()]
             if not raw_ssds:
-                raw_ssds = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'ssd' ORDER BY price ASC LIMIT 35").fetchall()]
+                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} ORDER BY price ASC LIMIT 35").fetchall()]
 
             def get_ssd_capacity(name):
                 m_tb = re.search(r'(\d+)\s*(?:тб|tb)\b', name, re.I)
@@ -507,82 +520,79 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
             price_str = f"{p['price']:,} руб".replace(",", " ")
             old_str = f" (старая цена: {p['old_price']:,} руб)".replace(",", " ") if p.get('old_price') else ""
-            context_parts.append(f"- [{p.get('shop', 'ОнлайнТрейд')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {p['url']}")
+            search_url = make_marketplace_search_url(p.get('shop', ''), p['name'])
+            context_parts.append(f"- [{p.get('shop', 'ОнлайнТрейд')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {search_url}")
 
     return "\n".join(context_parts)
 
-def clean_avito_links(text: str) -> str:
-    """Гарантирует, что все ссылки на Авито ведут на страницу поиска по точному запросу,
-    а не на выдуманные несуществующие прямые объявления.
+def make_marketplace_search_url(shop: str, name: str) -> str:
+    """Формирует универсальную ссылку на поисковую строку маркетплейса с введенным названием компонента."""
+    clean_name = re.sub(r'<[^>]+>', '', name).strip()
+    clean_name = re.sub(r'(?i)\(б/у\)|б/у', '', clean_name).strip()
+    clean_name = re.sub(r'(?i)\b(компьютерный|компьютерная|компьютерное|для компьютера|для пк)\b', '', clean_name)
+    clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+    if not clean_name:
+        clean_name = "комплектующие для пк"
+
+    encoded = urllib.parse.quote_plus(clean_name)
+    shop_lower = (shop or "").lower()
+
+    if "wildberries" in shop_lower or "вайлдберриз" in shop_lower:
+        return f"https://www.wildberries.ru/catalog/0/search.aspx?search={encoded}"
+    elif "онлайн" in shop_lower or "online" in shop_lower:
+        return f"https://www.onlinetrade.ru/catalogue/?query={encoded}"
+    elif "dns" in shop_lower or "днс" in shop_lower:
+        return f"https://www.dns-shop.ru/search/?q={encoded}"
+    else:
+        return f"https://www.avito.ru/all?q={encoded}"
+
+def clean_marketplace_links(text: str) -> str:
+    """Гарантирует, что ВСЕ ссылки (Авито, Wildberries, ОнлайнТрейд, DNS) ведут на страницу поиска
+    по названию компонента в поисковой строке, а не на прямые/устаревшие карточки товаров.
     """
     if not text:
         return text
 
-    # 1. Преобразование Markdown-ссылок [текст](url) в чистый HTML
+    # 1. Преобразование Markdown-ссылок [текст](url) в чистый HTML с поисковой ссылкой
     def md_link_replacer(match):
         title = match.group(1)
         url = match.group(2)
-        return f"<a href='{url}' target='_blank'>{title}</a>"
+        shop = "Авито"
+        if "wildberries.ru" in url:
+            shop = "Wildberries"
+        elif "onlinetrade.ru" in url:
+            shop = "ОнлайнТрейд"
+        elif "dns-shop.ru" in url:
+            shop = "DNS"
+        search_url = make_marketplace_search_url(shop, title)
+        return f"<a href='{search_url}' target='_blank'>{title}</a>"
 
     text = re.sub(r'\[([^\]]+)\]\((https?://[^\)]+)\)', md_link_replacer, text)
 
-    # 2. Коррекция HTML-ссылок на Авито
-    def html_avito_replacer(match):
+    # 2. Коррекция HTML-ссылок <a href='...'>текст</a>
+    def html_link_replacer(match):
         full_tag = match.group(0)
         href = match.group(1)
         inner_text = match.group(2)
 
-        if "avito.ru" in href:
-            if "?q=" in href or "&q=" in href:
-                try:
-                    parsed = urllib.parse.urlparse(href)
-                    params = urllib.parse.parse_qs(parsed.query)
-                    raw_q = params.get('q', [''])[0]
-                    clean_text = urllib.parse.unquote_plus(raw_q)
-                    # If clean_text still contains broken '%' or corrupted tokens, fallback to inner_text
-                    if '%' in clean_text or len(clean_text) < 2 or 'па0' in clean_text or 'такогонить' in clean_text:
-                        clean_text = re.sub(r'<[^>]+>', '', inner_text).strip()
-                    clean_text = re.sub(r'<[^>]+>', '', clean_text).strip()
-                    clean_text = re.sub(r'(?i)\(б/у\)|б/у', '', clean_text).strip()
-                    if clean_text:
-                        reencoded_url = f"https://www.avito.ru/all?q={urllib.parse.quote_plus(clean_text)}"
-                        return f"<a href='{reencoded_url}' target='_blank'>{inner_text}</a>"
-                except Exception:
-                    pass
-                if 'target=' not in full_tag:
-                    return f"<a href='{href}' target='_blank'>{inner_text}</a>"
-                return full_tag
+        shop = "Авито"
+        if "wildberries.ru" in href:
+            shop = "Wildberries"
+        elif "onlinetrade.ru" in href:
+            shop = "ОнлайнТрейд"
+        elif "dns-shop.ru" in href:
+            shop = "DNS"
+        elif "avito.ru" in href:
+            shop = "Авито"
+        else:
+            return full_tag
 
-            clean_query = re.sub(r'<[^>]+>', '', inner_text).strip()
-            clean_query = re.sub(r'(?i)\b(на\s+авито|авито|avito|купить|поиск|ссылка|объявление)\b', '', clean_query).strip()
-
-            if not clean_query or len(clean_query) < 2:
-                path = href.split("?")[0].rstrip("/").split("/")[-1]
-                path = re.sub(r'_\d+$', '', path).replace('_', ' ').replace('-', ' ')
-                clean_query = path.strip() or "компьютерные комплектующие"
-
-            search_url = f"https://www.avito.ru/all?q={urllib.parse.quote_plus(clean_query)}"
-            return f"<a href='{search_url}' target='_blank'>{inner_text}</a>"
-
-        return full_tag
+        search_url = make_marketplace_search_url(shop, inner_text)
+        return f"<a href='{search_url}' target='_blank'>{inner_text}</a>"
 
     html_a_pattern = re.compile(r"<a\s+[^>]*href=['\"]([^'\"]+)['\"][^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL)
-    text = html_a_pattern.sub(html_avito_replacer, text)
-
-    # 3. Преобразование «сырых» ссылок на Авито в тексте
-    def raw_avito_replacer(match):
-        raw_url = match.group(0)
-        start = match.start()
-        prefix = text[max(0, start - 10):start]
-        if 'href=' in prefix or 'src=' in prefix:
-            return raw_url
-        if "?q=" in raw_url:
-            return f"<a href='{raw_url}' target='_blank'>Поиск на Авито</a>"
-        path = raw_url.split("?")[0].rstrip("/").split("/")[-1]
-        path = re.sub(r'_\d+$', '', path).replace('_', ' ').replace('-', ' ').strip()
-        query = path or 'компьютерные комплектующие'
-        search_url = f"https://www.avito.ru/all?q={urllib.parse.quote_plus(query)}"
-        return f"<a href='{search_url}' target='_blank'>{query} на Авито</a>"
+    text = html_a_pattern.sub(html_link_replacer, text)
+    return text
 
     text = re.sub(r'https?://(?:www\.)?avito\.ru/[^\s<>\'"]+', raw_avito_replacer, text)
 
@@ -816,7 +826,7 @@ async def call_llm(message: str, history: list) -> str:
                                     if candidates:
                                         parts = candidates[0].get("content", {}).get("parts", [])
                                         if parts and "text" in parts[0]:
-                                            return clean_avito_links(parts[0]["text"])
+                                            return clean_marketplace_links(parts[0]["text"])
                                 last_error = f"Status {resp.status}"
                                 if resp.status in (429, 503, 500):
                                     await asyncio.sleep(1.5)
@@ -859,7 +869,7 @@ async def call_llm(message: str, history: list) -> str:
                     result = await resp.json()
                     try:
                         raw_text = result["choices"][0]["message"]["content"]
-                        return clean_avito_links(raw_text)
+                        return clean_marketplace_links(raw_text)
                     except (KeyError, IndexError) as e:
                         logger.error(f"Failed to parse OpenAI response: {e}, structure: {result}")
                         return "⚠️ Не удалось извлечь ответ из нейросети."

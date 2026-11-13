@@ -755,6 +755,17 @@
                         if (url.includes("avito.ru")) shop = "Авито (Б/У)";
                         else if (url.includes("wildberries.ru")) shop = "Wildberries";
                         else if (url.includes("onlinetrade.ru")) shop = "ОнлайнТрейд";
+                        else if (url.includes("dns-shop.ru")) shop = "DNS";
+
+                        let searchUrl = url;
+                        const cleanItemName = (name || currentPart.name || "").replace(/<[^>]+>/g, "").replace(/\(Б\/У\)/gi, "").replace(/\(б\/у\)/gi, "").trim();
+                        if (cleanItemName && cleanItemName !== "?") {
+                            const enc = encodeURIComponent(cleanItemName);
+                            if (shop.includes("Wildberries")) searchUrl = `https://www.wildberries.ru/catalog/0/search.aspx?search=${enc}`;
+                            else if (shop.includes("ОнлайнТрейд")) searchUrl = `https://www.onlinetrade.ru/catalogue/?query=${enc}`;
+                            else if (shop.includes("DNS")) searchUrl = `https://www.dns-shop.ru/search/?q=${enc}`;
+                            else searchUrl = `https://www.avito.ru/all?q=${enc}`;
+                        }
 
                         const currentPart = this.state.items[cat.key] || {};
                         newItems[cat.key] = {
@@ -764,7 +775,7 @@
                             name: name || currentPart.name,
                             price: price || currentPart.price,
                             shop: shop,
-                            url: url || currentPart.url,
+                            url: searchUrl || currentPart.url,
                             tag: this.extractComponentTag(cat.key, name || currentPart.name, shop),
                             icon: currentPart.icon || "⚡"
                         };

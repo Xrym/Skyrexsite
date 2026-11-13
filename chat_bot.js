@@ -64,45 +64,51 @@ document.addEventListener("DOMContentLoaded", () => {
         return d.getHours().toString().padStart(2, '0') + ":" + d.getMinutes().toString().padStart(2, '0');
     }
 
-    function sanitizeAvitoUrl(url, linkTitle = "") {
-        if (!url || !url.includes("avito.ru")) return url;
-        let query = "";
-        try {
-            const matchQ = url.match(/[?&]q=([^&#]+)/);
-            if (matchQ && matchQ[1]) {
-                const rawParam = matchQ[1].replace(/\+/g, " ");
-                try {
-                    query = decodeURIComponent(rawParam);
-                } catch (e) {
-                    const sanitized = rawParam.replace(/%(?![0-9a-fA-F]{2})/g, "");
-                    try {
-                        query = decodeURIComponent(sanitized);
-                    } catch (e2) {
-                        query = "";
-                    }
+    function sanitizeMarketplaceUrl(url, linkTitle = "") {
+        if (!url) return url;
+
+        let query = (linkTitle || "")
+            .replace(/<[^>]+>/g, "")
+            .replace(/\(Б\/У\)/gi, "")
+            .replace(/\(б\/у\)/gi, "")
+            .replace(/Б\/У/gi, "")
+            .replace(/\b(компьютерный|компьютерная|компьютерное|для компьютера|для пк)\b/gi, "")
+            .trim();
+
+        // If linkTitle is empty or invalid, try to extract from query parameters or URL path
+        if (!query || query.length < 2) {
+            try {
+                const matchQ = url.match(/[?&](?:q|search|query)=([^&#]+)/);
+                if (matchQ && matchQ[1]) {
+                    query = decodeURIComponent(matchQ[1].replace(/\+/g, " "));
                 }
-            }
-        } catch (e) {
-            query = "";
+            } catch (e) {}
         }
 
-        const isCorrupt = !query || query.includes("%") || query.length < 2 || /(?:такогонить|па0)/i.test(query);
-        if (isCorrupt && linkTitle) {
-            query = linkTitle
-                .replace(/<[^>]+>/g, "")
-                .replace(/\(Б\/У\)/gi, "")
-                .replace(/\(б\/у\)/gi, "")
-                .replace(/Б\/У/gi, "")
-                .trim();
-        }
-
-        if (!query) {
-            query = "компьютерные комплектующие";
+        if (!query || query.length < 2 || /(?:такогонить|па0)/i.test(query)) {
+            query = "комплектующие для пк";
         }
 
         query = query.replace(/\s+/g, " ").trim();
-        return `https://www.avito.ru/all?q=${encodeURIComponent(query)}`;
+        const encoded = encodeURIComponent(query);
+
+        if (url.includes("wildberries.ru")) {
+            return `https://www.wildberries.ru/catalog/0/search.aspx?search=${encoded}`;
+        }
+        if (url.includes("onlinetrade.ru")) {
+            return `https://www.onlinetrade.ru/catalogue/?query=${encoded}`;
+        }
+        if (url.includes("dns-shop.ru")) {
+            return `https://www.dns-shop.ru/search/?q=${encoded}`;
+        }
+        if (url.includes("avito.ru")) {
+            return `https://www.avito.ru/all?q=${encoded}`;
+        }
+
+        return url;
     }
+
+    const sanitizeAvitoUrl = sanitizeMarketplaceUrl;
 
     /**
      * Resilient hybrid Markdown and HTML parser for bot responses.
@@ -165,13 +171,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // 6. Markdown links: [Title](URL) -> <a href='URL' target='_blank'>Title</a>
         text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, (match, title, url) => {
-            const cleanUrl = url.includes("avito.ru") ? sanitizeAvitoUrl(url, title) : url;
+            const cleanUrl = sanitizeMarketplaceUrl(url, title);
             return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${title}</a>`;
         });
 
-        // 6.1. Sanitize any existing HTML <a> tags pointing to Avito
-        text = text.replace(/<a\s+([^>]*?)href=(['"])(https?:\/\/[^'"]*avito\.ru[^'"]*)\2([^>]*)>(.*?)<\/a>/gi, (match, before, quote, url, after, innerText) => {
-            const cleanUrl = sanitizeAvitoUrl(url, innerText);
+        // 6.1. Sanitize any existing HTML <a> tags pointing to marketplaces
+        text = text.replace(/<a\s+([^>]*?)href=(['"])(https?:\/\/[^'"]+)\2([^>]*)>(.*?)<\/a>/gi, (match, before, quote, url, after, innerText) => {
+            const cleanUrl = sanitizeMarketplaceUrl(url, innerText);
             const targetAttr = (before + after).includes("target=") ? "" : ' target="_blank" rel="noopener noreferrer"';
             return `<a ${before}href="${cleanUrl}"${after}${targetAttr}>${innerText}</a>`;
         });
@@ -179,7 +185,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 7. Auto-link bare URLs not inside tags
         text = text.replace(/(^|[^"'])(https?:\/\/[^\s<]+)/g, (match, prefix, url) => {
             if (prefix.includes("href=") || prefix.includes("src=")) return match;
-            const cleanUrl = url.includes("avito.ru") ? sanitizeAvitoUrl(url) : url;
+            const cleanUrl = sanitizeMarketplaceUrl(url, "");
             return `${prefix}<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${url}</a>`;
         });
 
