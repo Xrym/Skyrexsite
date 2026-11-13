@@ -140,7 +140,13 @@
             // Check if chat history already has an existing PC build recommendation
             setTimeout(() => {
                 this.checkExistingChatHistory();
-            }, 400);
+            }, 100);
+            setTimeout(() => {
+                this.checkExistingChatHistory();
+            }, 500);
+            setTimeout(() => {
+                this.checkExistingChatHistory();
+            }, 1500);
         },
 
         createTooltip() {
@@ -155,6 +161,9 @@
         },
 
         render() {
+            if (!this.container) {
+                this.container = document.getElementById("skyrex-pc-visualizer");
+            }
             if (!this.container) return;
 
             const items = this.state.items;
@@ -162,11 +171,25 @@
 
             // Compute total display: "?" if uncustomized, or "XX XXX ₽" if customized (never "не число")
             let totalDisplay = "?";
-            if (isCustomized && this.state.total && this.state.total !== "?") {
-                const rawDigits = String(this.state.total).replace(/\D/g, '');
-                const num = parseInt(rawDigits, 10);
-                if (!isNaN(num) && num > 0) {
-                    totalDisplay = num.toLocaleString('ru-RU') + " ₽";
+            if (isCustomized) {
+                let sum = 0;
+                Object.values(items).forEach(itm => {
+                    if (itm && itm.price && itm.price !== "?") {
+                        const digits = String(itm.price).replace(/\D/g, '');
+                        if (digits) {
+                            const p = parseInt(digits, 10);
+                            if (!isNaN(p) && p > 0) sum += p;
+                        }
+                    }
+                });
+                if (sum > 0) {
+                    totalDisplay = sum.toLocaleString('ru-RU') + " ₽";
+                } else if (this.state.total && this.state.total !== "?") {
+                    const rawDigits = String(this.state.total).replace(/\D/g, '');
+                    const num = parseInt(rawDigits, 10);
+                    if (!isNaN(num) && num > 0) {
+                        totalDisplay = num.toLocaleString('ru-RU') + " ₽";
+                    }
                 }
             }
 
@@ -605,6 +628,10 @@
         updateFromAiResponse(responseText) {
             if (!responseText || typeof responseText !== "string") return;
 
+            if (!this.container) {
+                this.container = document.getElementById("skyrex-pc-visualizer");
+            }
+
             // Pre-normalize text: ensure numbered items start on fresh line even if glued
             let norm = responseText.replace(/([^\n>])\s*(\b\d+[\.\)]\s*(?:<b>)?[А-ЯA-Z])/g, "$1\n$2");
             norm = norm.replace(/<br\s*\/?>/gi, "\n");
@@ -687,8 +714,8 @@
             const mTotal = responseText.match(/(?:суммарная стоимость|итого|стоимость сборки).*?([\d\s\xa0]{4,})\s*(?:руб|₽)/i);
             let total = mTotal ? mTotal[1].replace(/[\s\xa0]/g, '') : null;
 
-            // If at least 3 components were parsed, update the rig!
-            if (foundCount >= 3) {
+            // If at least 1 component was parsed, update the rig dynamically!
+            if (foundCount >= 1) {
                 this.state.isCustomized = true;
 
                 // Merge with existing state for any unmentioned parts
@@ -696,18 +723,22 @@
                     this.state.items[k] = newItems[k];
                 });
 
-                if (total) {
-                    this.state.total = total;
-                } else {
-                    // Recalculate total sum from parts
-                    let sum = 0;
-                    Object.values(this.state.items).forEach(itm => {
-                        if (itm.price && itm.price !== "?") {
-                            const digits = itm.price.replace(/\D/g, '');
-                            if (digits) sum += parseInt(digits, 10);
+                // Calculate total sum directly from components
+                let sum = 0;
+                Object.values(this.state.items).forEach(itm => {
+                    if (itm.price && itm.price !== "?") {
+                        const digits = String(itm.price).replace(/\D/g, '');
+                        if (digits) {
+                            const p = parseInt(digits, 10);
+                            if (!isNaN(p) && p > 0) sum += p;
                         }
-                    });
-                    if (sum > 0) this.state.total = String(sum);
+                    }
+                });
+
+                if (sum > 0) {
+                    this.state.total = String(sum);
+                } else if (total) {
+                    this.state.total = total;
                 }
 
                 // Save to localStorage

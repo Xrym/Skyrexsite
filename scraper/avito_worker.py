@@ -79,12 +79,12 @@ AVITO_CATEGORIES: Dict[str, Dict[str, Any]] = {
     },
     "ram": {
         "title": "Оперативная память",
-        "default_min_price": 2000,
+        "default_min_price": 1500,
         "items": [
-            {"name": "Оперативная память 16 ГБ DDR4", "query": "DDR4 16Gb 2x8", "min_price": 3000, "max_price": 16000},
-            {"name": "Оперативная память DDR4 32 ГБ", "query": "DDR4 32Gb 2x16", "min_price": 7000, "max_price": 28000},
-            {"name": "DDR5 16GB", "query": "DDR5 16Gb", "min_price": 10000, "max_price": 35000},
-            {"name": "Оперативная память DDR5 32GB", "query": "DDR5 32Gb 2x16", "min_price": 20000, "max_price": 65000},
+            {"name": "Оперативная память 16 ГБ DDR4", "query": "DDR4 16Gb 2x8", "min_price": 2500, "max_price": 12000},
+            {"name": "Оперативная память DDR4 32 ГБ", "query": "DDR4 32Gb 2x16", "min_price": 5000, "max_price": 18000},
+            {"name": "DDR5 16GB", "query": "DDR5 16Gb", "min_price": 3000, "max_price": 14000},
+            {"name": "Оперативная память DDR5 32GB", "query": "DDR5 32Gb 2x16", "min_price": 6500, "max_price": 24000},
         ],
         "exclude": ["ноутбук", "sodimm", "so-dimm", "серверная", "ecc", "reg", "чехол", "радиатор"]
     },
@@ -120,8 +120,8 @@ DOM_EXTRACT_AVITO_JS = """
     const cards = document.querySelectorAll('[data-marker="item"], div[class*="iva-item-root"]');
 
     for (const card of cards) {
-        // Ссылка на карточку и название
-        const linkEl = card.querySelector('a[data-marker="item-title"], a[itemprop="url"], [class*="title-root"] a');
+        // Ссылка на карточку товара
+        const linkEl = card.querySelector('a[data-marker="item-title"], [class*="title-root"] a, a[itemprop="url"]');
         if (!linkEl) continue;
 
         const href = linkEl.getAttribute('href') || '';
@@ -129,8 +129,16 @@ DOM_EXTRACT_AVITO_JS = """
         const pid = idMatch ? idMatch[1] : null;
         if (!pid || seenIds.has(pid)) continue;
 
-        let title = linkEl.getAttribute('title') || linkEl.innerText.trim();
-        if (!title || title.length < 3) continue;
+        // Извлечение чистого названия товара (избегаем бейджей 'Ещё N фото')
+        const titleEl = card.querySelector('h3[itemprop="name"], a[data-marker="item-title"] h3, [class*="title-root"] h3, a[data-marker="item-title"]');
+        let title = '';
+        if (titleEl) {
+            title = titleEl.innerText.trim() || titleEl.getAttribute('title') || '';
+        }
+        if (!title || title.length < 3 || title.includes('фото') || title.startsWith('Ещё')) {
+            title = linkEl.getAttribute('title') || linkEl.innerText.trim();
+        }
+        if (!title || title.length < 3 || title.includes('фото') || title.startsWith('Ещё')) continue;
 
         // Цена
         const priceEl = card.querySelector('[data-marker="item-price"], meta[itemprop="price"], [class*="price-text"], [class*="price-root"]');

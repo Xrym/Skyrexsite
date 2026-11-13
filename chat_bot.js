@@ -354,6 +354,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     });
                     scrollChatToBottom();
                     renderSuggestionChips();
+                    if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
+                        for (let i = state.messages.length - 1; i >= 0; i--) {
+                            const m = state.messages[i];
+                            if (m.sender === "bot" && (m.text.includes("Процессор") || m.text.includes("Видеокарта"))) {
+                                window.SkyrexRig.updateFromAiResponse(m.text);
+                                break;
+                            }
+                        }
+                    }
                     return;
                 }
             } catch (e) {
@@ -575,6 +584,10 @@ document.addEventListener("DOMContentLoaded", () => {
                                         scrollChatToBottom();
                                     }
                                 }
+                                // Live sync to Rig Visualizer as parts appear in real-time
+                                if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
+                                    window.SkyrexRig.updateFromAiResponse(accumulatedText);
+                                }
                             }
                         } catch (pe) {
                             // Non-json or raw chunk
@@ -618,6 +631,9 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         } catch (err) {
             showTyping(false);
+            if (accumulatedText && window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
+                window.SkyrexRig.updateFromAiResponse(accumulatedText);
+            }
             if (err.name === "AbortError") {
                 // Generation cancelled by user
                 if (accumulatedText && botContentDiv) {

@@ -244,13 +244,14 @@ def get_parsed_catalog_context(user_message: str) -> str:
             est_ssd_cost = 6500 if (not budget or budget < 120000) else (9500 if budget < 180000 else 14000)
 
             if budget and budget < 50000:
-                est_ram_cost = 8000    # 16GB DDR4
-                est_mb_cost = 7500     # A520 / H610
+                est_ram_cost = 6500    # 16GB DDR4 budget
+                est_mb_cost = 7000     # A520 / H610
             elif not use_ddr5:
-                est_ram_cost = 16000 if (budget and budget >= 75000) else 8000  # 32GB or 16GB DDR4
+                # Under 95k budget, high-speed 16GB DDR4 (2x8GB) (~7500-8000 руб) is ideal to reserve budget for strong GPU
+                est_ram_cost = 11000 if (budget and budget >= 95000) else 8000  # 32GB or 16GB DDR4
                 est_mb_cost = 9500     # B550 / B760 DDR4
             else:
-                est_ram_cost = 40000   # 32GB DDR5
+                est_ram_cost = 24000 if (budget and budget < 160000) else 36000   # 32GB DDR5
                 est_mb_cost = 14500    # B650 / Z790 DDR5
 
             frame_cost = est_case_cost + est_cooler_cost + est_psu_cost + est_ssd_cost + est_ram_cost + est_mb_cost
@@ -263,8 +264,9 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 max_cpu_price = max(int(remaining_for_core * 0.45), 8000)
 
                 # Headroom limits for components in catalog search queries (ensuring items are not prematurely filtered out)
-                max_ram_price = int(est_ram_cost * 1.35)
-                max_mb_price = int(est_mb_cost * 1.40)
+                # Cap RAM strictly so overpriced DDR4 kits (e.g. 21 500 руб) don't eat 25% of an 80k budget
+                max_ram_price = int(est_ram_cost * 1.15) if (budget and budget < 100000) else int(est_ram_cost * 1.30)
+                max_mb_price = int(est_mb_cost * 1.35)
                 max_psu_price = int(est_psu_cost * 1.35)
                 max_ssd_price = int(est_ssd_cost * 1.35)
                 max_cooler_price = int(est_cooler_cost * 1.50)
@@ -313,12 +315,17 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 " AND name NOT LIKE '%ddr5%' "
                 " AND name NOT LIKE '%ddr4%' "
             )
+            # Under 100k budget, exclude expensive AM5/DDR5 platforms unless explicitly requested by user
+            cpu_filter_ddr5 = ""
+            if budget and budget < 100000 and not use_ddr5:
+                cpu_filter_ddr5 = " AND name NOT LIKE '%7500F%' AND name NOT LIKE '%7600%' AND name NOT LIKE '%7700%' AND name NOT LIKE '%7800%' AND name NOT LIKE '%AM5%' "
+
             raw_cpus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price DESC LIMIT 20",
+                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} {cpu_filter_ddr5} ORDER BY price DESC LIMIT 20",
                 (max_cpu_price,)
             ).fetchall()]
             if not raw_cpus:
-                raw_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC LIMIT 20").fetchall()]
+                raw_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} {cpu_filter_bundle} {cpu_filter_ddr5} ORDER BY price ASC LIMIT 20").fetchall()]
             
             # If products table has no CPUs, provide curated reference CPUs for target budget
             if not raw_cpus:
@@ -393,8 +400,10 @@ def get_parsed_catalog_context(user_message: str) -> str:
             active_mbs = selected_mbs if selected_mbs else compatible_mbs
             required_ram_types = set(mb["detected_ram"] for mb in active_mbs if mb.get("detected_ram"))
             ram_filter_sodimm = " AND name NOT LIKE '%SODIMM%' AND name NOT LIKE '%SO-DIMM%' AND name NOT LIKE '%ноутбук%' "
+            # Exclude overpriced RAM sticks from catalog context
+            ram_price_cap = " AND ((name LIKE '%32%' AND price <= 14000) OR (name NOT LIKE '%32%' AND price <= 8500)) " if (budget and budget < 100000) else ""
             all_rams = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'ram' {ram_filter_sodimm} AND price <= ? ORDER BY price DESC LIMIT 25",
+                f"SELECT * FROM products WHERE category = 'ram' {ram_filter_sodimm} {ram_price_cap} AND price <= ? ORDER BY price ASC LIMIT 25",
                 (max_ram_price,)
             ).fetchall()]
             if not all_rams:
@@ -428,7 +437,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     "shop": "Вторичный рынок (Авито)",
                     "category": "ram",
                     "name": "Комплект 16 ГБ DDR4 (2x8 ГБ, 3200MHz)",
-                    "price": 8000,
+                    "price": 7500,
                     "url": "https://www.avito.ru/all?q=16Gb+DDR4+2x8"
                 },
                 {
@@ -436,7 +445,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     "shop": "Вторичный рынок (Авито)",
                     "category": "ram",
                     "name": "Комплект 32 ГБ DDR4 (2x16 ГБ, 3200MHz)",
-                    "price": 16000,
+                    "price": 10500,
                     "url": "https://www.avito.ru/all?q=32Gb+DDR4+2x16"
                 },
                 {
@@ -444,7 +453,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     "shop": "Вторичный рынок (Авито)",
                     "category": "ram",
                     "name": "Комплект 16 ГБ DDR5 (2x8 ГБ, 5600MHz)",
-                    "price": 22000,
+                    "price": 6500,
                     "url": "https://www.avito.ru/all?q=16Gb+DDR5+2x8"
                 },
                 {
@@ -452,7 +461,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     "shop": "Вторичный рынок (Авито)",
                     "category": "ram",
                     "name": "Комплект 32 ГБ DDR5 (2x16 ГБ, 6000MHz)",
-                    "price": 40000,
+                    "price": 12500,
                     "url": "https://www.avito.ru/all?q=32Gb+DDR5+6000MHz"
                 }
             ]
@@ -486,12 +495,14 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     OR (name LIKE '%1STPLAYER%' AND name LIKE '%NGDP%' AND name NOT LIKE '%1200%')
                 )
             """
+            psu_order = "ORDER BY price ASC" if (budget and budget < 100000) else "ORDER BY price DESC"
             raw_psus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'psu' AND price <= ? {psu_whitelist} ORDER BY price DESC LIMIT 20",
+                f"SELECT * FROM products WHERE category = 'psu' AND price <= ? {psu_whitelist} {psu_order} LIMIT 20",
                 (max_psu_price,)
             ).fetchall()]
             if not raw_psus:
-                raw_psus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'psu' {psu_whitelist} ORDER BY price ASC LIMIT 20").fetchall()]
+                raw_psus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'psu' {psu_whitelist} {psu_order} LIMIT 20").fetchall()]
+            cat_items.extend(enrich_and_rank_products(raw_psus, expert_components, limit=5))
             cat_items.extend(enrich_and_rank_products(raw_psus, expert_components, limit=5))
 
             # G. Select SSDs fitting budget (diverse prices, prioritizing highest volume for lowest price)
@@ -571,13 +582,31 @@ def get_parsed_catalog_context(user_message: str) -> str:
     
     if all_products:
         budget_header = f" ПОД БЮДЖЕТ {budget:,} РУБ" if budget else ""
-        context_parts.append(f"=== АКТУАЛЬНЫЕ ЦЕНЫ И НАЛИЧИЕ ИЗ ОНЛАЙНТРЕЙД (РЕАЛЬНЫЙ КАТАЛОГ{budget_header}) ===")
+        context_parts.append(f"=== АКТУАЛЬНЫЕ ЦЕНЫ И НАЛИЧИЕ ИЗ КАТАЛОГА (АВИТО, WILDBERRIES, ОНЛАЙНТРЕЙД){budget_header} ===")
         if budget:
             context_parts.append(
                 f"⚠️ СТРОЖАЙШИЙ ЛИМИТ БЮДЖЕТА ({budget:,} РУБ):\n"
-                f"1. ТОЧНАЯ СУММАРНАЯ СТОИМОСТЬ ВСЕХ 8 ПОЗИЦИЙ ОБЯЗАНА БЫТЬ МЕНЬШЕ ИЛИ РАВНА {budget:,} РУБ (Сумма <= {budget:,} руб)!\n"
-                f"2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО превышать этот лимит даже на 100 рублей и оправдываться в примечании!\n"
-                f"3. Если выбрана мощная видеокарта — обязательно сбалансируй платформу (выбирай доступный процессор i5-12400F за ~11 000 руб или Ryzen 5 5600 за ~10 500 руб вместо дорогого i5-14600KF за 21 000 руб), чтобы итоговая сумма ВСЕГДА гарантированно уложилась в бюджет клиента {budget:,} руб!"
+                f"1. ПЕРЕД ВЫБОРОМ ДЕТАЛЕЙ ЗАРАНЕЕ СЛОЖИ В УМЕ ИХ СТОИМОСТЬ: Точная суммарная стоимость ВСЕХ 8 позиций сборки ОБЯЗАНА БЫТЬ строго меньше или равна {budget:,} руб (Сумма <= {budget:,} руб)!\n"
+                f"2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО превышать этот лимит даже на 1 рубль, начинать пересчитывать сборку на ходу ('Стоп, пересчитываем...') или писать в примечании оправдания!\n"
+                f"3. Для бюджета {budget:,} руб ориентируйся на баланс цен:\n"
+                f"   - Видеокарта: ~{int(budget * 0.38):,} руб\n"
+                f"   - Процессор: ~{int(budget * 0.15):,} руб\n"
+                f"   - Материнская плата: ~{int(budget * 0.14):,} руб\n"
+                f"   - Оперативная память: ~{int(budget * 0.10):,} руб (для бюджета {budget:,} руб выбирай надежную 16 ГБ DDR4 за ~7 500 руб, не бери память за 18 000+ руб!)\n"
+                f"   - Накопитель SSD M.2: ~{int(budget * 0.05):,} руб (~4 000 руб)\n"
+                f"   - Блок питания: ~{int(budget * 0.06):,} руб (~3 500 – 4 500 руб: Powercase PW600 или DeepCool PF600!)\n"
+                f"   - Кулер для процессора: ~2 000 руб\n"
+                f"   - Корпус: ровно 3 000 руб\n"
+                f"4. СТРОГИЕ ИСТОЧНИКИ КОМПЛЕКТУЮЩИХ (согласно регламенту Skyrex):\n"
+                f"   - Видеокарты: Авито (Б/У) или Wildberries\n"
+                f"   - Оперативная память: Авито (Б/У) или Wildberries\n"
+                f"   - Процессоры: Wildberries или Авито (Б/У)\n"
+                f"   - SSD: Wildberries, Авито (Б/У) или ОнлайнТрейд\n"
+                f"   - Материнские платы: Wildberries или Авито (Б/У)\n"
+                f"   - Блоки питания: ОнлайнТрейд или Wildberries (только надежные Powercase PW, DeepCool PF, 1stPlayer NGDP)\n"
+                f"   - Кулеры для процессоров: ОнлайнТрейд или Wildberries\n"
+                f"   - Корпус: Продуваемый корпус за 3 000 руб\n"
+                f"5. Сразу выведи ОДИН идеальный вариант, который строго укладывается в {budget:,} руб, без ошибок в арифметике и без повторных пересчётов!"
             )
         if budget and budget < 35000:
             context_parts.append(
