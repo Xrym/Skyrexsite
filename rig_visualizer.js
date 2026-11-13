@@ -622,6 +622,71 @@
             this.render();
         },
 
+        extractComponentTag(key, name, shop) {
+            if (!name || name === "?" || name === "Ожидание подбора") return "Ожидание подбора";
+            
+            if (key === 'cpu') {
+                const isAM5 = /am5|7\d{3}|8\d{3}|9\d{3}/i.test(name) && !/rx\s*7\d{3}/i.test(name);
+                const isAM4 = /am4|1\d{3}|2\d{3}|3\d{3}|4\d{3}|5\d{3}/i.test(name) && !isAM5;
+                const isLGA1700 = /1700|12\d{3}|13\d{3}|14\d{3}/i.test(name);
+                const isLGA1851 = /1851|ultra/i.test(name);
+                const socket = isAM5 ? 'AM5' : (isAM4 ? 'AM4' : (isLGA1700 ? 'LGA1700' : (isLGA1851 ? 'LGA1851' : '')));
+                const cores = name.match(/(\d+)\s*(?:ядер|ядра|cores)/i);
+                const parts = [];
+                if (socket) parts.push(socket);
+                if (cores) parts.push(`${cores[1]} ядер`);
+                return parts.length > 0 ? parts.join(' • ') : (socket || 'Процессор проверен');
+            }
+            if (key === 'gpu') {
+                const vram = name.match(/(\d+)\s*(?:гб|gb)/i);
+                const parts = [];
+                if (vram) parts.push(`${vram[1]} GB`);
+                if (/rtx\s*(?:40|50)/i.test(name)) parts.push('DLSS 3');
+                else if (/rtx/i.test(name)) parts.push('Ray Tracing');
+                return parts.length > 0 ? parts.join(' • ') : 'Игровая видеокарта';
+            }
+            if (key === 'mb') {
+                const chip = name.match(/\b(b650|b550|b760|a520|a620|h610|z790|x870|b850)\b/i);
+                const ddr = name.match(/\b(ddr4|ddr5)\b/i);
+                const parts = [];
+                if (chip) parts.push(chip[1].toUpperCase());
+                if (ddr) parts.push(ddr[1].toUpperCase());
+                return parts.length > 0 ? parts.join(' • ') : 'Совместимая плата';
+            }
+            if (key === 'ram') {
+                const cap = name.match(/(\d+)\s*(?:гб|gb)/i);
+                const ddr = name.match(/\b(ddr4|ddr5)\b/i);
+                const parts = [];
+                if (cap) parts.push(`${cap[1]} GB`);
+                if (ddr) parts.push(ddr[1].toUpperCase());
+                return parts.length > 0 ? parts.join(' • ') : 'Оперативная память';
+            }
+            if (key === 'ssd') {
+                const cap = name.match(/(\d+)\s*(?:гб|gb|тб|tb)/i);
+                const parts = [];
+                if (cap) parts.push(`${cap[1].toUpperCase()}`);
+                if (/nvme|m\.2/i.test(name)) parts.push('NVMe M.2');
+                return parts.length > 0 ? parts.join(' • ') : 'Накопитель M.2';
+            }
+            if (key === 'psu') {
+                const watts = name.match(/(\d{3,4})\s*(?:w|вт)/i);
+                const cert = name.match(/(?:80\s*\+?\s*)?(bronze|gold|silver|white|platinum)/i);
+                const parts = [];
+                if (watts) parts.push(`${watts[1]}W`);
+                if (cert) parts.push(`80+ ${cert[1].charAt(0).toUpperCase() + cert[1].slice(1).toLowerCase()}`);
+                return parts.length > 0 ? parts.join(' • ') : 'Надежный блок питания';
+            }
+            if (key === 'cooler') {
+                const tdp = name.match(/(\d{3})\s*(?:w|вт|tdp)/i);
+                return tdp ? `${tdp[1]}W TDP` : 'Башенный кулер';
+            }
+            if (key === 'case') {
+                return 'Отличная продуваемость';
+            }
+
+            return 'В наличии • ' + shop;
+        },
+
         /**
          * Parses LLM response text, updates rig state, and plays visual scan effect
          */
@@ -700,7 +765,7 @@
                             price: price || currentPart.price,
                             shop: shop,
                             url: url || currentPart.url,
-                            tag: currentPart.tag || "",
+                            tag: this.extractComponentTag(cat.key, name || currentPart.name, shop),
                             icon: currentPart.icon || "⚡"
                         };
                         foundCount++;

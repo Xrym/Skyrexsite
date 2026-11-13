@@ -9,3 +9,4 @@ cursor.execute("UPDATE ai_rules SET title = 'Оперативная память
 conn.commit()
 conn.close()
 print("Rule titles cleaned.")
+

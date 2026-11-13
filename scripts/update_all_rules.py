@@ -45,3 +45,4 @@ for r in cursor.execute("SELECT id, title, rule_text FROM ai_rules WHERE id IN (
     print(f"\n[{r[0]}] {r[1]}:\n{r[2]}")
 
 conn.close()
+

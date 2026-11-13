@@ -208,6 +208,17 @@ document.addEventListener("DOMContentLoaded", () => {
         text = text.replace(/([^\n>])\s*(\b\d+\.\s*(?:<b>)?[А-ЯA-Z])/g, "$1<br>$2");
         text = text.replace(/([^\n>])\s*(Конфигурация ПК под ваш бюджет|Вот сбалансированная|Вот оптимальная|Точная суммарная стоимость|Примечание эксперта|Примечание)/gi, "$1<br><br>$2");
 
+        // 9.2. Exact mathematical synchronization of total build price:
+        // Ensure the summary in chat text strictly matches the single mathematically calculated variable
+        if (window.SkyrexRig && window.SkyrexRig.state && window.SkyrexRig.state.isCustomized && window.SkyrexRig.state.total && window.SkyrexRig.state.total !== "?") {
+            const rawExact = String(window.SkyrexRig.state.total).replace(/\D/g, '');
+            const exactNum = parseInt(rawExact, 10);
+            if (!isNaN(exactNum) && exactNum > 0) {
+                const formatted = exactNum.toLocaleString('ru-RU') + " руб.";
+                text = text.replace(/((?:<b>)?(?:Точная суммарная стоимость|Итого(?:вая)? стоимость|Суммарная стоимость)[^:\n<]*:(?:<\/b>)?\s*)(?:[^\n<]+)/gi, `$1${formatted}`);
+            }
+        }
+
         // 10. Clean newlines: convert newlines to <br> unless adjacent to block tags
         text = text.replace(/([^\n>])\n([^\n<])/g, "$1<br>$2");
 
@@ -578,15 +589,15 @@ document.addEventListener("DOMContentLoaded", () => {
                                     isFirstToken = false;
                                 }
                                 accumulatedText += parsed.chunk;
+                                // Live sync to Rig Visualizer as parts appear in real-time
+                                if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
+                                    window.SkyrexRig.updateFromAiResponse(accumulatedText);
+                                }
                                 if (botContentDiv) {
                                     botContentDiv.innerHTML = parseBotContent(accumulatedText);
                                     if (isAtBottom()) {
                                         scrollChatToBottom();
                                     }
-                                }
-                                // Live sync to Rig Visualizer as parts appear in real-time
-                                if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
-                                    window.SkyrexRig.updateFromAiResponse(accumulatedText);
                                 }
                             }
                         } catch (pe) {
@@ -609,11 +620,11 @@ document.addEventListener("DOMContentLoaded", () => {
                         lastBotMsg.text = accumulatedText;
                         saveChatHistory();
                     }
-                    if (botContentDiv) {
-                        botContentDiv.innerHTML = parseBotContent(accumulatedText);
-                    }
                     if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
                         window.SkyrexRig.updateFromAiResponse(accumulatedText);
+                    }
+                    if (botContentDiv) {
+                        botContentDiv.innerHTML = parseBotContent(accumulatedText);
                     }
                 }
             } else {
@@ -621,10 +632,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 const data = await response.json();
                 showTyping(false);
                 if (data && data.response) {
-                    appendMessage("bot", data.response);
                     if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
                         window.SkyrexRig.updateFromAiResponse(data.response);
                     }
+                    appendMessage("bot", data.response);
                 } else {
                     appendMessage("bot", "⚠️ К сожалению, не удалось получить ответ от ассистента.");
                 }

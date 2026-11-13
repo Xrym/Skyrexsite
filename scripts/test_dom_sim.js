@@ -86,7 +86,7 @@ if (fs.existsSync('C:/Users/user/.gemini/antigravity/brain/bf0f4570-ab64-46b8-8a
     window.SkyrexRig.updateFromAiResponse(liveLog);
     console.log('\n--- LIVE HTML LOG TEST ---');
     console.log('Live Log total:', window.SkyrexRig.state.total);
-    console.log('Items parsed:', Object.keys(window.SkyrexRig.state.items).map(k => `${k}: ${window.SkyrexRig.state.items[k].name} (${window.SkyrexRig.state.items[k].price})`));
+    console.log('Items parsed:', Object.keys(window.SkyrexRig.state.items).map(k => `${k}: ${window.SkyrexRig.state.items[k].name} [${window.SkyrexRig.state.items[k].tag}] (${window.SkyrexRig.state.items[k].price})`));
 }
 
 
