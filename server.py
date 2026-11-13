@@ -244,20 +244,36 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
             total_market_mins = sum(market_mins.values())
 
-            def get_dynamic_max_price(category: str) -> int:
-                if not budget:
-                    return 9999999
-                other_min = total_market_mins - market_mins.get(category, 0)
-                return max(budget - other_min, market_mins.get(category, 0))
+            supporting_cats = ['motherboard', 'cooler', 'ram', 'ssd', 'psu', 'case']
+            min_supporting = sum(market_mins.get(c, 1000) for c in supporting_cats)
 
-            max_gpu_price = get_dynamic_max_price('gpu')
-            max_cpu_price = get_dynamic_max_price('cpu')
-            max_mb_price = get_dynamic_max_price('motherboard')
-            max_ram_price = get_dynamic_max_price('ram')
-            max_psu_price = get_dynamic_max_price('psu')
-            max_ssd_price = get_dynamic_max_price('ssd')
-            max_cooler_price = get_dynamic_max_price('cooler')
-            max_case_price = get_dynamic_max_price('case')
+            if budget:
+                # Rule 8: Core (GPU + CPU) gets remaining budget after supporting platform frame.
+                # In gaming builds, GPU is ~68% of core budget, CPU is ~32% of core budget.
+                available_core = max(budget - min_supporting, market_mins.get('cpu', 4500) + market_mins.get('gpu', 2106))
+                min_gpu_price = max(int(available_core * 0.25), market_mins.get('gpu', 2106)) if budget >= 50000 else market_mins.get('gpu', 2106)
+                max_gpu_price = max(int(available_core * 0.68), market_mins.get('gpu', 2106))
+                min_cpu_price = max(int(available_core * 0.10), market_mins.get('cpu', 4500)) if budget >= 50000 else market_mins.get('cpu', 4500)
+                max_cpu_price = max(int(available_core * 0.32), market_mins.get('cpu', 4500))
+
+                # Dynamic ceilings for supporting platform components proportional to budget
+                max_mb_price = max(int(budget * 0.18), market_mins.get('motherboard', 2500))
+                max_ram_price = max(int(budget * 0.15), market_mins.get('ram', 4500))
+                max_psu_price = max(int(budget * 0.12), market_mins.get('psu', 3000))
+                max_ssd_price = max(int(budget * 0.12), market_mins.get('ssd', 1500))
+                max_cooler_price = max(int(budget * 0.08), market_mins.get('cooler', 1000))
+                max_case_price = max(int(budget * 0.10), market_mins.get('case', 2500))
+            else:
+                min_gpu_price = 0
+                max_gpu_price = 9999999
+                min_cpu_price = 0
+                max_cpu_price = 9999999
+                max_mb_price = 9999999
+                max_ram_price = 9999999
+                max_psu_price = 9999999
+                max_ssd_price = 9999999
+                max_cooler_price = 9999999
+                max_case_price = 9999999
 
             # A. Select Candidate GPUs fitting budget (accessible value first, filter office display adapters)
             gpu_junk_filter = (
@@ -271,9 +287,14 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 " AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' "
             )
             all_gpus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'gpu' AND price <= ? {gpu_junk_filter} ORDER BY price ASC",
-                (max_gpu_price,)
+                f"SELECT * FROM products WHERE category = 'gpu' AND price >= ? AND price <= ? {gpu_junk_filter} ORDER BY price ASC",
+                (min_gpu_price, max_gpu_price)
             ).fetchall()]
+            if not all_gpus:
+                all_gpus = [dict(r) for r in conn.execute(
+                    f"SELECT * FROM products WHERE category = 'gpu' AND price <= ? {gpu_junk_filter} ORDER BY price ASC LIMIT 20",
+                    (max_gpu_price,)
+                ).fetchall()]
             if not all_gpus:
                 all_gpus = [dict(r) for r in conn.execute(
                     f"SELECT * FROM products WHERE category = 'gpu' {gpu_junk_filter} ORDER BY price ASC LIMIT 20"
@@ -322,9 +343,14 @@ def get_parsed_catalog_context(user_message: str) -> str:
             )
 
             all_cpus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC",
-                (max_cpu_price,)
+                f"SELECT * FROM products WHERE category = 'cpu' AND price >= ? AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC",
+                (min_cpu_price, max_cpu_price)
             ).fetchall()]
+            if not all_cpus:
+                all_cpus = [dict(r) for r in conn.execute(
+                    f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC",
+                    (max_cpu_price,)
+                ).fetchall()]
             if not all_cpus:
                 all_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC LIMIT 20").fetchall()]
 
@@ -345,39 +371,52 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 if specs["socket"]:
                     candidate_sockets.add(specs["socket"])
 
-            # D. Select Motherboards matching candidate sockets (partitioned per socket to guarantee compatibility, best value first)
-            all_mbs = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'motherboard' AND price <= ? ORDER BY price ASC LIMIT 50",
-                (max_mb_price,)
-            ).fetchall()]
-            if not all_mbs:
-                all_mbs = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category = 'motherboard' ORDER BY price ASC LIMIT 50").fetchall()]
-
-            compatible_mbs = []
-            for mb_dict in all_mbs:
-                specs = detect_hardware_specs(mb_dict)
-                if not candidate_sockets or specs["socket"] in candidate_sockets:
-                    mb_dict["detected_socket"] = specs["socket"]
-                    mb_dict["detected_ram"] = specs["ram_type"]
-                    compatible_mbs.append(mb_dict)
-
+            # D. Select Motherboards matching candidate sockets (partitioned per socket to guarantee 100% compatibility)
             selected_mbs = []
-            for target_socket in candidate_sockets:
-                socket_mbs = [m for m in compatible_mbs if m.get("detected_socket") == target_socket]
-                selected_mbs.extend(enrich_and_rank_products(socket_mbs, expert_components, limit=3))
+            target_sockets_list = list(candidate_sockets) if candidate_sockets else ["AM4", "LGA 1700"]
+            for target_socket in target_sockets_list:
+                socket_kw = []
+                if target_socket == "AM5":
+                    socket_kw = ["%B650%", "%A620%", "%X670%", "%B850%", "%X870%", "%AM5%"]
+                elif target_socket == "AM4":
+                    socket_kw = ["%B450%", "%B550%", "%A520%", "%X570%", "%AM4%"]
+                elif target_socket == "LGA 1700":
+                    socket_kw = ["%H610%", "%B760%", "%Z790%", "%Z690%", "%1700%"]
+                elif target_socket == "LGA 1200":
+                    socket_kw = ["%H410%", "%H510%", "%B460%", "%B560%", "%1200%"]
 
-            cat_items.extend(selected_mbs if selected_mbs else enrich_and_rank_products(compatible_mbs, expert_components, limit=6))
+                if socket_kw:
+                    sql_kw = " OR ".join(["name LIKE ?"] * len(socket_kw))
+                    rows = [dict(r) for r in conn.execute(
+                        f"SELECT * FROM products WHERE category = 'motherboard' AND price <= ? AND ({sql_kw}) ORDER BY price ASC LIMIT 20",
+                        [max_mb_price] + socket_kw
+                    ).fetchall()]
+                    if not rows:
+                        rows = [dict(r) for r in conn.execute(
+                            f"SELECT * FROM products WHERE category = 'motherboard' AND ({sql_kw}) ORDER BY price ASC LIMIT 20",
+                            socket_kw
+                        ).fetchall()]
+                    compatible = []
+                    for m in rows:
+                        specs = detect_hardware_specs(m)
+                        if specs["socket"] == target_socket or not specs["socket"]:
+                            m["detected_socket"] = target_socket
+                            m["detected_ram"] = specs["ram_type"] or ("DDR5" if target_socket == "AM5" else "DDR4")
+                            compatible.append(m)
+                    selected_mbs.extend(enrich_and_rank_products(compatible, expert_components, limit=3, sort_by_price_desc=False))
+
+            cat_items.extend(selected_mbs)
 
             # E. Detect RAM Types required by selected compatible motherboards
-            active_mbs = selected_mbs if selected_mbs else compatible_mbs
-            required_ram_types = set(mb["detected_ram"] for mb in active_mbs if mb.get("detected_ram"))
-            ram_filter_sodimm = " AND name NOT LIKE '%SODIMM%' AND name NOT LIKE '%SO-DIMM%' AND name NOT LIKE '%ноутбук%' "
-            all_rams = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'ram' {ram_filter_sodimm} AND price <= ? ORDER BY price ASC LIMIT 25",
-                (max_ram_price,)
-            ).fetchall()]
-            if not all_rams:
-                all_rams = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ram' {ram_filter_sodimm} ORDER BY price ASC LIMIT 25").fetchall()]
+            required_ram_types = set(mb.get("detected_ram") for mb in selected_mbs if mb.get("detected_ram"))
+            if not required_ram_types:
+                required_ram_types = {"DDR4"}
+
+            ram_junk_filter = (
+                " AND name NOT LIKE '%SODIMM%' AND name NOT LIKE '%SO-DIMM%' AND name NOT LIKE '%ноутбук%' "
+                " AND name NOT LIKE '%для ноут%' AND name NOT LIKE '%неисправн%' AND name NOT LIKE '%под заказ%' "
+                " AND name NOT LIKE '%связка%' AND name NOT LIKE '%комплект с%' AND name NOT LIKE '%комплект материн%' "
+            )
 
             def get_ram_capacity(name):
                 m_cap = re.search(r'(\d+)\s*(?:гб|gb)\b', name, re.I)
@@ -385,18 +424,37 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     return int(m_cap.group(1))
                 return 16
 
-            filtered_market_rams = []
-            for r_dict in all_rams:
-                specs = detect_hardware_specs(r_dict)
-                cap = get_ram_capacity(r_dict.get("name", ""))
-                r_dict["detected_capacity"] = cap
-                if not required_ram_types or specs["ram_type"] in required_ram_types or not specs["ram_type"]:
-                    r_dict["detected_ram"] = specs["ram_type"]
-                    filtered_market_rams.append(r_dict)
+            def is_clean_ram(name: str) -> bool:
+                nl = name.lower()
+                bad = ["sodimm", "so-dimm", "ноутбук", "для ноут", "неисправн", "под заказ", "связка", "комплект с", "на запчаст", "на запчасти"]
+                return not any(b in nl for b in bad)
 
-            # Sort market RAMs: largest capacity first, then lowest price (maximum volume per ruble)
-            filtered_market_rams.sort(key=lambda x: (-x.get("detected_capacity", 16), x.get("price", 0)))
-            cat_items.extend(enrich_and_rank_products(filtered_market_rams, expert_components, limit=6))
+            selected_rams = []
+            for r_type in required_ram_types:
+                kw = "%ddr5%" if r_type == "DDR5" else "%ddr4%"
+                rows = [dict(r) for r in conn.execute(
+                    f"SELECT * FROM products WHERE category = 'ram' AND name LIKE ? AND price <= ? ORDER BY price ASC LIMIT 30",
+                    (kw, max_ram_price)
+                ).fetchall()]
+                if not rows:
+                    rows = [dict(r) for r in conn.execute(
+                        f"SELECT * FROM products WHERE category = 'ram' AND name LIKE ? ORDER BY price ASC LIMIT 30",
+                        (kw,)
+                    ).fetchall()]
+                filtered_r = []
+                for r in rows:
+                    if not is_clean_ram(r.get("name", "")):
+                        continue
+                    specs = detect_hardware_specs(r)
+                    cap = get_ram_capacity(r.get("name", ""))
+                    r["detected_capacity"] = cap
+                    r["detected_ram"] = r_type
+                    filtered_r.append(r)
+                # Sort: largest capacity first, then lowest price (maximum volume per ruble)
+                filtered_r.sort(key=lambda x: (-x.get("detected_capacity", 16), x.get("price", 0)))
+                selected_rams.extend(enrich_and_rank_products(filtered_r, expert_components, limit=3, sort_by_price_desc=None))
+
+            cat_items.extend(selected_rams)
 
             # F. Select PSUs fitting budget (whitelisted customer models: Powercase, GamerStorm PF >=600W, 1STPLAYER NGDP)
             psu_whitelist = """
@@ -461,8 +519,13 @@ def get_parsed_catalog_context(user_message: str) -> str:
             for s in raw_ssds:
                 s["detected_capacity"] = get_ssd_capacity(s.get("name", ""))
 
+            min_ssd_cap = 512 if (budget and budget >= 50000) else 256
+            valid_ssds = [s for s in raw_ssds if s.get("detected_capacity", 256) >= min_ssd_cap]
+            if not valid_ssds:
+                valid_ssds = raw_ssds
+
             # Sort candidate SSDs: highest capacity first, then lowest price (maximum volume for lowest price)
-            ranked_ssds = sorted(raw_ssds, key=lambda x: (-x["detected_capacity"], x.get("price", 0)))
+            ranked_ssds = sorted(valid_ssds, key=lambda x: (-x["detected_capacity"], x.get("price", 0)))
 
             diverse_ssds = []
             seen_ids = set()
@@ -475,14 +538,14 @@ def get_parsed_catalog_context(user_message: str) -> str:
                         break
 
             # 2. Add variety of price points (budget to higher) so bot sees different price tiers
-            for s in sorted(raw_ssds, key=lambda x: x.get("price", 0)):
+            for s in sorted(valid_ssds, key=lambda x: x.get("price", 0)):
                 if s["id"] not in seen_ids:
                     diverse_ssds.append(s)
                     seen_ids.add(s["id"])
                     if len(diverse_ssds) >= 6:
                         break
 
-            cat_items.extend(enrich_and_rank_products(diverse_ssds, expert_components, limit=6))
+            cat_items.extend(enrich_and_rank_products(diverse_ssds, expert_components, limit=6, sort_by_price_desc=None))
 
             # H. Select Coolers fitting budget
             cooler_filter = (
@@ -499,7 +562,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 raw_coolers = [dict(r) for r in conn.execute(
                     f"SELECT * FROM products {cooler_filter} ORDER BY price ASC LIMIT 20"
                 ).fetchall()]
-            cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=5))
+            cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=5, sort_by_price_desc=False))
 
             # I. Select Cases directly from catalog (purely from parsed products, no requirements)
             raw_cases = [dict(r) for r in conn.execute(
@@ -511,7 +574,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                     "SELECT * FROM products WHERE category = 'case' ORDER BY price ASC LIMIT 20"
                 ).fetchall()]
             if raw_cases:
-                cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=5))
+                cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=5, sort_by_price_desc=False))
 
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]
     
@@ -554,15 +617,25 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 f"   - Либо собери ПК ПОЛНОСТЬЮ на проверенном Б/У рынке (Авито) со ссылками на поиск Авито, чтобы итоговая сумма была ровно <= {budget:,} руб. (например: Ryzen 5 2600 + A320 + RX 580 8GB + 16GB DDR4 + БП + SSD = ровно до 20 000 руб.)!\n"
                 f"   - Либо СРАЗУ в первой же строчке честно скажи клиенту: 'В бюджете {budget:,} руб. современную платформу i3/Ryzen собрать невозможно, минимальный порог для неё — около 35 000 – 40 000 руб. Вот оптимальная конфигурация на 40 000 руб...'."
             )
-        for p in all_products[:45]:
+        # Partition into category buckets
+        cpus = [p for p in all_products if p.get('category') == 'cpu']
+        gpus = [p for p in all_products if p.get('category') == 'gpu']
+        mbs = [p for p in all_products if p.get('category') == 'motherboard']
+        rams = [p for p in all_products if p.get('category') == 'ram']
+        psus = [p for p in all_products if p.get('category') == 'psu']
+        ssds = [p for p in all_products if p.get('category') == 'ssd']
+        coolers = [p for p in all_products if p.get('category') == 'cooler']
+        cases = [p for p in all_products if p.get('category') == 'case']
+
+        def format_product_line(p):
             specs = detect_hardware_specs(p)
             spec_tags = []
             if specs["socket"]:
                 socket_platform = ""
                 if specs["socket"] in ("AM4", "AM5"):
-                    socket_platform = " (для AMD Ryzen)"
+                    socket_platform = " (AMD Ryzen)"
                 elif specs["socket"] in ("LGA 1700", "LGA 1851", "LGA 1200"):
-                    socket_platform = " (для Intel Core)"
+                    socket_platform = " (Intel Core)"
                 spec_tags.append(f"Сокет: {specs['socket']}{socket_platform}")
             if specs["ram_type"]:
                 spec_tags.append(f"Память: {specs['ram_type']}")
@@ -573,7 +646,89 @@ def get_parsed_catalog_context(user_message: str) -> str:
             price_str = f"{p['price']:,} руб".replace(",", " ")
             old_str = f" (старая цена: {p['old_price']:,} руб)".replace(",", " ") if p.get('old_price') else ""
             search_url = make_marketplace_search_url(p.get('shop', ''), p['name'])
-            context_parts.append(f"- [{p.get('shop', 'ОнлайнТрейд')}] [{p.get('category', '').upper()}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {search_url}")
+            return f"- [{p.get('shop', 'ОнлайнТрейд')}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {search_url}"
+
+        # 1. CPUs
+        if cpus:
+            context_parts.append("\n=== 1. ПРОЦЕССОРЫ (CPU) ===")
+            for p in cpus[:6]:
+                context_parts.append(format_product_line(p))
+
+        # 2. Motherboards partitioned by platform
+        mbs_am5 = [m for m in mbs if m.get("detected_socket") == "AM5"]
+        mbs_am4 = [m for m in mbs if m.get("detected_socket") == "AM4"]
+        mbs_lga1700 = [m for m in mbs if m.get("detected_socket") == "LGA 1700"]
+        mbs_other = [m for m in mbs if m not in mbs_am5 and m not in mbs_am4 and m not in mbs_lga1700]
+
+        if mbs_am5:
+            context_parts.append("\n=== 2. МАТЕРИНСКИЕ ПЛАТЫ ДЛЯ AMD RYZEN AM5 (СТРОГО ДЛЯ CPU НА СОКЕТЕ AM5 И ПАМЯТИ DDR5) ===")
+            for p in mbs_am5[:3]:
+                context_parts.append(format_product_line(p))
+
+        if mbs_am4:
+            context_parts.append("\n=== 3. МАТЕРИНСКИЕ ПЛАТЫ ДЛЯ AMD RYZEN AM4 (СТРОГО ДЛЯ CPU НА СОКЕТЕ AM4 И ПАМЯТИ DDR4) ===")
+            for p in mbs_am4[:3]:
+                context_parts.append(format_product_line(p))
+
+        if mbs_lga1700:
+            context_parts.append("\n=== 4. МАТЕРИНСКИЕ ПЛАТЫ ДЛЯ INTEL LGA 1700 ===")
+            for p in mbs_lga1700[:3]:
+                context_parts.append(format_product_line(p))
+
+        if mbs_other and not (mbs_am5 or mbs_am4 or mbs_lga1700):
+            context_parts.append("\n=== МАТЕРИНСКИЕ ПЛАТЫ ===")
+            for p in mbs_other[:3]:
+                context_parts.append(format_product_line(p))
+
+        # 3. RAM partitioned by generation
+        rams_ddr5 = [r for r in rams if r.get("detected_ram") == "DDR5"]
+        rams_ddr4 = [r for r in rams if r.get("detected_ram") == "DDR4"]
+        rams_other = [r for r in rams if r not in rams_ddr5 and r not in rams_ddr4]
+
+        if rams_ddr5:
+            context_parts.append("\n=== 5. ОПЕРАТИВНАЯ ПАМЯТЬ DDR5 (СТРОГО ДЛЯ ПЛАТФОРМЫ AM5 И ПЛАТ LGA 1700 DDR5) ===")
+            for p in rams_ddr5[:3]:
+                context_parts.append(format_product_line(p))
+
+        if rams_ddr4:
+            context_parts.append("\n=== 6. ОПЕРАТИВНАЯ ПАМЯТЬ DDR4 (СТРОГО ДЛЯ ПЛАТФОРМЫ AM4 И ПЛАТ LGA 1700 DDR4) ===")
+            for p in rams_ddr4[:3]:
+                context_parts.append(format_product_line(p))
+
+        if rams_other and not (rams_ddr5 or rams_ddr4):
+            context_parts.append("\n=== ОПЕРАТИВНАЯ ПАМЯТЬ ===")
+            for p in rams_other[:3]:
+                context_parts.append(format_product_line(p))
+
+        # 4. GPUs
+        if gpus:
+            context_parts.append("\n=== 7. ВИДЕОКАРТЫ (GPU) ===")
+            for p in gpus[:6]:
+                context_parts.append(format_product_line(p))
+
+        # 5. SSDs
+        if ssds:
+            context_parts.append("\n=== 8. НАКОПИТЕЛИ SSD M.2 NVMe ===")
+            for p in ssds[:5]:
+                context_parts.append(format_product_line(p))
+
+        # 6. PSUs
+        if psus:
+            context_parts.append("\n=== 9. БЛОКИ ПИТАНИЯ (PSU: GAMERSTORM / POWERCASE / 1STPLAYER NGDP) ===")
+            for p in psus[:4]:
+                context_parts.append(format_product_line(p))
+
+        # 7. Coolers
+        if coolers:
+            context_parts.append("\n=== 10. КУЛЕРЫ ДЛЯ ПРОЦЕССОРА ===")
+            for p in coolers[:4]:
+                context_parts.append(format_product_line(p))
+
+        # 8. Cases
+        if cases:
+            context_parts.append("\n=== 11. КОРПУСА ДЛЯ ПК ===")
+            for p in cases[:4]:
+                context_parts.append(format_product_line(p))
 
     return "\n".join(context_parts)
 
@@ -680,8 +835,9 @@ def clean_marketplace_links(text: str) -> str:
 
     text = clean_single_final_build(text)
 
-    # 1. Заменяем любые упоминания 'Deepcool GAMERSTORM' / 'DeepCool GAMERSTORM' на 'GamerStorm'
+    # 1. Заменяем любые упоминания 'Deepcool GAMERSTORM' / 'DeepCool GAMERSTORM' / 'DeepCool PF...' на 'GamerStorm'
     text = re.sub(r'(?i)deepcool\s+gamerstorm', 'GamerStorm', text)
+    text = re.sub(r'(?i)deepcool\s*(pf\d+[xd]?)', r'GamerStorm \1', text)
 
     # 2. Преобразование Markdown-ссылок [текст](url) в чистый HTML с поисковой ссылкой
     def md_link_replacer(match):

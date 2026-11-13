@@ -214,12 +214,15 @@ def match_expert_assessment(
 def enrich_and_rank_products(
     products: List[Dict[str, Any]],
     expert_components: Optional[List[Dict[str, Any]]] = None,
-    limit: Optional[int] = None
+    limit: Optional[int] = None,
+    sort_by_price_desc: Optional[bool] = True
 ) -> List[Dict[str, Any]]:
     """
     Enriches scraped products with hardware specs and ranks them:
-    1. Sorts products by price descending to prioritize maximum hardware capability within budget.
-    2. Limits to requested item count without artificial or subjective score filtering.
+    - If sort_by_price_desc is True: sorts by price descending (prioritizes top tier GPU / CPU).
+    - If sort_by_price_desc is False: sorts by price ascending (prioritizes best value for platform parts).
+    - If sort_by_price_desc is None: preserves existing sort order.
+    - Limits to requested item count without artificial or subjective score filtering.
     """
     if not products:
         return []
@@ -240,8 +243,10 @@ def enrich_and_rank_products(
             item["expert_match"] = None
         enriched.append(item)
 
-    # Sort by price descending to present best tier options for the budget category
-    enriched.sort(key=lambda x: x.get("price", 0), reverse=True)
+    if sort_by_price_desc is True:
+        enriched.sort(key=lambda x: x.get("price", 0), reverse=True)
+    elif sort_by_price_desc is False:
+        enriched.sort(key=lambda x: x.get("price", 0))
 
     if limit is not None:
         return enriched[:limit]
