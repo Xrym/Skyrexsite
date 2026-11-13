@@ -7,97 +7,98 @@
 (function () {
     'use strict';
 
-    // 1. Default Balanced Configuration (Shown on first load before user chat)
-    const DEFAULT_BUILD = {
-        total: "85 884",
-        budget_label: "Сбалансированная сборка",
+    // 1. Initial Empty Configuration (Shown on first load until user asks for a build in chat)
+    const INITIAL_EMPTY_BUILD = {
+        total: "?",
+        isCustomized: false,
+        budget_label: "Ожидание запроса",
         items: {
             cpu: {
                 id: "cpu",
                 category: "Процессор",
                 code: "CPU",
-                name: "AMD Ryzen 5 7500F OEM",
-                price: "11 700 ₽",
-                shop: "Авито (Б/У)",
-                url: "https://www.avito.ru/all?q=AMD+Ryzen+5+7500F",
-                tag: "AM5 • 6 ядер / 12 потоков • DDR5",
+                name: "?",
+                price: "?",
+                shop: "—",
+                url: "",
+                tag: "Ожидание подбора",
                 icon: "⚡"
-            },
-            mb: {
-                id: "mb",
-                category: "Материнская плата",
-                code: "MB",
-                name: "Gigabyte B650M GAMING WIFI",
-                price: "9 142 ₽",
-                shop: "Wildberries",
-                url: "https://www.wildberries.ru/catalog/562018817/detail.aspx",
-                tag: "Socket AM5 • DDR5 • Wi-Fi 6",
-                icon: "🖲️"
-            },
-            cooler: {
-                id: "cooler",
-                category: "Кулер для процессора",
-                code: "COOLER",
-                name: "ID-COOLING SE-224-XTS Black",
-                price: "1 950 ₽",
-                shop: "ОнлайнТрейд",
-                url: "https://www.onlinetrade.ru/catalogue/kulery_dlya_protsessorov-c1492/id_cooling/kuler_dlya_protsessora_id_cooling_se_224_xts_black-3351230.html",
-                tag: "180W TDP • 4 трубки • 120мм PWM",
-                icon: "❄️"
-            },
-            ram: {
-                id: "ram",
-                category: "Оперативная память",
-                code: "RAM",
-                name: "DDR5 16GB 5600MHz GUDGA",
-                price: "18 003 ₽",
-                shop: "Wildberries",
-                url: "https://www.wildberries.ru/catalog/1122606326/detail.aspx",
-                tag: "16GB DDR5 • 5600MHz • XMP",
-                icon: "🧠"
             },
             gpu: {
                 id: "gpu",
                 category: "Видеокарта",
                 code: "GPU",
-                name: "Palit GeForce RTX 3060 12GB Dual",
-                price: "30 000 ₽",
-                shop: "Авито (Б/У)",
-                url: "https://www.avito.ru/all?q=RTX+3060+12GB",
-                tag: "12GB GDDR6 • DLSS • Ray Tracing",
+                name: "?",
+                price: "?",
+                shop: "—",
+                url: "",
+                tag: "Ожидание подбора",
                 icon: "🎮"
+            },
+            mb: {
+                id: "mb",
+                category: "Материнская плата",
+                code: "MB",
+                name: "?",
+                price: "?",
+                shop: "—",
+                url: "",
+                tag: "Ожидание подбора",
+                icon: "🖲️"
+            },
+            ram: {
+                id: "ram",
+                category: "Оперативная память",
+                code: "RAM",
+                name: "?",
+                price: "?",
+                shop: "—",
+                url: "",
+                tag: "Ожидание подбора",
+                icon: "🧠"
             },
             ssd: {
                 id: "ssd",
                 category: "SSD накопитель",
                 code: "SSD",
-                name: "SSD M.2 NVMe 1TB PCIe",
-                price: "3 990 ₽",
-                shop: "Авито (Б/У)",
-                url: "https://www.avito.ru/all?q=SSD+M.2+NVMe+1TB",
-                tag: "1000 ГБ • NVMe M.2 2280",
+                name: "?",
+                price: "?",
+                shop: "—",
+                url: "",
+                tag: "Ожидание подбора",
                 icon: "💾"
+            },
+            cooler: {
+                id: "cooler",
+                category: "Кулер для процессора",
+                code: "COOLER",
+                name: "?",
+                price: "?",
+                shop: "—",
+                url: "",
+                tag: "Ожидание подбора",
+                icon: "❄️"
             },
             psu: {
                 id: "psu",
                 category: "Блок питания",
                 code: "PSU",
-                name: "1STPLAYER NGDP, 750W, 80+ Gold, ATX 3.1",
-                price: "8 099 ₽",
-                shop: "ОнлайнТрейд",
-                url: "https://www.onlinetrade.ru/catalogue/bloki_pitaniya_dlya_kompyutera-c339/1stplayer/blok_pitaniya_1stplayer_ngdp_750w_80_gold_atx_3.1_ha_750ba4-4048378.html",
-                tag: "750W • 80+ Gold • ATX 3.1 / PCIe 5.1",
+                name: "?",
+                price: "?",
+                shop: "—",
+                url: "",
+                tag: "Ожидание подбора",
                 icon: "🔌"
             },
             case: {
                 id: "case",
                 category: "Корпус для ПК",
                 code: "CASE",
-                name: "Powercase Mistral Micro Z3B Mesh",
-                price: "3 000 ₽",
-                shop: "ОнлайнТрейд",
-                url: "https://www.onlinetrade.ru/catalogue/kompyuternye_korpusa-c1323/",
-                tag: "Закаленное стекло • 3x ARGB кулера",
+                name: "?",
+                price: "?",
+                shop: "—",
+                url: "",
+                tag: "Ожидание подбора",
                 icon: "🖥️"
             }
         }
@@ -105,7 +106,7 @@
 
     // Global Visualizer Controller
     const SkyrexRig = {
-        state: JSON.parse(JSON.stringify(DEFAULT_BUILD)),
+        state: JSON.parse(JSON.stringify(INITIAL_EMPTY_BUILD)),
         container: null,
         tooltipEl: null,
 
@@ -113,27 +114,33 @@
             this.container = document.getElementById("skyrex-pc-visualizer");
             if (!this.container) return;
 
-            // Load saved build from localStorage if present
+            // Load saved build from localStorage if user previously customized it
             const saved = localStorage.getItem("skyrex_active_build");
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
-                    if (parsed && parsed.items) {
+                    // Only restore if it was genuinely parsed from an AI build (not legacy static build)
+                    if (parsed && parsed.isCustomized === true && parsed.items && parsed.total !== "85 884") {
                         this.state = parsed;
+                    } else {
+                        this.state = JSON.parse(JSON.stringify(INITIAL_EMPTY_BUILD));
+                        localStorage.removeItem("skyrex_active_build");
                     }
                 } catch (e) {
-                    console.warn("Failed to load saved rig state", e);
+                    this.state = JSON.parse(JSON.stringify(INITIAL_EMPTY_BUILD));
                 }
+            } else {
+                this.state = JSON.parse(JSON.stringify(INITIAL_EMPTY_BUILD));
             }
 
             this.createTooltip();
             this.render();
             this.bindEvents();
 
-            // Try reading any already existing build from chat history
+            // Check if chat history already has an existing PC build recommendation
             setTimeout(() => {
                 this.checkExistingChatHistory();
-            }, 500);
+            }, 400);
         },
 
         createTooltip() {
@@ -151,7 +158,19 @@
             if (!this.container) return;
 
             const items = this.state.items;
-            const totalDisplay = this.state.total ? Number(this.state.total).toLocaleString('ru-RU') + " ₽" : "85 884 ₽";
+            const isCustomized = this.state.isCustomized === true;
+
+            // Compute total display: "?" if uncustomized, or "XX XXX ₽" if customized (never "не число")
+            let totalDisplay = "?";
+            if (isCustomized && this.state.total && this.state.total !== "?") {
+                const rawDigits = String(this.state.total).replace(/\D/g, '');
+                const num = parseInt(rawDigits, 10);
+                if (!isNaN(num) && num > 0) {
+                    totalDisplay = num.toLocaleString('ru-RU') + " ₽";
+                }
+            }
+
+            const headerTitle = isCustomized ? "Спецификация системы" : "Конфигурация ПК";
 
             this.container.innerHTML = `
                 <div class="pc-rig-card" id="pc-rig-card">
@@ -165,7 +184,7 @@
                                 <span class="rig-status-dot"></span>
                                 <span class="rig-status-text">AI Live Rig</span>
                             </div>
-                            <span class="pc-rig-title">Спецификация системы</span>
+                            <span class="pc-rig-title">${headerTitle}</span>
                         </div>
                         <div class="pc-rig-header-right">
                             <span class="rig-total-label">Итого сборка:</span>
@@ -186,19 +205,12 @@
                         </div>
                     </div>
 
-                    <!-- Rig Card Footer: Quick Actions -->
+                    <!-- Rig Card Footer: Clean subtle hint (without copy button) -->
                     <div class="pc-rig-footer">
                         <div class="pc-rig-footer-info">
                             <span class="rig-info-icon">💡</span>
-                            <span>Наведите на компонент для подсветки контура или кликните для перехода к товару.</span>
+                            <span>Наведите на деталь для подсветки контура или кликните для перехода к товару.</span>
                         </div>
-                        <button class="rig-copy-spec-btn" id="rig-copy-spec-btn" title="Скопировать список комплектующих">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                            <span>Скопировать</span>
-                        </button>
                     </div>
                 </div>
             `;
@@ -229,20 +241,13 @@
                         <stop offset="50%" stop-color="#8b5cf6" />
                         <stop offset="100%" stop-color="#d946ef" />
                     </linearGradient>
-                    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
-                        <feGaussianBlur stdDeviation="5" result="blur" />
-                        <feMerge>
-                            <feMergeNode in="blur" />
-                            <feMergeNode in="SourceGraphic" />
-                        </feMerge>
-                    </filter>
                     <pattern id="pcbGrid" width="20" height="20" patternUnits="userSpaceOnUse">
                         <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(139, 92, 246, 0.08)" stroke-width="1"/>
                         <circle cx="20" cy="20" r="1.5" fill="rgba(6, 182, 212, 0.15)"/>
                     </pattern>
                 </defs>
 
-                <!-- 1. CHASSIS OUTER FRAME (Case) -->
+                <!-- 1. CHASSIS OUTER FRAME (Case) - NO SCREW CIRCLES -->
                 <g class="rig-part" id="part-case" data-part="case">
                     <!-- Case Outer Body -->
                     <rect x="20" y="20" width="420" height="500" rx="20" class="rig-case-outer" />
@@ -252,143 +257,156 @@
                     <rect x="50" y="520" width="60" height="12" rx="4" fill="#1e1b2e" stroke="#8b5cf6" stroke-width="1.5"/>
                     <rect x="350" y="520" width="60" height="12" rx="4" fill="#1e1b2e" stroke="#8b5cf6" stroke-width="1.5"/>
                     <!-- Power Button & Top I/O -->
-                    <circle cx="65" cy="28" r="4" fill="#06b6d4" filter="url(#neonGlow)"/>
+                    <circle cx="65" cy="28" r="4" fill="#06b6d4"/>
                     <rect x="80" y="26" width="8" height="4" rx="1" fill="#64748b"/>
                     <rect x="94" y="26" width="8" height="4" rx="1" fill="#64748b"/>
                     <rect x="108" y="26" width="12" height="4" rx="1" fill="#8b5cf6"/>
-                    <!-- Case Front Intake Mesh Indicator -->
-                    <line x1="415" y1="50" x2="415" y2="490" stroke="rgba(6, 182, 212, 0.3)" stroke-width="4" stroke-dasharray="6 4" />
+                    <!-- Front Ventilation Slits -->
+                    <line x1="415" y1="50" x2="415" y2="490" stroke="rgba(6, 182, 212, 0.3)" stroke-width="3" stroke-dasharray="6 4" />
                 </g>
 
-                <!-- 2. MOTHERBOARD (PCB Tray) -->
+                <!-- 2. MOTHERBOARD (PCB Tray) - NO TEXT LABELS -->
                 <g class="rig-part" id="part-mb" data-part="mb">
                     <!-- Motherboard Board Outline -->
-                    <rect x="55" y="55" width="280" height="340" rx="8" fill="url(#gradPcb)" class="rig-mb-board" />
-                    <rect x="55" y="55" width="280" height="340" rx="8" fill="url(#pcbGrid)" />
+                    <rect x="55" y="80" width="280" height="315" rx="8" fill="url(#gradPcb)" class="rig-mb-board" />
+                    <rect x="55" y="80" width="280" height="315" rx="8" fill="url(#pcbGrid)" />
                     <!-- Circuit Trace Lines -->
-                    <path d="M 65 80 L 110 80 L 130 110" fill="none" stroke="rgba(6, 182, 212, 0.4)" stroke-width="1.5"/>
-                    <path d="M 65 140 L 100 140 L 115 160" fill="none" stroke="rgba(139, 92, 246, 0.4)" stroke-width="1.5"/>
-                    <path d="M 280 90 L 315 90 L 315 170" fill="none" stroke="rgba(6, 182, 212, 0.4)" stroke-width="1.5"/>
+                    <path d="M 65 100 L 110 100 L 125 120" fill="none" stroke="rgba(6, 182, 212, 0.4)" stroke-width="1.5"/>
+                    <path d="M 65 150 L 100 150 L 115 170" fill="none" stroke="rgba(139, 92, 246, 0.4)" stroke-width="1.5"/>
+                    <path d="M 280 110 L 315 110 L 315 170" fill="none" stroke="rgba(6, 182, 212, 0.4)" stroke-width="1.5"/>
                     <!-- I/O Armor Shield (Top-Left) -->
-                    <rect x="58" y="58" width="36" height="110" rx="4" class="rig-mb-shield" />
-                    <text x="64" y="115" transform="rotate(-90 64,115)" fill="#64748b" font-size="9" font-family="'Outfit', sans-serif" letter-spacing="1">SKYREX</text>
-                    <!-- PCIe Slots -->
-                    <rect x="95" y="325" width="220" height="8" rx="2" fill="#13111c" stroke="#64748b" stroke-width="1"/>
+                    <rect x="58" y="83" width="36" height="95" rx="4" class="rig-mb-shield" fill="#171926" stroke="#334155" stroke-width="1.5"/>
+                    <line x1="66" y1="95" x2="86" y2="95" stroke="#06b6d4" stroke-width="2"/>
+                    <line x1="66" y1="105" x2="86" y2="105" stroke="#334155" stroke-width="1.5"/>
+                    <line x1="66" y1="115" x2="86" y2="115" stroke="#334155" stroke-width="1.5"/>
+                    <!-- PCIe Expansion Slots -->
+                    <rect x="95" y="335" width="220" height="8" rx="2" fill="#13111c" stroke="#64748b" stroke-width="1"/>
                     <rect x="95" y="375" width="160" height="6" rx="2" fill="#13111c" stroke="#475569" stroke-width="1"/>
                 </g>
 
-                <!-- 3. RAM (Memory Modules) -->
+                <!-- 3. CPU COOLER (Top Liquid Radiator + Dual ARGB Fans + Tubes) -->
+                <!-- Positioned at top ceiling so it DOES NOT overlap the CPU socket -->
+                <g class="rig-part" id="part-cooler" data-part="cooler">
+                    <!-- Top Radiator Body -->
+                    <rect x="85" y="42" width="185" height="32" rx="5" class="rig-cooler-body" />
+                    <!-- Radiator Fin Matrix Lines -->
+                    <line x1="95" y1="46" x2="95" y2="70" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+                    <line x1="105" y1="46" x2="105" y2="70" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+                    <line x1="115" y1="46" x2="115" y2="70" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+                    <line x1="185" y1="46" x2="185" y2="70" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+                    <line x1="255" y1="46" x2="255" y2="70" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+                    <!-- Radiator Fan 1 (Left) -->
+                    <circle cx="140" cy="58" r="14" class="rig-fan-outer" />
+                    <circle cx="140" cy="58" r="5" fill="#0f111a" stroke="#06b6d4" stroke-width="1.5"/>
+                    <circle cx="140" cy="58" r="11" class="rig-fan-ring" fill="none" stroke="#06b6d4" stroke-width="1.5"/>
+                    <!-- Radiator Fan 2 (Right) -->
+                    <circle cx="215" cy="58" r="14" class="rig-fan-outer" />
+                    <circle cx="215" cy="58" r="5" fill="#0f111a" stroke="#8b5cf6" stroke-width="1.5"/>
+                    <circle cx="215" cy="58" r="11" class="rig-fan-ring" fill="none" stroke="#8b5cf6" stroke-width="1.5"/>
+                    <!-- Braided Liquid Cooling Tubes connecting Radiator to CPU -->
+                    <path d="M 130 74 C 130 90 140 94 150 102" fill="none" stroke="#06b6d4" stroke-width="2.5" stroke-linecap="round"/>
+                    <path d="M 148 74 C 148 88 156 92 166 102" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/>
+                </g>
+
+                <!-- 4. CPU PROCESSOR (Prominent LGA/AM5 Socket + Metallic IHS Chip) -->
+                <!-- Fully visible, unobstructed, and easy to hover! -->
+                <g class="rig-part" id="part-cpu" data-part="cpu">
+                    <!-- LGA / AM5 Socket Retention Frame -->
+                    <rect x="135" y="102" width="76" height="76" rx="8" class="rig-cpu-frame" />
+                    <!-- Metal Socket Latch Lever on Right -->
+                    <rect x="212" y="106" width="4" height="68" rx="2" fill="#64748b" stroke="#334155" stroke-width="1"/>
+                    <circle cx="214" cy="172" r="3" fill="#94a3b8"/>
+                    <!-- CPU Integrated Heat Spreader (IHS) -->
+                    <rect x="144" y="111" width="58" height="58" rx="4" class="rig-cpu-ihs" />
+                    <!-- Silicon Die Core Accent -->
+                    <rect x="156" y="123" width="34" height="34" rx="3" class="rig-cpu-core" />
+                    <line x1="160" y1="140" x2="186" y2="140" stroke="rgba(6, 182, 212, 0.7)" stroke-width="1.5"/>
+                    <line x1="173" y1="127" x2="173" y2="153" stroke="rgba(139, 92, 246, 0.7)" stroke-width="1.5"/>
+                    <!-- Gold Triangle Pin 1 Indicator -->
+                    <polygon points="146,113 153,113 146,120" fill="#eab308" />
+                    <!-- Corner Socket Screw Studs -->
+                    <circle cx="140" cy="107" r="1.5" fill="#38bdf8"/>
+                    <circle cx="206" cy="107" r="1.5" fill="#38bdf8"/>
+                    <circle cx="140" cy="173" r="1.5" fill="#38bdf8"/>
+                    <circle cx="206" cy="173" r="1.5" fill="#38bdf8"/>
+                </g>
+
+                <!-- 5. RAM (Memory Modules) -->
                 <g class="rig-part" id="part-ram" data-part="ram">
                     <!-- Slot 1 -->
-                    <rect x="250" y="85" width="10" height="110" rx="3" class="rig-ram-stick" />
-                    <rect x="251" y="86" width="8" height="20" rx="2" fill="url(#gradFanRgb)" filter="url(#neonGlow)" />
+                    <rect x="245" y="95" width="10" height="110" rx="3" class="rig-ram-stick" />
+                    <rect x="246" y="96" width="8" height="20" rx="2" fill="url(#gradFanRgb)" />
                     <!-- Slot 2 -->
-                    <rect x="266" y="85" width="10" height="110" rx="3" class="rig-ram-stick" />
-                    <rect x="267" y="86" width="8" height="20" rx="2" fill="url(#gradFanRgb)" filter="url(#neonGlow)" />
+                    <rect x="261" y="95" width="10" height="110" rx="3" class="rig-ram-stick" />
+                    <rect x="262" y="96" width="8" height="20" rx="2" fill="url(#gradFanRgb)" />
                     <!-- Slot 3 & 4 (dimmed) -->
-                    <rect x="282" y="87" width="8" height="106" rx="2" fill="#1e1b2e" stroke="rgba(255,255,255,0.1)"/>
-                    <rect x="296" y="87" width="8" height="106" rx="2" fill="#1e1b2e" stroke="rgba(255,255,255,0.1)"/>
-                    <!-- RAM Hotspot Pin -->
-                    <circle cx="261" cy="73" r="5" class="rig-pin-pulse" />
-                    <circle cx="261" cy="73" r="2.5" fill="#06b6d4" />
+                    <rect x="277" y="97" width="8" height="106" rx="2" fill="#1e1b2e" stroke="rgba(255,255,255,0.1)"/>
+                    <rect x="291" y="97" width="8" height="106" rx="2" fill="#1e1b2e" stroke="rgba(255,255,255,0.1)"/>
                 </g>
 
-                <!-- 4. CPU & COOLER (Tower Heatsink + RGB Fan) -->
-                <!-- CPU Socket Base Under Cooler -->
-                <g class="rig-part" id="part-cpu" data-part="cpu">
-                    <rect x="135" y="95" width="90" height="90" rx="6" class="rig-cpu-socket" />
-                    <!-- CPU Heatspreader Details -->
-                    <rect x="145" y="105" width="70" height="70" rx="4" fill="#2d2b40" stroke="#8b5cf6" stroke-width="1.2"/>
-                    <circle cx="145" cy="105" r="4" fill="#06b6d4"/>
-                </g>
-
-                <!-- Tower Air Cooler / Liquid Block Over CPU -->
-                <g class="rig-part" id="part-cooler" data-part="cooler">
-                    <!-- Heatsink Fin Stack -->
-                    <rect x="130" y="80" width="100" height="115" rx="8" class="rig-cooler-body" />
-                    <!-- Horizontal Fin Lines -->
-                    <line x1="135" y1="95" x2="225" y2="95" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-                    <line x1="135" y1="110" x2="225" y2="110" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-                    <line x1="135" y1="125" x2="225" y2="125" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-                    <line x1="135" y1="140" x2="225" y2="140" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-                    <line x1="135" y1="155" x2="225" y2="155" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-                    <line x1="135" y1="170" x2="225" y2="170" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-                    <!-- Copper Heatpipe Tops -->
-                    <circle cx="150" cy="85" r="3.5" fill="#f59e0b" stroke="#78350f" stroke-width="1"/>
-                    <circle cx="170" cy="85" r="3.5" fill="#f59e0b" stroke="#78350f" stroke-width="1"/>
-                    <circle cx="190" cy="85" r="3.5" fill="#f59e0b" stroke="#78350f" stroke-width="1"/>
-                    <circle cx="210" cy="85" r="3.5" fill="#f59e0b" stroke="#78350f" stroke-width="1"/>
-                    <!-- Center ARGB Fan Circle -->
-                    <circle cx="180" cy="137" r="36" class="rig-fan-ring" />
-                    <circle cx="180" cy="137" r="14" fill="#0f111a" stroke="#06b6d4" stroke-width="2"/>
-                    <!-- Fan Blades -->
-                    <path d="M 180 123 C 185 110 195 110 198 120 C 190 128 185 130 180 123 Z" fill="rgba(6, 182, 212, 0.4)"/>
-                    <path d="M 194 137 C 207 142 207 152 197 155 C 189 147 187 142 194 137 Z" fill="rgba(139, 92, 246, 0.4)"/>
-                    <path d="M 180 151 C 175 164 165 164 162 154 C 170 146 175 144 180 151 Z" fill="rgba(217, 70, 239, 0.4)"/>
-                    <path d="M 166 137 C 153 132 153 122 163 119 C 171 127 173 132 166 137 Z" fill="rgba(6, 182, 212, 0.4)"/>
-                </g>
-
-                <!-- 5. SSD M.2 NVMe Slot with Armor Heatsink -->
+                <!-- 6. SSD M.2 NVMe Slot with Armor Heatsink - NO TEXT, CRISP ALIGNMENT -->
                 <g class="rig-part" id="part-ssd" data-part="ssd">
-                    <rect x="115" y="215" width="100" height="24" rx="4" class="rig-ssd-shield" />
-                    <!-- Thermal Armor Lines -->
-                    <line x1="125" y1="227" x2="195" y2="227" stroke="rgba(6, 182, 212, 0.6)" stroke-width="1.5"/>
-                    <circle cx="205" cy="227" r="2.5" fill="#06b6d4" filter="url(#neonGlow)"/>
-                    <text x="135" y="224" fill="#94a3b8" font-size="8" font-weight="600" font-family="'Outfit', sans-serif">M.2 NVMe</text>
+                    <!-- M.2 Slot Connector (Left) -->
+                    <rect x="115" y="195" width="8" height="20" rx="1" fill="#0f172a" stroke="#475569" stroke-width="1"/>
+                    <!-- M.2 2280 PCB & Armor Heatsink -->
+                    <rect x="123" y="195" width="106" height="20" rx="3" class="rig-ssd-shield" />
+                    <!-- Thermal Armor Grooves -->
+                    <line x1="130" y1="201" x2="216" y2="201" stroke="rgba(6, 182, 212, 0.7)" stroke-width="1.5"/>
+                    <line x1="130" y1="209" x2="216" y2="209" stroke="rgba(139, 92, 246, 0.5)" stroke-width="1.5"/>
+                    <!-- Activity Indicator Dot -->
+                    <circle cx="221" cy="205" r="2" fill="#06b6d4" />
                 </g>
 
-                <!-- 6. GPU (Graphics Card - Beefy Dual Slot) -->
+                <!-- 7. GPU (Graphics Card - Dual Slot) - NO TEXT LABELS -->
                 <g class="rig-part" id="part-gpu" data-part="gpu">
                     <!-- GPU Main Shroud -->
-                    <rect x="75" y="250" width="310" height="82" rx="10" fill="url(#gradGpu)" class="rig-gpu-body" />
+                    <rect x="75" y="240" width="310" height="82" rx="10" fill="url(#gradGpu)" class="rig-gpu-body" />
                     <!-- GPU Backplate Top Line -->
-                    <rect x="75" y="248" width="310" height="5" rx="2" fill="#8b5cf6" filter="url(#neonGlow)" />
+                    <rect x="75" y="238" width="310" height="5" rx="2" fill="#8b5cf6" />
                     <!-- GPU Fan 1 -->
-                    <circle cx="160" cy="292" r="28" class="rig-gpu-fan" />
-                    <circle cx="160" cy="292" r="10" fill="#13111c" stroke="#06b6d4" stroke-width="2"/>
+                    <circle cx="160" cy="281" r="27" class="rig-gpu-fan" />
+                    <circle cx="160" cy="281" r="9" fill="#13111c" stroke="#06b6d4" stroke-width="2"/>
                     <!-- GPU Fan 2 -->
-                    <circle cx="250" cy="292" r="28" class="rig-gpu-fan" />
-                    <circle cx="250" cy="292" r="10" fill="#13111c" stroke="#8b5cf6" stroke-width="2"/>
-                    <!-- GPU Fan 3 / Heatsink Vent (if triple fan) -->
-                    <rect x="300" y="265" width="65" height="52" rx="6" fill="#13111c" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-                    <line x1="310" y1="272" x2="355" y2="272" stroke="#475569" stroke-width="1"/>
-                    <line x1="310" y1="282" x2="355" y2="282" stroke="#475569" stroke-width="1"/>
-                    <line x1="310" y1="292" x2="355" y2="292" stroke="#475569" stroke-width="1"/>
-                    <line x1="310" y1="302" x2="355" y2="302" stroke="#475569" stroke-width="1"/>
+                    <circle cx="250" cy="281" r="27" class="rig-gpu-fan" />
+                    <circle cx="250" cy="281" r="9" fill="#13111c" stroke="#8b5cf6" stroke-width="2"/>
+                    <!-- GPU Exhaust Vent Grid on Right -->
+                    <rect x="300" y="255" width="65" height="52" rx="6" fill="#13111c" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                    <line x1="310" y1="265" x2="355" y2="265" stroke="#475569" stroke-width="1"/>
+                    <line x1="310" y1="275" x2="355" y2="275" stroke="#475569" stroke-width="1"/>
+                    <line x1="310" y1="285" x2="355" y2="285" stroke="#475569" stroke-width="1"/>
+                    <line x1="310" y1="295" x2="355" y2="295" stroke="#475569" stroke-width="1"/>
                     <!-- GPU PCIe Power Cable Routing -->
-                    <rect x="330" y="238" width="22" height="12" rx="2" fill="#0f172a" stroke="#06b6d4" stroke-width="1"/>
-                    <path d="M 335 238 C 335 220 370 220 370 200" fill="none" stroke="#334155" stroke-width="3"/>
-                    <path d="M 345 238 C 345 220 380 220 380 200" fill="none" stroke="#334155" stroke-width="3"/>
-                    <!-- GPU Illuminated Logo -->
-                    <rect x="90" y="286" width="35" height="12" rx="2" fill="#0f111a"/>
-                    <text x="94" y="295" fill="#06b6d4" font-size="8" font-weight="700" font-family="'Outfit', sans-serif">GEFORCE</text>
+                    <rect x="330" y="228" width="22" height="12" rx="2" fill="#0f172a" stroke="#06b6d4" stroke-width="1"/>
+                    <path d="M 335 228 C 335 210 370 210 370 190" fill="none" stroke="#334155" stroke-width="3"/>
+                    <path d="M 345 228 C 345 210 380 210 380 190" fill="none" stroke="#334155" stroke-width="3"/>
+                    <!-- Geometric RGB Accent Light Bar (NO TEXT) -->
+                    <rect x="90" y="278" width="35" height="6" rx="2" fill="#06b6d4"/>
+                    <line x1="90" y1="290" x2="120" y2="290" stroke="#8b5cf6" stroke-width="2"/>
                 </g>
 
-                <!-- 7. PSU & BOTTOM SHROUD (Power Supply Unit) -->
+                <!-- 8. PSU & BOTTOM SHROUD (Power Supply Unit) - NO BRAND TEXT -->
                 <g class="rig-part" id="part-psu" data-part="psu">
                     <!-- Lower PSU Chamber Shroud -->
                     <rect x="35" y="415" width="390" height="90" rx="10" class="rig-psu-shroud" />
-                    <!-- PSU Cut-out Window showing PSU Label -->
+                    <!-- PSU Cut-out Window showing PSU Hardware (NO TEXT) -->
                     <rect x="55" y="430" width="160" height="60" rx="6" class="rig-psu-unit" />
-                    <text x="75" y="455" fill="#f8fafc" font-size="12" font-weight="700" font-family="'Outfit', sans-serif" letter-spacing="1">1STPLAYER</text>
-                    <text x="75" y="475" fill="#eab308" font-size="10" font-weight="600" font-family="'Outfit', sans-serif">80+ GOLD ATX 3.1</text>
+                    <!-- AC Power Inlet Socket outline -->
+                    <rect x="68" y="445" width="22" height="30" rx="3" fill="#1e2235" stroke="#475569" stroke-width="1.5"/>
+                    <circle cx="79" cy="453" r="2" fill="#334155"/>
+                    <circle cx="74" cy="463" r="2" fill="#334155"/>
+                    <circle cx="84" cy="463" r="2" fill="#334155"/>
+                    <!-- Power Switch Rocker -->
+                    <rect x="98" y="450" width="14" height="20" rx="2" fill="#0f111a" stroke="#06b6d4" stroke-width="1.5"/>
+                    <line x1="105" y1="454" x2="105" y2="466" stroke="#06b6d4" stroke-width="1.5"/>
+                    <!-- Hex Ventilation Honeycomb Matrix -->
+                    <path d="M 125 445 L 195 445 M 125 455 L 195 455 M 125 465 L 195 465 M 125 475 L 195 475" stroke="#334155" stroke-width="1.5" stroke-dasharray="3 3"/>
                     <!-- Cable Management Grommets -->
                     <ellipse cx="260" cy="425" rx="25" ry="8" fill="#13111c" stroke="#334155" stroke-width="1.5"/>
                     <ellipse cx="340" cy="425" rx="20" ry="8" fill="#13111c" stroke="#334155" stroke-width="1.5"/>
-                    <!-- Fan Grill Pattern (Bottom intake) -->
+                    <!-- Bottom Intake Grill Pattern -->
                     <line x1="280" y1="445" x2="385" y2="445" stroke="#334155" stroke-width="2"/>
                     <line x1="280" y1="460" x2="385" y2="460" stroke="#334155" stroke-width="2"/>
                     <line x1="280" y1="475" x2="385" y2="475" stroke="#334155" stroke-width="2"/>
-                </g>
-
-                <!-- 8. CASE FANS (Chassis RGB Fans) -->
-                <!-- Front Intake Fans (3x 120mm) -->
-                <g class="rig-case-fans" opacity="0.85">
-                    <circle cx="410" cy="115" r="26" class="rig-chassis-fan" />
-                    <circle cx="410" cy="225" r="26" class="rig-chassis-fan" />
-                    <circle cx="410" cy="335" r="26" class="rig-chassis-fan" />
-                    <!-- Rear Exhaust Fan -->
-                    <circle cx="70" cy="115" r="24" class="rig-chassis-fan" />
                 </g>
             </svg>
             `;
@@ -402,25 +420,43 @@
                 const item = items[key];
                 if (!item) return;
 
-                const shopBadgeClass = item.shop.includes('Авито') ? 'badge-avito' :
-                                      (item.shop.includes('Wildberries') ? 'badge-wb' : 'badge-ot');
+                const isPlaceholder = !this.state.isCustomized || item.name === "?" || !item.name;
+
+                let shopBadgeClass = 'badge-empty';
+                let shopText = '—';
+                if (!isPlaceholder && item.shop) {
+                    if (item.shop.includes('Авито')) {
+                        shopBadgeClass = 'badge-avito';
+                        shopText = item.shop;
+                    } else if (item.shop.includes('Wildberries')) {
+                        shopBadgeClass = 'badge-wb';
+                        shopText = item.shop;
+                    } else if (item.shop.includes('ОнлайнТрейд')) {
+                        shopBadgeClass = 'badge-ot';
+                        shopText = item.shop;
+                    }
+                }
+
+                const displayName = isPlaceholder ? '?' : item.name;
+                const displayPrice = isPlaceholder ? '?' : item.price;
+                const displayTag = isPlaceholder ? 'Ожидание параметров' : (item.tag || '');
 
                 html += `
-                    <div class="pc-part-card" id="card-${key}" data-part="${key}">
+                    <div class="pc-part-card ${isPlaceholder ? 'part-card-placeholder' : ''}" id="card-${key}" data-part="${key}">
                         <div class="part-card-left">
                             <span class="part-card-icon">${item.icon || '⚡'}</span>
                             <div class="part-card-details">
                                 <div class="part-card-meta">
                                     <span class="part-category-tag">${item.category}</span>
-                                    <span class="part-shop-badge ${shopBadgeClass}">${item.shop}</span>
+                                    <span class="part-shop-badge ${shopBadgeClass}">${shopText}</span>
                                 </div>
-                                <span class="part-card-name" title="${item.name}">${item.name}</span>
-                                ${item.tag ? `<span class="part-spec-tag">${item.tag}</span>` : ''}
+                                <span class="part-card-name" title="${displayName}">${displayName}</span>
+                                ${displayTag ? `<span class="part-spec-tag">${displayTag}</span>` : ''}
                             </div>
                         </div>
                         <div class="part-card-right">
-                            <span class="part-card-price">${item.price}</span>
-                            ${item.url ? `
+                            <span class="part-card-price">${displayPrice}</span>
+                            ${!isPlaceholder && item.url ? `
                                 <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="part-card-link-btn" title="Перейти к товару">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                         <line x1="7" y1="17" x2="17" y2="7"></line>
@@ -437,13 +473,7 @@
         },
 
         bindEvents() {
-            // Copy Build Spec Button
-            const copyBtn = document.getElementById("rig-copy-spec-btn");
-            if (copyBtn) {
-                copyBtn.addEventListener("click", () => {
-                    this.copyBuildToClipboard(copyBtn);
-                });
-            }
+            // No extra buttons in footer to bind
         },
 
         bindInteractiveHotspots() {
@@ -468,7 +498,7 @@
                     });
                     svgPart.addEventListener("click", () => {
                         const item = this.state.items[partKey];
-                        if (item && item.url) {
+                        if (item && item.url && this.state.isCustomized && item.name !== "?") {
                             window.open(item.url, "_blank", "noopener,noreferrer");
                         }
                     });
@@ -485,18 +515,12 @@
                     cardEl.addEventListener("click", (e) => {
                         if (e.target.closest("a")) return;
                         const item = this.state.items[partKey];
-                        if (item && item.url) {
+                        if (item && item.url && this.state.isCustomized && item.name !== "?") {
                             window.open(item.url, "_blank", "noopener,noreferrer");
                         }
                     });
                 }
             });
-        },
-
-        resetToDefault() {
-            localStorage.removeItem("skyrex_active_build");
-            this.state = JSON.parse(JSON.stringify(DEFAULT_BUILD));
-            this.render();
         },
 
         highlightPart(partKey, isHovered) {
@@ -517,24 +541,39 @@
             const item = this.state.items[partKey];
             if (!item) return;
 
-            const shopColor = item.shop.includes('Авито') ? '#3b82f6' :
-                             (item.shop.includes('Wildberries') ? '#ec4899' : '#06b6d4');
+            const isPlaceholder = !this.state.isCustomized || item.name === "?" || !item.name;
 
-            this.tooltipEl.innerHTML = `
-                <div class="tooltip-header">
-                    <span class="tooltip-cat">${item.category}</span>
-                    <span class="tooltip-shop" style="color: ${shopColor}; border-color: ${shopColor};">${item.shop}</span>
-                </div>
-                <div class="tooltip-name">${item.name}</div>
-                <div class="tooltip-footer">
-                    <span class="tooltip-price">${item.price}</span>
-                    ${item.url ? `
-                        <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="tooltip-btn">
-                            Перейти к товару ↗
-                        </a>
-                    ` : ''}
-                </div>
-            `;
+            if (isPlaceholder) {
+                this.tooltipEl.innerHTML = `
+                    <div class="tooltip-header">
+                        <span class="tooltip-cat">${item.category}</span>
+                        <span class="tooltip-shop badge-empty">Ожидание</span>
+                    </div>
+                    <div class="tooltip-name">Компонент еще не подобран</div>
+                    <div class="tooltip-footer">
+                        <span class="tooltip-price">Задайте бюджет в чате</span>
+                    </div>
+                `;
+            } else {
+                const shopColor = item.shop.includes('Авито') ? '#3b82f6' :
+                                 (item.shop.includes('Wildberries') ? '#ec4899' : '#06b6d4');
+
+                this.tooltipEl.innerHTML = `
+                    <div class="tooltip-header">
+                        <span class="tooltip-cat">${item.category}</span>
+                        <span class="tooltip-shop" style="color: ${shopColor}; border-color: ${shopColor};">${item.shop}</span>
+                    </div>
+                    <div class="tooltip-name">${item.name}</div>
+                    <div class="tooltip-footer">
+                        <span class="tooltip-price">${item.price}</span>
+                        ${item.url ? `
+                            <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="tooltip-btn">
+                                Перейти к товару ↗
+                            </a>
+                        ` : ''}
+                    </div>
+                `;
+            }
 
             this.tooltipEl.style.display = "block";
             this.moveTooltip(e);
@@ -554,31 +593,10 @@
             }
         },
 
-        copyBuildToClipboard(button) {
-            const items = this.state.items;
-            let text = `🖥️ Игровая сборка SKYREX Computers\n`;
-            text += `💰 Итоговая стоимость: ${this.state.total} ₽\n\n`;
-
-            const order = ['cpu', 'mb', 'cooler', 'ram', 'gpu', 'ssd', 'psu', 'case'];
-            order.forEach((key, idx) => {
-                const itm = items[key];
-                if (itm) {
-                    text += `${idx + 1}. ${itm.category}: ${itm.name} — ${itm.price} (${itm.shop})\n`;
-                    if (itm.url) text += `   Ссылка: ${itm.url}\n`;
-                }
-            });
-
-            navigator.clipboard.writeText(text).then(() => {
-                button.classList.add("copied");
-                const span = button.querySelector("span");
-                if (span) span.textContent = "Скопировано!";
-                setTimeout(() => {
-                    button.classList.remove("copied");
-                    if (span) span.textContent = "Скопировать";
-                }, 2000);
-            }).catch(err => {
-                console.warn("Clipboard copy failed", err);
-            });
+        resetToDefault() {
+            localStorage.removeItem("skyrex_active_build");
+            this.state = JSON.parse(JSON.stringify(INITIAL_EMPTY_BUILD));
+            this.render();
         },
 
         /**
@@ -671,6 +689,8 @@
 
             // If at least 3 components were parsed, update the rig!
             if (foundCount >= 3) {
+                this.state.isCustomized = true;
+
                 // Merge with existing state for any unmentioned parts
                 Object.keys(newItems).forEach(k => {
                     this.state.items[k] = newItems[k];
@@ -682,7 +702,7 @@
                     // Recalculate total sum from parts
                     let sum = 0;
                     Object.values(this.state.items).forEach(itm => {
-                        if (itm.price) {
+                        if (itm.price && itm.price !== "?") {
                             const digits = itm.price.replace(/\D/g, '');
                             if (digits) sum += parseInt(digits, 10);
                         }
