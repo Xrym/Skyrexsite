@@ -500,12 +500,16 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 " AND name NOT LIKE '%/ 256%' "
                 " AND name NOT LIKE '%/ 512%' "
             )
+            cap_filter = " AND (name LIKE '%512%' OR name LIKE '%500%' OR name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') " if (budget and budget >= 50000) else ""
+
             raw_ssds = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} AND price <= ? ORDER BY price ASC LIMIT 35",
+                f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {cap_filter} AND price <= ? ORDER BY price ASC LIMIT 25",
                 (max_ssd_price,)
             ).fetchall()]
             if not raw_ssds:
-                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} ORDER BY price ASC LIMIT 35").fetchall()]
+                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} AND price <= ? ORDER BY price ASC LIMIT 25", (max_ssd_price,)).fetchall()]
+            if not raw_ssds:
+                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} ORDER BY price ASC LIMIT 25").fetchall()]
 
             def get_ssd_capacity(name):
                 m_tb = re.search(r'(\d+)\s*(?:тб|tb)\b', name, re.I)
@@ -520,7 +524,10 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 s["detected_capacity"] = get_ssd_capacity(s.get("name", ""))
 
             min_ssd_cap = 512 if (budget and budget >= 50000) else 256
-            valid_ssds = [s for s in raw_ssds if s.get("detected_capacity", 256) >= min_ssd_cap]
+            valid_ssds = [
+                s for s in raw_ssds 
+                if (s.get("detected_capacity", 0) >= min_ssd_cap and (min_ssd_cap < 512 or re.search(r'(?:512|500|1000|1024|1\s*тб|1\s*tb)', s.get("name", ""), re.I)))
+            ]
             if not valid_ssds:
                 valid_ssds = raw_ssds
 
@@ -554,13 +561,15 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 "AND url NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' AND name NOT LIKE '%radeon%' "
                 "AND name NOT LIKE '%rtx%' AND name NOT LIKE '%gtx%'"
             )
+            min_cooler_price = 1400 if (budget and budget >= 70000) else market_mins.get('cooler', 683)
             raw_coolers = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products {cooler_filter} AND price <= ? ORDER BY price ASC LIMIT 20",
-                (max_cooler_price,)
+                f"SELECT * FROM products {cooler_filter} AND price >= ? AND price <= ? ORDER BY price ASC LIMIT 20",
+                (min_cooler_price, max_cooler_price)
             ).fetchall()]
             if not raw_coolers:
                 raw_coolers = [dict(r) for r in conn.execute(
-                    f"SELECT * FROM products {cooler_filter} ORDER BY price ASC LIMIT 20"
+                    f"SELECT * FROM products {cooler_filter} AND price <= ? ORDER BY price ASC LIMIT 20",
+                    (max_cooler_price,)
                 ).fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=5, sort_by_price_desc=False))
 
@@ -703,7 +712,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
         # 4. GPUs
         if gpus:
             context_parts.append("\n=== 7. ВИДЕОКАРТЫ (GPU) ===")
-            for p in gpus[:6]:
+            for p in gpus[:8]:
                 context_parts.append(format_product_line(p))
 
         # 5. SSDs
