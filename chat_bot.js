@@ -110,13 +110,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const sanitizeAvitoUrl = sanitizeMarketplaceUrl;
 
+    function collapseMultipleBuildDrafts(raw) {
+        if (!raw) return raw;
+        const regex = /(?:<br\s*\/?>|\n|^)\s*(?:<li>)?\s*(?:<b>)?\s*1\.\s*(?:<b>)?\s*(?:Процессор|CPU)/gi;
+        const matches = [...raw.matchAll(regex)];
+        if (matches.length <= 1) return raw;
+
+        const firstIndex = matches[0].index;
+        const lastIndex = matches[matches.length - 1].index;
+
+        let intro = raw.substring(0, firstIndex).trim();
+        intro = intro.replace(/(?:<br\s*\/?>|\n)*\s*(?:Вот|Ниже|Конфигурация).*?:\s*$/i, '').trim();
+
+        let finalBuild = raw.substring(lastIndex).trim();
+        return `${intro}\n\n<b>Вот оптимальная конфигурация ПК под ваш бюджет:</b>\n${finalBuild}`;
+    }
+
     /**
      * Resilient hybrid Markdown and HTML parser for bot responses.
      * Safely handles markdown tables, bold, italics, headers, code blocks, lists, and links.
      */
     function parseBotContent(rawText) {
         if (!rawText) return "";
-        let text = rawText;
+        let text = collapseMultipleBuildDrafts(rawText);
 
         // 1. Preserve code blocks
         const codeBlocks = [];

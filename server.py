@@ -235,9 +235,9 @@ def get_parsed_catalog_context(user_message: str) -> str:
         with get_connection() as conn:
             max_item_price = budget if budget else 9999999
 
-            # A. Select Candidate GPUs fitting budget (stepped spread across the entire market spectrum)
+            # A. Select Candidate GPUs fitting budget (stepped spread across the entire market spectrum, accessible value first)
             all_gpus = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'gpu' AND price <= ? ORDER BY price DESC",
+                "SELECT * FROM products WHERE category = 'gpu' AND price <= ? ORDER BY price ASC",
                 (max_item_price,)
             ).fetchall()]
             if not all_gpus:
@@ -285,7 +285,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
             )
 
             all_cpus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price DESC",
+                f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC",
                 (max_item_price,)
             ).fetchall()]
             if not all_cpus:
@@ -546,12 +546,35 @@ def make_marketplace_search_url(shop: str, name: str) -> str:
     else:
         return f"https://www.avito.ru/all?q={encoded}"
 
+def clean_single_final_build(raw: str) -> str:
+    """Гарантирует, что ответ содержит ровно ОДНУ чистовую конфигурацию,
+    срезая любые промежуточные черновые попытки ('Ой, секунду! Это превышает...', 'Давайте пересоберем...').
+    """
+    if not raw:
+        return raw
+
+    pattern = re.compile(r'(?:<br\s*/?>|\n|^)\s*(?:<li>)?\s*(?:<b>)?\s*1\.\s*(?:<b>)?\s*(?:Процессор|CPU)', re.IGNORECASE)
+    matches = list(pattern.finditer(raw))
+    if len(matches) <= 1:
+        return raw
+
+    first_match = matches[0]
+    last_match = matches[-1]
+
+    intro = raw[:first_match.start()].strip()
+    intro = re.sub(r'(?:<br\s*/?>|\n)*\s*(?:Вот|Ниже|Конфигурация).*?:\s*$', '', intro, flags=re.IGNORECASE | re.DOTALL).strip()
+    final_build = raw[last_match.start():].strip()
+
+    return f"{intro}\n\n<b>Вот оптимальная конфигурация ПК под ваш бюджет:</b>\n{final_build}"
+
 def clean_marketplace_links(text: str) -> str:
     """Гарантирует, что ВСЕ ссылки (Авито, Wildberries, ОнлайнТрейд, DNS) ведут на страницу поиска
     по названию компонента в поисковой строке, а не на прямые/устаревшие карточки товаров.
     """
     if not text:
         return text
+
+    text = clean_single_final_build(text)
 
     # 1. Преобразование Markdown-ссылок [текст](url) в чистый HTML с поисковой ссылкой
     def md_link_replacer(match):
