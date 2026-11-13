@@ -768,15 +768,20 @@
                             else searchUrl = `https://www.avito.ru/all?q=${enc}`;
                         }
 
+                        let finalPartName = name || currentPart.name;
+                        if (cat.key === 'psu' && finalPartName) {
+                            finalPartName = finalPartName.replace(/deepcool\s+gamerstorm/gi, 'GamerStorm').replace(/deepcool\s*(pf[- ]?\d+[xd]?)/gi, 'GamerStorm $1');
+                        }
+
                         newItems[cat.key] = {
                             id: cat.key,
                             category: currentPart.category || cat.key.toUpperCase(),
                             code: currentPart.code || cat.key.toUpperCase(),
-                            name: name || currentPart.name,
+                            name: finalPartName,
                             price: price || currentPart.price,
                             shop: shop,
                             url: searchUrl || currentPart.url,
-                            tag: this.extractComponentTag(cat.key, name || currentPart.name, shop),
+                            tag: this.extractComponentTag(cat.key, finalPartName, shop),
                             icon: currentPart.icon || "⚡"
                         };
                         foundCount++;

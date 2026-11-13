@@ -49,7 +49,7 @@ def extract_chipset(text: str) -> Optional[str]:
     Extracts canonical hardware chip / series:
     e.g. 'RTX 4070 Ti SUPER', 'RTX 4060', 'RX 7800 XT', 'Ryzen 5 7500F', 'i5 13400', 'B650'
     """
-    t = text.lower()
+    t = text.lower().replace("rayzen", "ryzen")
 
     # 1. NVIDIA GPUs: RTX / GTX
     m = re.search(r'\b(rtx\s*\d{4}(?:\s*(?:ti\s*super|ti|super))?)\b', t)
@@ -211,6 +211,73 @@ def match_expert_assessment(
     return best_match
 
 
+def resolve_avito_median_price(
+    name: str,
+    category: str,
+    raw_price: int,
+    expert_components: Optional[List[Dict[str, Any]]] = None
+) -> int:
+    """
+    Returns the median market price for Avito used components from expert_components.
+    Option B: Clean median prices for all secondary market parts instead of raw single-seller oddities.
+    If no specific median is defined, cleanly rounds the raw price to the nearest hundred.
+    """
+    if not expert_components or raw_price <= 0:
+        return int(round(raw_price / 100) * 100) if raw_price > 0 else raw_price
+
+    nl = name.lower()
+    cat = (category or "").lower()
+    exp_dict = {e['componentname'].strip().lower(): e for e in expert_components if e.get('componentname')}
+
+    # 1. RAM specialized matching
+    if cat == "ram":
+        is_ddr5 = "ddr5" in nl or any(freq in nl for freq in ["4800", "5200", "5600", "6000", "6400", "7200"])
+        is_32 = any(x in nl for x in ["32gb", "32 gb", "32гб", "32 гб", "2x16", "2х16", "2*16"])
+        target_key = "оперативная память ddr5 32gb" if (is_ddr5 and is_32) else (
+            "ddr5 16gb" if is_ddr5 else (
+                "оперативная память ddr4 32 гб" if is_32 else "оперативная память 16 гб ddr4"
+            )
+        )
+        if target_key in exp_dict and exp_dict[target_key].get("price"):
+            return int(exp_dict[target_key]["price"])
+
+    # 2. SSD specialized matching
+    if cat == "ssd":
+        if any(x in nl for x in ["1tb", "1 tb", "1тб", "1 тб", "1000", "960"]):
+            k = "ssd m.2 nvme 1tb"
+        elif "256" in nl or "250" in nl or "240" in nl or "128" in nl:
+            k = "ssd m.2 nvme 256gb"
+        else:
+            k = "ssd m.2 nvme 512gb"
+        if k in exp_dict and exp_dict[k].get("price"):
+            return int(exp_dict[k]["price"])
+
+    # 3. Motherboard specialized matching
+    if cat in ["motherboard", "mb"]:
+        if any(x in nl for x in ["am5", "b650", "a620", "x670", "b850", "x870"]):
+            k = "материнская плата am5 (b650 / a620 ddr5)"
+        elif any(x in nl for x in ["1700", "h610", "b760", "z790"]):
+            k = "материнская плата lga1700 (h610 / b760 ddr4)"
+        elif "b550" in nl:
+            k = "материнская плата am4 (b550)"
+        elif any(x in nl for x in ["am4", "b450", "a520", "a320", "x570"]):
+            k = "материнская плата am4 (a520 / b450)"
+        else:
+            k = None
+        if k and k in exp_dict and exp_dict[k].get("price"):
+            return int(exp_dict[k]["price"])
+
+    # 4. General match (CPUs, GPUs, coolers, PSUs) via match_expert_assessment
+    match = match_expert_assessment(name, cat, expert_components)
+    if match and match.get("expert_name"):
+        en = match["expert_name"].strip().lower()
+        if en in exp_dict and exp_dict[en].get("price"):
+            return int(exp_dict[en]["price"])
+
+    # Fallback for Avito items: round cleanly to hundreds
+    return int(round(raw_price / 100) * 100)
+
+
 def enrich_and_rank_products(
     products: List[Dict[str, Any]],
     expert_components: Optional[List[Dict[str, Any]]] = None,
@@ -219,6 +286,8 @@ def enrich_and_rank_products(
 ) -> List[Dict[str, Any]]:
     """
     Enriches scraped products with hardware specs and ranks them:
+    - For Avito (used) components: assigns clean market median prices from expert_components (Option B).
+    - For new retail marketplace components: retains exact store price.
     - If sort_by_price_desc is True: sorts by price descending (prioritizes top tier GPU / CPU).
     - If sort_by_price_desc is False: sorts by price ascending (prioritizes best value for platform parts).
     - If sort_by_price_desc is None: preserves existing sort order.
@@ -230,6 +299,20 @@ def enrich_and_rank_products(
     enriched = []
     for p in products:
         item = dict(p)
+        shop = item.get("shop", "")
+        url = item.get("url", "")
+        is_avito = "авито" in shop.lower() or "avito" in url.lower() or "(б/у)" in item.get("name", "").lower()
+
+        if is_avito and expert_components:
+            med_price = resolve_avito_median_price(
+                item.get("name", ""),
+                item.get("category", ""),
+                item.get("price", 0),
+                expert_components
+            )
+            if med_price and med_price > 0:
+                item["price"] = med_price
+
         assessment = match_expert_assessment(item["name"], item.get("category", ""), expert_components) if expert_components else None
         if assessment:
             item["expert_mark"] = assessment.get("mark")

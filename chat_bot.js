@@ -185,6 +185,10 @@ document.addEventListener("DOMContentLoaded", () => {
         text = text.replace(/__([^_]+)__/g, "<b>$1</b>");
         text = text.replace(/(^|[^\*])\*([^\*\n]+)\*([^\*]|$)/g, "$1<i>$2</i>$3");
 
+        // 5.1. Normalize GamerStorm PSUs (eliminate Deepcool brand mentions for GamerStorm PF series)
+        text = text.replace(/deepcool\s+gamerstorm/gi, 'GamerStorm');
+        text = text.replace(/deepcool\s*(pf[- ]?\d+[xd]?)/gi, 'GamerStorm $1');
+
         // 6. Markdown links: [Title](URL) -> <a href='URL' target='_blank'>Title</a>
         text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, (match, title, url) => {
             const cleanUrl = sanitizeMarketplaceUrl(url, title);
