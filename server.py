@@ -1304,7 +1304,8 @@ async def handle_safe_static(request):
         'style.css': 'style.css',
         'app.js': 'app.js',
         'auth.js': 'auth.js',
-        'chat_bot.js': 'chat_bot.js'
+        'chat_bot.js': 'chat_bot.js',
+        'rig_visualizer.js': 'rig_visualizer.js'
     }
     if filename not in allowed_files:
         return web.Response(text="404 Not Found", status=404)
