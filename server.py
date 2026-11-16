@@ -169,10 +169,11 @@ def detect_hardware_specs(product: dict) -> dict:
     return specs
 
 # 3. Dynamic context retrieval with budget awareness & hardware compatibility
-def get_parsed_catalog_context(user_message: str) -> str:
+def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] = None) -> str:
     """Dynamically fetches real parsed products from SQLite catalog.db based on budget, query, and strict compatibility."""
     context_parts = []
     specific_results = []
+    new_filter = " AND shop NOT LIKE '%Авито%' " if used_decision == 'new' else ""
     
     # 1. Search for specific items mentioned in user message (e.g. 'RTX 4070', 'Ryzen 7500F', 'Kingston')
     if user_message:
@@ -229,6 +230,13 @@ def get_parsed_catalog_context(user_message: str) -> str:
     # If this is a build request with budget, filter out specific results that exceed realistic GPU/core budget
     if budget and is_build_request:
         specific_results = [p for p in specific_results if p.get('price', 0) <= budget]
+    if used_decision == 'new':
+        specific_results = [p for p in specific_results if 'Авито' not in p.get('shop', '')]
+    # Enforce strictly XASTRA cases only
+    specific_results = [
+        p for p in specific_results 
+        if p.get('category') != 'case' or ('xastra' in p.get('name', '').lower())
+    ]
 
     cat_items = []
     if is_build_request or budget or len(specific_results) < 5:
@@ -236,10 +244,16 @@ def get_parsed_catalog_context(user_message: str) -> str:
             # Dynamic market minimum entry prices queried directly from live catalog.db (no hardcoded numbers)
             market_mins = {}
             for cat in ['cpu', 'gpu', 'motherboard', 'ram', 'ssd', 'psu', 'cooler', 'case']:
-                row_min = conn.execute(
-                    "SELECT MIN(price) FROM products WHERE category = ? AND price >= 500 AND available = 1",
-                    (cat,)
-                ).fetchone()
+                if cat == 'case':
+                    row_min = conn.execute(
+                        "SELECT MIN(price) FROM products WHERE category = 'case' AND (name LIKE '%XASTRA%' OR name LIKE '%xastra%') AND price >= 500 AND available = 1"
+                    ).fetchone()
+                else:
+                    shop_clause = " AND shop NOT LIKE '%Авито%'" if used_decision == 'new' else ""
+                    row_min = conn.execute(
+                        f"SELECT MIN(price) FROM products WHERE category = ? {shop_clause} AND price >= 500 AND available = 1",
+                        (cat,)
+                    ).fetchone()
                 market_mins[cat] = int(row_min[0]) if (row_min and row_min[0]) else 1000
 
             total_market_mins = sum(market_mins.values())
@@ -287,17 +301,17 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 " AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' "
             )
             all_gpus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'gpu' AND price >= ? AND price <= ? {gpu_junk_filter} ORDER BY price ASC",
+                f"SELECT * FROM products WHERE category = 'gpu' AND price >= ? AND price <= ? {gpu_junk_filter} {new_filter} ORDER BY price ASC",
                 (min_gpu_price, max_gpu_price)
             ).fetchall()]
             if not all_gpus:
                 all_gpus = [dict(r) for r in conn.execute(
-                    f"SELECT * FROM products WHERE category = 'gpu' AND price <= ? {gpu_junk_filter} ORDER BY price ASC LIMIT 20",
+                    f"SELECT * FROM products WHERE category = 'gpu' AND price <= ? {gpu_junk_filter} {new_filter} ORDER BY price ASC LIMIT 20",
                     (max_gpu_price,)
                 ).fetchall()]
             if not all_gpus:
                 all_gpus = [dict(r) for r in conn.execute(
-                    f"SELECT * FROM products WHERE category = 'gpu' {gpu_junk_filter} ORDER BY price ASC LIMIT 20"
+                    f"SELECT * FROM products WHERE category = 'gpu' {gpu_junk_filter} {new_filter} ORDER BY price ASC LIMIT 20"
                 ).fetchall()]
             
             # Sample across catalog percentiles up to max_gpu_price (from budget value to top performer)
@@ -343,16 +357,16 @@ def get_parsed_catalog_context(user_message: str) -> str:
             )
 
             all_cpus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'cpu' AND price >= ? AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC",
+                f"SELECT * FROM products WHERE category = 'cpu' AND price >= ? AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} {new_filter} ORDER BY price ASC",
                 (min_cpu_price, max_cpu_price)
             ).fetchall()]
             if not all_cpus:
                 all_cpus = [dict(r) for r in conn.execute(
-                    f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC",
+                    f"SELECT * FROM products WHERE category = 'cpu' AND price <= ? {cpu_filter_threadripper} {cpu_filter_bundle} {new_filter} ORDER BY price ASC",
                     (max_cpu_price,)
                 ).fetchall()]
             if not all_cpus:
-                all_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} {cpu_filter_bundle} ORDER BY price ASC LIMIT 20").fetchall()]
+                all_cpus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'cpu' {cpu_filter_threadripper} {cpu_filter_bundle} {new_filter} ORDER BY price ASC LIMIT 20").fetchall()]
 
             if len(all_cpus) > 7:
                 step_c = len(all_cpus) - 1
@@ -388,12 +402,12 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 if socket_kw:
                     sql_kw = " OR ".join(["name LIKE ?"] * len(socket_kw))
                     rows = [dict(r) for r in conn.execute(
-                        f"SELECT * FROM products WHERE category = 'motherboard' AND price <= ? AND ({sql_kw}) ORDER BY price ASC LIMIT 20",
+                        f"SELECT * FROM products WHERE category = 'motherboard' AND price <= ? AND ({sql_kw}) {new_filter} ORDER BY price ASC LIMIT 20",
                         [max_mb_price] + socket_kw
                     ).fetchall()]
                     if not rows:
                         rows = [dict(r) for r in conn.execute(
-                            f"SELECT * FROM products WHERE category = 'motherboard' AND ({sql_kw}) ORDER BY price ASC LIMIT 20",
+                            f"SELECT * FROM products WHERE category = 'motherboard' AND ({sql_kw}) {new_filter} ORDER BY price ASC LIMIT 20",
                             socket_kw
                         ).fetchall()]
                     compatible = []
@@ -433,12 +447,12 @@ def get_parsed_catalog_context(user_message: str) -> str:
             for r_type in required_ram_types:
                 kw = "%ddr5%" if r_type == "DDR5" else "%ddr4%"
                 rows = [dict(r) for r in conn.execute(
-                    f"SELECT * FROM products WHERE category = 'ram' AND name LIKE ? AND price <= ? ORDER BY price ASC LIMIT 30",
+                    f"SELECT * FROM products WHERE category = 'ram' AND name LIKE ? AND price <= ? {new_filter} ORDER BY price ASC LIMIT 30",
                     (kw, max_ram_price)
                 ).fetchall()]
                 if not rows:
                     rows = [dict(r) for r in conn.execute(
-                        f"SELECT * FROM products WHERE category = 'ram' AND name LIKE ? ORDER BY price ASC LIMIT 30",
+                        f"SELECT * FROM products WHERE category = 'ram' AND name LIKE ? {new_filter} ORDER BY price ASC LIMIT 30",
                         (kw,)
                     ).fetchall()]
                 filtered_r = []
@@ -465,11 +479,11 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 )
             """
             raw_psus = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'psu' AND price <= ? {psu_whitelist} ORDER BY price ASC LIMIT 20",
+                f"SELECT * FROM products WHERE category = 'psu' AND price <= ? {psu_whitelist} {new_filter} ORDER BY price ASC LIMIT 20",
                 (max_psu_price,)
             ).fetchall()]
             if not raw_psus:
-                raw_psus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'psu' {psu_whitelist} ORDER BY price ASC LIMIT 20").fetchall()]
+                raw_psus = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'psu' {psu_whitelist} {new_filter} ORDER BY price ASC LIMIT 20").fetchall()]
             diverse_psus = []
             seen_p_ids = set()
             for p in sorted(raw_psus, key=lambda x: x.get("price", 0)):
@@ -503,13 +517,13 @@ def get_parsed_catalog_context(user_message: str) -> str:
             cap_filter = " AND (name LIKE '%512%' OR name LIKE '%500%' OR name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') " if (budget and budget >= 50000) else ""
 
             raw_ssds = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {cap_filter} AND price <= ? ORDER BY price ASC LIMIT 25",
+                f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {cap_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 25",
                 (max_ssd_price,)
             ).fetchall()]
             if not raw_ssds:
-                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} AND price <= ? ORDER BY price ASC LIMIT 25", (max_ssd_price,)).fetchall()]
+                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 25", (max_ssd_price,)).fetchall()]
             if not raw_ssds:
-                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} ORDER BY price ASC LIMIT 25").fetchall()]
+                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {new_filter} ORDER BY price ASC LIMIT 25").fetchall()]
 
             def get_ssd_capacity(name):
                 m_tb = re.search(r'(\d+)\s*(?:тб|tb)\b', name, re.I)
@@ -563,24 +577,25 @@ def get_parsed_catalog_context(user_message: str) -> str:
             )
             min_cooler_price = 1400 if (budget and budget >= 70000) else market_mins.get('cooler', 683)
             raw_coolers = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products {cooler_filter} AND price >= ? AND price <= ? ORDER BY price ASC LIMIT 20",
+                f"SELECT * FROM products {cooler_filter} {new_filter} AND price >= ? AND price <= ? ORDER BY price ASC LIMIT 20",
                 (min_cooler_price, max_cooler_price)
             ).fetchall()]
             if not raw_coolers:
                 raw_coolers = [dict(r) for r in conn.execute(
-                    f"SELECT * FROM products {cooler_filter} AND price <= ? ORDER BY price ASC LIMIT 20",
+                    f"SELECT * FROM products {cooler_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 20",
                     (max_cooler_price,)
                 ).fetchall()]
             cat_items.extend(enrich_and_rank_products(raw_coolers, expert_components, limit=5, sort_by_price_desc=False))
 
-            # I. Select Cases directly from catalog (purely from parsed products, no requirements)
+            # I. Select Cases directly from catalog (strictly XASTRA brand only)
+            xastra_filter = " AND (name LIKE '%XASTRA%' OR name LIKE '%xastra%') "
             raw_cases = [dict(r) for r in conn.execute(
-                "SELECT * FROM products WHERE category = 'case' AND price <= ? ORDER BY price ASC LIMIT 20",
+                f"SELECT * FROM products WHERE category = 'case' {xastra_filter} AND price <= ? ORDER BY price ASC LIMIT 20",
                 (max_case_price,)
             ).fetchall()]
             if not raw_cases:
                 raw_cases = [dict(r) for r in conn.execute(
-                    "SELECT * FROM products WHERE category = 'case' ORDER BY price ASC LIMIT 20"
+                    f"SELECT * FROM products WHERE category = 'case' {xastra_filter} ORDER BY price ASC LIMIT 20"
                 ).fetchall()]
             if raw_cases:
                 cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=5, sort_by_price_desc=False))
@@ -617,7 +632,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
                 f"   - Материнские платы: Wildberries, Авито (Б/У) или DNS\n"
                 f"   - Блоки питания: ОнлайнТрейд или Wildberries (только модели Powercase PW, GamerStorm PF600X+, 1stPlayer NGDP — обычные DeepCool не использовать)\n"
                 f"   - Кулеры для процессоров: ОнлайнТрейд или Wildberries\n"
-                f"   - Корпус: ОнлайнТрейд или Wildberries (выбирай реальную модель корпуса из каталога)"
+                f"   - Корпус: ОнлайнТрейд или Wildberries (только бренд XASTRA! Никаких других брендов корпусов не использовать)"
             )
         if budget and budget < 35000:
             context_parts.append(
@@ -736,7 +751,7 @@ def get_parsed_catalog_context(user_message: str) -> str:
 
         # 8. Cases
         if cases:
-            context_parts.append("\n=== 11. КОРПУСА ДЛЯ ПК ===")
+            context_parts.append("\n=== 11. КОРПУСА ДЛЯ ПК (СТРОГО ТОЛЬКО БРЕНД XASTRA) ===")
             for p in cases[:4]:
                 context_parts.append(format_product_line(p))
 
@@ -906,8 +921,82 @@ def clean_marketplace_links(text: str) -> str:
 
     return text
 
+def check_used_decision(message: str, history: list = None) -> Optional[str]:
+    """
+    Checks if the user has agreed to or refused used (Б/У) components.
+    Returns:
+      'used' - user agreed to use used/Б/У parts.
+      'new'  - user wants only brand-new components from retail stores.
+      None   - user hasn't made a decision yet (needs to be asked).
+    """
+    text_corpus = []
+    if history:
+        for msg in history:
+            if msg.get("sender") == "user":
+                text_corpus.append(msg.get("text", "").lower())
+    if message:
+        text_corpus.append(message.lower())
+    
+    full_text = " ".join(text_corpus)
+    
+    # 1. Check for refusal / "only new"
+    refusal_patterns = [
+        r'\bтолько\s+нов',
+        r'\bтолько\s+из\s+магазин',
+        r'\bбез\s+б/?у\b',
+        r'\bне\s+(?:хочу|надо|нужно|желательно)\s+б/?у\b',
+        r'\bб/?у\s+не\s+(?:хочу|надо|нужно|предлагай)',
+        r'\bникаких?\s+б/?у\b',
+        r'\bисключительно\s+нов',
+        r'\bновые?\s+с\s+гарантией\b'
+    ]
+    for p in refusal_patterns:
+        if re.search(p, full_text):
+            return 'new'
+            
+    # 2. Check for acceptance of used parts
+    accept_patterns = [
+        r'\bможно\s+б/?у\b',
+        r'\bсогласен\s+на\s+б/?у\b',
+        r'\bдавай\s+б/?у\b',
+        r'\bб/?у\s+(?:можно|давай|ок|пойдет|подходит|нормально)\b',
+        r'\bс\s+авито\b',
+        r'\bиспользовать\s+б/?у\b',
+        r'\bда,\s*можно\b',
+        r'\bмаксимум\s+(?:фпс|fps)\b',
+    ]
+    for p in accept_patterns:
+        if re.search(p, full_text):
+            return 'used'
+            
+    # Also check short affirmative/negative response to previous assistant message
+    last_msg = (message or "").strip().lower()
+    if history and any(msg.get("sender") in ("assistant", "model", "bot") for msg in history):
+        if re.search(r'^(?:да|давай|можно|согласен|ок|ок,|okay|хорошо|конечно|ага|не против|да конечно|да, давай|да давай|да, можно|да можно)\b', last_msg):
+            return 'used'
+        if re.search(r'^(?:нет|не надо|только нов|только новое|новые|без бу|не хочу)\b', last_msg):
+            return 'new'
+            
+    return None
+
+def is_pc_build_request(message: str, history: list = None) -> bool:
+    """Detects whether the current prompt or active dialogue is a PC build request."""
+    build_keywords = ['пк', 'сборк', 'собери', 'компьютер', 'системник', 'конфигурац', 'детал']
+    msg_lower = (message or "").lower()
+    if any(k in msg_lower for k in build_keywords):
+        return True
+    if extract_budget(message) is not None:
+        return True
+    if history:
+        for msg in reversed(history[-4:]):
+            if msg.get("sender") == "user":
+                m_text = msg.get("text", "").lower()
+                if any(k in m_text for k in build_keywords) or extract_budget(m_text) is not None:
+                    return True
+    return False
+
 # 4. Format database into highly descriptive instructions for LLM
-def build_system_instruction(dynamic_context=""):
+def build_system_instruction(dynamic_context="", user_message="", history=None, used_decision=None):
     from db.database import (
         get_ai_rules,
         get_expert_components,
@@ -977,6 +1066,38 @@ def build_system_instruction(dynamic_context=""):
         prompt_sections.append(catalog_text.strip())
     if dynamic_context:
         prompt_sections.append(dynamic_context.strip())
+
+    is_build_req = is_pc_build_request(user_message, history)
+    if is_build_req:
+        if used_decision is None:
+            prompt_sections.append(
+                "🚨 КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО — ОБЯЗАТЕЛЬНОЕ СОГЛАСОВАНИЕ Б/У ПЕРЕД ВЫДАЧЕЙ СБОРКИ:\n"
+                "Пользователь запросил сборку ПК или указал бюджет, но ЕЩЁ НЕ УТОЧНИЛ, согласен ли он на использование проверенных Б/У комплектующих!\n"
+                "ТЫ КАТЕГОРИЧЕСКИ НЕ ДОЛЖЕН СЕЙЧАС ВЫВОДИТЬ СПИСОК 8 КОМПОНЕНТОВ СБОРКИ И НЕ ДОЛЖЕН ВЫВОДИТЬ ИТОГОВУЮ СУММУ!\n\n"
+                "Твоя задача СЕЙЧАС — ответить клиенту вежливо, профессионально и убедительно, выполнив следующие шаги:\n"
+                "1. Подтверди бюджет клиента (например: 'Отличный бюджет для сборки!').\n"
+                "2. ОБЯЗАТЕЛЬНО объясни, почему стоит рассмотреть проверенные Б/У комплектующие (особенно видеокарту и процессор):\n"
+                "   - Цены на новые комплектующие в розничных магазинах сейчас просто космические из-за наценок, пошлин и логистики.\n"
+                "   - Если покупать всё только новым в магазине, львиная доля бюджета уйдет на магазинные наценки, и видеокарту придется взять очень слабую.\n"
+                "   - Использование проверенных Б/У комплектующих со вторичного рынка (Авито) позволяет получить ЗНАЧИТЕЛЬНО больше игровой производительности и гораздо выше FPS за тот же самый бюджет!\n"
+                "3. Спроси у клиента, готов ли он рассмотреть проверенные Б/У комплектующие или собираем строго из новых магазинных деталей с гарантией?\n"
+                "4. Предложи два четких варианта на выбор:\n"
+                "   🟢 <b>Да, можно Б/У</b> (максимум FPS и производительности за ваш бюджет)\n"
+                "   🔵 <b>Только новые из магазина</b> (с официальной гарантией)\n\n"
+                "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать состав сборки (1. Процессор, 2. Плата...) в этом ответе! Сначала получи выбор клиента!"
+            )
+        elif used_decision == 'used':
+            prompt_sections.append(
+                "✅ КЛИЕНТ СОГЛАСЕН НА ИСПОЛЬЗОВАНИЕ Б/У КОМПЛЕКТУЮЩИХ:\n"
+                "Сформируй лучшую сборку под бюджет, используя мощные проверенные Б/У комплектующие (особенно видеокарту и процессор с Авито) для максимума FPS!\n"
+                "Строго соблюдай все 8 нумерованных позиций, точный бюджет и корпус ТОЛЬКО бренда XASTRA!"
+            )
+        elif used_decision == 'new':
+            prompt_sections.append(
+                "🔵 КЛИЕНТ ВЫБРАЛ СТРОГО НОВЫЕ КОМПЛЕКТУЮЩИЕ ИЗ МАГАЗИНА:\n"
+                "Сформируй сборку ИСКЛЮЧИТЕЛЬНО из новых комплектующих (Wildberries, ОнлайнТрейд, DNS). КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать Авито и Б/У позиции!\n"
+                "Строго соблюдай все 8 нумерованных позиций, точный бюджет и корпус ТОЛЬКО бренда XASTRA!"
+            )
 
     return "\n\n".join(prompt_sections)
 
@@ -1073,8 +1194,14 @@ async def call_llm(message: str, history: list) -> str:
                 
         url = f"{base_url.rstrip('/')}/chat/completions"
 
-    dynamic_context = get_parsed_catalog_context(message)
-    system_instruction = build_system_instruction(dynamic_context)
+    used_decision = check_used_decision(message, history)
+    dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision)
+    system_instruction = build_system_instruction(
+        dynamic_context=dynamic_context,
+        user_message=message,
+        history=history,
+        used_decision=used_decision
+    )
     llm_proxy = get_active_proxy(provider)
 
     async with aiohttp.ClientSession(trust_env=True) as session:
@@ -1214,8 +1341,14 @@ async def stream_llm(message: str, history: list):
                 model = "gpt-4o-mini"
         url = f"{base_url.rstrip('/')}/chat/completions"
 
-    dynamic_context = get_parsed_catalog_context(message)
-    system_instruction = build_system_instruction(dynamic_context)
+    used_decision = check_used_decision(message, history)
+    dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision)
+    system_instruction = build_system_instruction(
+        dynamic_context=dynamic_context,
+        user_message=message,
+        history=history,
+        used_decision=used_decision
+    )
     llm_proxy = get_active_proxy(provider)
 
     async with aiohttp.ClientSession(trust_env=True) as session:

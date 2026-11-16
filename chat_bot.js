@@ -433,12 +433,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 8. Suggestion Chips (Reply Keyboard)
-    function renderSuggestionChips() {
+    function renderSuggestionChips(customItems = null) {
         if (!chatReplyKeyboard) return;
         chatReplyKeyboard.innerHTML = "";
+
+        const items = customItems || SUGGESTIONS;
+        if (!items || items.length === 0) {
+            chatReplyKeyboard.style.display = "none";
+            return;
+        }
+
         chatReplyKeyboard.style.display = "flex";
 
-        SUGGESTIONS.forEach(item => {
+        items.forEach(item => {
             const chip = document.createElement("button");
             chip.type = "button";
             chip.className = "chat-chip";
@@ -446,10 +453,30 @@ document.addEventListener("DOMContentLoaded", () => {
             chip.title = item.prompt;
             chip.addEventListener("click", () => {
                 if (state.isGenerating) return;
+                chatReplyKeyboard.innerHTML = "";
+                chatReplyKeyboard.style.display = "none";
                 handleUserText(item.prompt);
             });
             chatReplyKeyboard.appendChild(chip);
         });
+    }
+
+    function checkAndShowUsedPromptChips(botText) {
+        if (!botText || !chatReplyKeyboard) return;
+        const lower = botText.toLowerCase();
+        // Check if bot asked whether Б/У is allowed / explaining cosmic prices and FPS gain
+        const isAskingUsed = (
+            (lower.includes("б/у") || lower.includes("бу")) &&
+            (lower.includes("космическ") || lower.includes("fps") || lower.includes("фпс") || lower.includes("производительност") || lower.includes("соглас") || lower.includes("рассмотреть")) &&
+            !lower.includes("точная суммарная стоимость") &&
+            !lower.includes("1. процессор")
+        );
+        if (isAskingUsed) {
+            renderSuggestionChips([
+                { label: "🟢 Да, можно Б/У (максимум FPS)", prompt: "Да, можно использовать проверенные Б/У комплектующие для максимума FPS" },
+                { label: "🔵 Только новые из магазина", prompt: "Нет, собираем строго из новых комплектующих из магазина" }
+            ]);
+        }
     }
 
     // 9. Input & Auto-resize textarea
@@ -510,6 +537,10 @@ document.addEventListener("DOMContentLoaded", () => {
         // Reset input
         chatInput.value = "";
         autoResizeInput();
+        if (chatReplyKeyboard) {
+            chatReplyKeyboard.innerHTML = "";
+            chatReplyKeyboard.style.display = "none";
+        }
 
         // 1. Prepare history for LLM (clean plain text without HTML)
         const historyForBackend = state.messages.slice(-15).map(m => ({
@@ -653,6 +684,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         botContentDiv.innerHTML = parseBotContent(accumulatedText);
                     }
                 }
+                checkAndShowUsedPromptChips(accumulatedText);
             } else {
                 // B. STANDARD JSON RESPONSE FALLBACK
                 const data = await response.json();
@@ -662,6 +694,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         window.SkyrexRig.updateFromAiResponse(data.response);
                     }
                     appendMessage("bot", data.response);
+                    checkAndShowUsedPromptChips(data.response);
                 } else {
                     appendMessage("bot", "⚠️ К сожалению, не удалось получить ответ от ассистента.");
                 }

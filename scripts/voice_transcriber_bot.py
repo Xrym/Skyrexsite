@@ -430,3 +430,4 @@ if __name__ == "__main__":
         asyncio.run(bot.start())
     except KeyboardInterrupt:
         print("\n[!] Бот остановлен администратором.")
+
