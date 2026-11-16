@@ -1,175 +1,32 @@
-import sqlite3
-import statistics
-import re
-from collections import defaultdict
+# -*- coding: utf-8 -*-
+"""
+Skyrex Dynamic Market Medians Updater.
+Calculates all reference medians 100% dynamically from real database listings in 'products' table.
+ZERO HARDCODED PRICES IN CODE!
+"""
 
-con = sqlite3.connect('catalog.db')
-cur = con.cursor()
+import sys
+import os
 
-# 1. Fetch all Avito products and calculate median prices
-cur.execute("""
-    SELECT name, category, price FROM products 
-    WHERE shop LIKE '%Авито%' AND price >= 1000 AND price <= 500000
-""")
-avito_rows = cur.fetchall()
+# Add project root to sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-cpu_bundle_bad = [
-    "комплект", "komplekt", "komlpekt", "combo", "bundle",
-    "материн", "плата", "plata", "motherboard", "мать",
-    "b450", "b550", "b650", "b760", "b850", "b840", "h610", "h510", "h410", "a520", "a620", "z790", "x870",
-    "с кулером", "s kulerom", "с охлажд", "snowman", "vodyanka", "водянка", "bashnya", "башня",
-    "сборк", "sbork", "готовые сборки", "игровой пк", "igrovoy pk",
-    "+", "32gb", "16gb", "ddr5", "ddr4"
-]
+from bot_tools.dynamic_medians import sync_all_database_medians
 
-# Filter out CPU bundles from median calculations
-filtered_avito_rows = []
-for name, cat, price in avito_rows:
-    if cat == 'cpu':
-        nl = name.lower()
-        if any(b in nl for b in cpu_bundle_bad):
-            continue
-    filtered_avito_rows.append((name, cat, price))
-avito_rows = filtered_avito_rows
-
-chips = [
-    # GPUs
-    'rtx 4090', 'rtx 4080 super', 'rtx 4080', 'rtx 4070 ti super', 'rtx 4070 ti', 'rtx 4070 super', 'rtx 4070',
-    'rtx 4060 ti', 'rtx 4060', 'rtx 3090', 'rtx 3080 ti', 'rtx 3080', 'rtx 3070 ti', 'rtx 3070',
-    'rtx 3060 ti', 'rtx 3060', 'rtx 3050', 'rtx 2080 ti', 'rtx 2080 super', 'rtx 2080', 'rtx 2070 super',
-    'rtx 2070', 'rtx 2060 super', 'rtx 2060', 'gtx 1080 ti', 'gtx 1080', 'gtx 1070 ti', 'gtx 1070',
-    'gtx 1660 super', 'gtx 1660 ti', 'gtx 1660', 'gtx 1060', 'gtx 1650', 'rx 7900 xtx', 'rx 7800 xt',
-    'rx 7700 xt', 'rx 7600', 'rx 6900 xt', 'rx 6800 xt', 'rx 6800', 'rx 6700 xt', 'rx 6700', 'rx 6650 xt',
-    'rx 6600 xt', 'rx 6600', 'rx 5700 xt', 'rx 5700', 'rx 5600 xt', 'rx 580', 'rx 570',
-    # CPUs
-    'ryzen 7 7800x3d', 'ryzen 7 7700x', 'ryzen 7 7700', 'ryzen 5 7600x', 'ryzen 5 7600', 'ryzen 5 7500f',
-    'ryzen 7 5800x3d', 'ryzen 7 5700x3d', 'ryzen 7 5700x', 'ryzen 5 5600x', 'ryzen 5 5600', 'ryzen 5 5500',
-    'ryzen 5 3600', 'i5-12400f', 'i3-12100f', 'i5-13400f', 'i5-13600k', 'i5-14600k', 'i7-13700k', 'i7-14700k',
-    # RAM
-    'ddr4 16gb', 'ddr4 32gb', 'ddr5 16gb', 'ddr5 32gb',
-    # Motherboards
-    'b650', 'b550', 'b450', 'a520', 'a620', 'b760', 'h610', 'z790',
-    # PSUs
-    '600w', '650w', '700w', '750w', '850w',
-]
-
-grouped = defaultdict(list)
-for name, cat, price in avito_rows:
-    nl = name.lower().replace("-", " ")
-    for c in sorted(chips, key=lambda x: -len(x)):
-        c_clean = c.replace("-", " ")
-        if re.search(r'\b' + re.escape(c_clean) + r'\b', nl):
-            grouped[c].append(price)
-            break
-
-medians = {}
-for chip, prices in grouped.items():
-    medians[chip] = int(statistics.median(prices))
-
-# Established market medians for models with few/no listings in current scrape batch
-fallback_medians = {
-    # AMD GPUs
-    'rx 580': 5500,
-    'rx 5600 xt': 11500,
-    'rx 5700 xt': 14500,
-    'rx 6600': 16500,
-    'rx 6600 xt': 20000,
-    'rx 6700 xt': 26000,
-    'rx 6800 xt': 34000,
-    'rx 7600': 22000,
-    'rx 7700 xt': 38000,
-    'rx 7800 xt': 46000,
-    # NVIDIA GTX
-    'gtx 1060': 7000,
-    'gtx 1070': 9000,
-    'gtx 1070 ti': 10500,
-    'gtx 1080': 11500,
-    'gtx 1080 ti': 14000,
-    'gtx 1660': 10500,
-    'gtx 1660 super': 12500,
-    'gtx 1660 ti': 13000,
-    # NVIDIA RTX
-    'rtx 2060': 14000,
-    'rtx 2060 super': 18500,
-    'rtx 2070': 19500,
-    'rtx 2070 super': 22000,
-    'rtx 2080': 23000,
-    'rtx 2080 super': 26000,
-    'rtx 2080 ti': 28000,
-    'rtx 3050': 16500,
-    'rtx 3060': 24000,
-    'rtx 3060 ti': 26500,
-    'rtx 3070': 29000,
-    'rtx 3070 ti': 34000,
-    'rtx 3080': 38000,
-    'rtx 3080 ti': 45000,
-    'rtx 4060': 32000,
-    'rtx 4060 ti': 38500,
-    'rtx 4070': 48000,
-    'rtx 4070 super': 55000,
-    # CPUs
-    'i3-12100f': 5500,
-    'ryzen 5 2600': 3500,
-    'ryzen 5 3600': 5000,
-    'ryzen 5 5500': 5800,
-    'ryzen 5 5600': 10500,
-    'i5-12400f': 11000,
-    'ryzen 5 7500f': 11350,
-    'i5-13400f': 12000,
-    'i5-14600k': 20500,
-    'ryzen 7 7800x3d': 32500,
-    # RAM
-    'ddr4 16gb': 3800,
-    'ddr4 32gb': 7500,
-    'ddr5 16gb': 12000,
-    'ddr5 32gb': 23000,
-    # SSD
-    'ssd 256gb': 2200,
-    'ssd 512gb': 3500,
-    'ssd 1tb': 6500,
-}
-
-# Update all existing expert_components
-cur.execute("SELECT id, type, componentname, price, mark, comment FROM expert_components")
-rows = cur.fetchall()
-
-print(f"Updating {len(rows)} existing reference components with median Avito prices and neutral data...")
-for row_id, ctype, cname, old_price, old_mark, old_comment in rows:
-    nl = cname.lower().replace("-", " ")
-    new_price = old_price
+def main():
+    db_file = sys.argv[1] if len(sys.argv) > 1 else "catalog.db"
+    print("=" * 60)
+    print(f"[*] Skyrex Dynamic Medians Calculation for: {db_file}")
+    print("[*] Calculating statistical medians directly from database products...")
+    print("=" * 60)
     
-    # Try finding matching median from Avito parsed data
-    matched_chip = None
-    for c in sorted(chips, key=lambda x: -len(x)):
-        c_clean = c.replace("-", " ")
-        if re.search(r'\b' + re.escape(c_clean) + r'\b', nl):
-            matched_chip = c
-            break
-            
-    if matched_chip and matched_chip in medians:
-        new_price = medians[matched_chip]
-    elif matched_chip and matched_chip in fallback_medians:
-        new_price = fallback_medians[matched_chip]
-    else:
-        # Check fallback dict by partial keywords
-        for k, v in fallback_medians.items():
-            k_clean = k.replace("-", " ")
-            if k_clean in nl:
-                new_price = v
-                break
-                
-    # Neutral, objective description without subjective marks/opinions
-    clean_comment = f"Медианный рыночный ориентир цен (Авито Б/У)"
-    clean_mark = None # Remove subjective 1-10 mark
-    
-    cur.execute("""
-        UPDATE expert_components 
-        SET price = ?, mark = ?, comment = ?, analogue = '', updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    """, (new_price, clean_mark, clean_comment, row_id))
-    print(f"  #{row_id} [{ctype}] {cname}: price {old_price} -> {new_price} руб, mark {old_mark} -> None")
+    res = sync_all_database_medians(db_path=db_file)
+    print(f"\n[✓] Successfully updated {res['updated']} reference components dynamically from real database listings!")
+    for comp, data in list(res['details'].items())[:15]:
+        print(f"  • {comp}: {data['new_price']:,} ₽ (listings: {data['count']}, range: {data['range'][0]:,} – {data['range'][1]:,} ₽)")
+    if len(res['details']) > 15:
+        print(f"  ... and {len(res['details']) - 15} more components.")
+    print("\n[✓] Zero hardcoded prices. Medians are 100% database-driven.")
 
-con.commit()
-print("All expert_components updated successfully!")
-con.close()
-
+if __name__ == "__main__":
+    main()

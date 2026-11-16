@@ -600,9 +600,11 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             if raw_cases:
                 cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=5, sort_by_price_desc=False))
 
-    # 0. Provide verified reference medians for queried hardware (e.g. RTX 3060, RX 6600, etc.)
+    # 0. Provide dynamically calculated medians directly from the database (products / Avito)
+    from bot_tools.dynamic_medians import calculate_component_median_from_db
+
     matched_expert_medians = []
-    seen_exp_ids = set()
+    seen_chips = set()
 
     extracted_chips = set()
     for term in search_terms:
@@ -613,33 +615,47 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
     if msg_chip:
         extracted_chips.add(msg_chip)
 
+    # 1. Primary: Calculate real-time dynamic median directly from live Avito listings in catalog.db
+    for chip in extracted_chips:
+        db_stat = calculate_component_median_from_db(chip)
+        if db_stat and db_stat.get("median", 0) > 0:
+            matched_expert_medians.append({
+                "componentname": chip,
+                "price": db_stat["median"],
+                "comment": f"Динамически рассчитано по {db_stat['count']} реальным объявлениям в базе: от {db_stat['min']:,} до {db_stat['max']:,} ₽"
+            })
+            seen_chips.add(chip)
+
+    # 2. Check expert_components in database for any items not covered above
     for exp in expert_components:
-        exp_chip = extract_chipset(exp.get("componentname", ""))
-        if exp_chip and exp_chip in extracted_chips:
-            if exp.get("id") not in seen_exp_ids:
-                matched_expert_medians.append(exp)
-                seen_exp_ids.add(exp.get("id"))
+        exp_name = exp.get("componentname", "")
+        exp_chip = extract_chipset(exp_name)
+        if exp_chip and exp_chip in extracted_chips and exp_chip not in seen_chips:
+            matched_expert_medians.append(exp)
+            seen_chips.add(exp_chip)
 
     if not matched_expert_medians and specific_results:
         for p in specific_results:
-            exp_match = match_expert_assessment(p.get("name", ""), p.get("category", ""), expert_components)
-            if exp_match and exp_match.get("expert_name"):
-                for exp in expert_components:
-                    if exp.get("componentname") == exp_match["expert_name"]:
-                        if exp.get("id") not in seen_exp_ids:
-                            matched_expert_medians.append(exp)
-                            seen_exp_ids.add(exp.get("id"))
-                        break
+            p_chip = extract_chipset(p.get("name", ""))
+            if p_chip and p_chip not in seen_chips:
+                db_stat = calculate_component_median_from_db(p_chip, p.get("category", ""))
+                if db_stat and db_stat.get("median", 0) > 0:
+                    matched_expert_medians.append({
+                        "componentname": p_chip,
+                        "price": db_stat["median"],
+                        "comment": f"Динамически рассчитано по {db_stat['count']} реальным объявлениям в базе: от {db_stat['min']:,} до {db_stat['max']:,} ₽"
+                    })
+                    seen_chips.add(p_chip)
 
     if matched_expert_medians:
-        context_parts.append("=== ВЕРИФИЦИРОВАННЫЕ МЕДИАННЫЕ РЫНОЧНЫЕ ЦЕНЫ (АВИТО Б/У) ===")
+        context_parts.append("=== ДИНАМИЧЕСКИ РАССЧИТАННЫЕ МЕДИАННЫЕ ЦЕНЫ ИЗ БАЗЫ ДАННЫХ (АВИТО Б/У) ===")
         for exp in matched_expert_medians:
             p_str = f"{exp['price']:,} руб".replace(",", " ")
             comm = f" — {exp['comment']}" if exp.get('comment') else ""
             context_parts.append(f"• {exp['componentname']}: {p_str}{comm}")
         context_parts.append(
             "⚠️ ПРАВИЛО МЕДИАННЫХ ЦЕН: При ответе на вопрос о цене, стоимости или медиане конкретной модели на вторичном рынке (Авито Б/У) "
-            "СТРОГО называй указанную выше верифицированную медианную цену из каталога! "
+            "СТРОГО называй указанную выше динамически рассчитанную медианную цену из базы данных! "
             "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО завышать или занижать медиану или называть другие цифры!"
         )
 
