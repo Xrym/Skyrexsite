@@ -1,12 +1,14 @@
 import os
 import sys
 import json
+import base64
+import datetime
 import asyncio
 import logging
 import html
 import socket
 import urllib.parse
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 import aiohttp
 import dotenv
 
@@ -162,6 +164,30 @@ class TelegramAdminBot:
             data.pop("parse_mode", None)
             res = await self.api_request("editMessageText", data)
         return res
+
+    async def delete_message(self, chat_id: int, message_id: int) -> bool:
+        """Deletes a message from Telegram."""
+        res = await self.api_request("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
+        return bool(res.get("ok"))
+
+    async def download_telegram_file(self, file_id: str) -> Optional[bytes]:
+        """Downloads a media file (voice/audio/video) from Telegram servers."""
+        file_res = await self.api_request("getFile", {"file_id": file_id})
+        if not file_res.get("ok"):
+            logger.error(f"Telegram getFile error: {file_res.get('description')}")
+            return None
+
+        file_path = file_res["result"]["file_path"]
+        download_url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=45))
+
+        async with self.session.get(download_url) as resp:
+            if resp.status == 200:
+                return await resp.read()
+            logger.error(f"Failed to download media file (HTTP {resp.status})")
+            return None
 
     def build_catalog_view(
         self,
@@ -330,8 +356,18 @@ class TelegramAdminBot:
             )
             return
 
+        # Check for voice message, audio file, or video note (including forwarded ones)
+        voice = msg.get("voice")
+        audio = msg.get("audio")
+        video_note = msg.get("video_note")
+        media = voice or audio or video_note
+
+        if media:
+            await self.handle_voice_message(chat_id, user_id, msg, media)
+            return
+
         if not text:
-            await self.send_message(chat_id, "Пожалуйста, отправьте текстовое сообщение или команду.")
+            await self.send_message(chat_id, "Пожалуйста, отправьте текстовое или голосовое сообщение.")
             return
 
         if chat_id in self.pending_prompt_edits:
@@ -371,6 +407,8 @@ class TelegramAdminBot:
             welcome = (
                 "👋 <b>Панель управления Skyrex Computers</b>\n\n"
                 "Я предоставляю доступ к <b>единому каталогу комплектующих</b> (Wildberries, ОнлайнТрейд, Авито Б/У) и обучающим правилам ИИ-консультанта на <b>skyrex.pro</b>.\n\n"
+                "<b>🎙 Расшифровка голосовых от клиентов:</b>\n"
+                "Просто перешлите в чат <b>голосовое сообщение</b>, <b>аудиозапись</b> или <b>видеосообщение (кружочек)</b> от заказчика — бот мгновенно переведет речь в структурированный текст с сохранением моделей комплектующих и цен!\n\n"
                 "<b>📋 Доступные команды:</b>\n"
                 "• /catalog (или /list) — Интерактивный каталог всех товаров с фильтрами по категориям (GPU, CPU, RAM...) и источникам (Новые / Авито Б/У)\n"
                 "• /search &lt;модель&gt; — Быстрый поиск любого комплектующего по каталогу\n"
@@ -631,6 +669,208 @@ class TelegramAdminBot:
         except Exception as e:
             logger.error(f"Error calling Gemini parser: {e}")
             return None
+
+    async def transcribe_with_gemini(self, audio_bytes: bytes, mime_type: str = "audio/ogg") -> Optional[str]:
+        """Transcribes audio / voice message using Google Gemini Multimodal API."""
+        api_key = os.getenv("LLM_API_KEY", "")
+        if not api_key:
+            logger.error("LLM_API_KEY is missing in environment!")
+            return None
+
+        model = os.getenv("LLM_MODEL", "gemini-flash-lite-latest")
+        b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+
+        prompt = (
+            "Ты — высокоточный профессиональный стенографист сервиса подбора ПК Skyrex Computers.\n"
+            "Твоя задача — максимально точно, полно и грамотно расшифровать эту аудиозапись "
+            "(голосовое сообщение от клиента/заказчика) в текст на русском языке.\n\n"
+            "Критически важные правила:\n"
+            "1. Сохраняй абсолютно все компьютерные термины, бренды, модели видеокарт, процессоров, памяти "
+            "(RTX 4060, Ryzen 5 7500F, DDR5, LGA1700, БП и т.д.), цифры бюджета, цены и требования клиента без искажений.\n"
+            "2. Расставь правильные знаки препинания, заглавные буквы и разбей текст на логические абзацы для удобного чтения.\n"
+            "3. Если клиент запинается или использует слова-паразиты ('э-э', 'ну вот', 'как бы'), аккуратно сглаживай их, сохраняя точный смысл речи.\n"
+            "4. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО добавлять что-либо от себя (никаких приветствий, ответов на вопросы клиента, советов по сборке, пояснений или оценок).\n"
+            "5. Выведи ТОЛЬКО чистый расшифрованный текст."
+        )
+
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": mime_type,
+                                "data": b64_audio
+                            }
+                        },
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1
+            }
+        }
+
+        proxy = os.getenv("LLM_PROXY", "").strip() or None
+        if proxy and proxy.lower() in ("none", "direct", "off", "false", "no"):
+            proxy = None
+        if proxy:
+            try:
+                parsed_proxy = urllib.parse.urlparse(proxy)
+                proxy_host = parsed_proxy.hostname or "127.0.0.1"
+                proxy_port = parsed_proxy.port or (443 if parsed_proxy.scheme == "https" else 80)
+                with socket.create_connection((proxy_host, proxy_port), timeout=0.3):
+                    pass
+            except (OSError, ValueError):
+                proxy = None
+
+        models_to_try = [model, "gemini-flash-latest", "gemini-2.5-flash-lite"]
+        seen = set()
+        unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
+
+        for m in unique_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
+            try:
+                async with self.session.post(url, json=payload, proxy=proxy, timeout=35) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts:
+                                return parts[0].get("text", "").strip()
+                    else:
+                        err_text = await resp.text()
+                        logger.warning(f"Gemini voice transcription ({m}) failed with status {resp.status}: {err_text[:150]}")
+            except Exception as e:
+                logger.error(f"Error calling Gemini for voice transcription with {m}: {e}")
+
+        return None
+
+    async def handle_voice_message(self, chat_id: int, user_id: int, msg: Dict[str, Any], media: Dict[str, Any]):
+        """Обрабатывает и расшифровывает голосовые сообщения, аудиофайлы и видеосообщения (кружочки)."""
+        msg_id = msg.get("message_id")
+        video_note = msg.get("video_note")
+        audio = msg.get("audio")
+
+        if video_note:
+            media_label = "видеосообщение (кружочек)"
+            icon = "📹"
+            mime_type = "video/mp4"
+        elif audio:
+            media_label = "аудиозапись"
+            icon = "🎵"
+            mime_type = audio.get("mime_type", "audio/mp3")
+        else:
+            media_label = "голосовое сообщение"
+            icon = "🎙"
+            mime_type = media.get("mime_type", "audio/ogg")
+
+        # Нормализация MIME для Gemini
+        if "ogg" in mime_type or "oga" in mime_type or "opus" in mime_type:
+            mime_type = "audio/ogg"
+        elif "mp3" in mime_type or "mpeg" in mime_type:
+            mime_type = "audio/mp3"
+        elif "wav" in mime_type:
+            mime_type = "audio/wav"
+
+        # Предварительный статус
+        status_res = await self.send_message(
+            chat_id,
+            f"{icon} <i>Слушаю и расшифровываю {media_label}...</i>"
+        )
+        status_msg_id = status_res.get("result", {}).get("message_id")
+
+        try:
+            # 1. Извлечение информации об отправителе (включая пересылку)
+            sender_parts = []
+            if msg.get("forward_from"):
+                fwd = msg["forward_from"]
+                name = f"{fwd.get('first_name', '')} {fwd.get('last_name', '')}".strip()
+                if fwd.get("username"):
+                    name += f" (@{fwd['username']})"
+                sender_parts.append(name)
+            elif msg.get("forward_sender_name"):
+                sender_parts.append(msg["forward_sender_name"])
+            elif msg.get("forward_date"):
+                sender_parts.append("Заказчик (скрытый профиль)")
+            else:
+                sender_parts.append(f"{msg.get('from', {}).get('first_name', '')} (прямая запись)")
+
+            sender_name = " ".join(sender_parts).strip() or "Заказчик"
+
+            duration = media.get("duration", 0)
+            duration_str = f"{duration // 60}:{duration % 60:02d}"
+
+            date_str = ""
+            fwd_date = msg.get("forward_date")
+            if fwd_date:
+                dt = datetime.datetime.fromtimestamp(fwd_date)
+                date_str = f" • <i>{dt.strftime('%d.%m.%Y %H:%M')}</i>"
+
+            # 2. Скачивание аудиофайла
+            file_id = media.get("file_id")
+            audio_bytes = await self.download_telegram_file(file_id)
+
+            if not audio_bytes:
+                err_text = "❌ Не удалось загрузить аудиофайл из Telegram."
+                if status_msg_id:
+                    await self.edit_message(chat_id, status_msg_id, err_text)
+                else:
+                    await self.send_message(chat_id, err_text)
+                return
+
+            # 3. Расшифровка через Gemini
+            transcript = await self.transcribe_with_gemini(audio_bytes, mime_type=mime_type)
+
+            if not transcript:
+                err_text = "⚠️ Не удалось распознать речь (возможно, запись слишком тихая или слышен только шум)."
+                if status_msg_id:
+                    await self.edit_message(chat_id, status_msg_id, err_text)
+                else:
+                    await self.send_message(chat_id, err_text)
+                return
+
+            # 4. Формирование ответа
+            header = (
+                f"{icon} <b>Расшифровка {media_label}</b>\n\n"
+                f"👤 <b>Клиент / Источник:</b> {html.escape(sender_name)}{date_str}\n"
+                f"⏱ <b>Длительность:</b> {duration_str}\n"
+            )
+
+            caption = msg.get("caption")
+            if caption:
+                header += f"💬 <b>Подпись к сообщению:</b> <i>{html.escape(caption)}</i>\n"
+
+            header += "──────────────────────────\n\n"
+
+            full_reply = header + html.escape(transcript)
+
+            if status_msg_id:
+                await self.delete_message(chat_id, status_msg_id)
+
+            # Отправка результата (с чанкованием при > 4000 знаков)
+            if len(full_reply) <= 4000:
+                await self.send_message(chat_id, full_reply)
+            else:
+                await self.send_message(chat_id, header)
+                for i in range(0, len(transcript), 3800):
+                    part = transcript[i:i + 3800]
+                    await self.send_message(chat_id, html.escape(part))
+
+            logger.info(f"✅ Успешно расшифровано голосовое от {sender_name} ({duration_str}) в чате {chat_id}")
+
+        except Exception as e:
+            logger.error(f"Ошибка при обработке голосового сообщения: {e}", exc_info=True)
+            err_msg = f"❌ Ошибка расшифровки: {e}"
+            if status_msg_id:
+                await self.edit_message(chat_id, status_msg_id, err_msg)
+            else:
+                await self.send_message(chat_id, err_msg)
 
     async def process_natural_language(self, chat_id: int, user_id: int, text: str):
         input_text = text
