@@ -206,3 +206,4 @@ def sync_all_database_medians(db_path: str = "catalog.db") -> Dict[str, Any]:
     conn.commit()
     conn.close()
     return {"updated": updated_count, "details": results}
+

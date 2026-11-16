@@ -454,7 +454,13 @@
                     } else if (item.shop.includes('Wildberries')) {
                         shopBadgeClass = 'badge-wb';
                         shopText = item.shop;
-                    } else if (item.shop.includes('ОнлайнТрейд')) {
+                    } else if (item.shop.includes('ОнлайнТрейд') || item.shop.includes('OnlineTrade')) {
+                        shopBadgeClass = 'badge-ot';
+                        shopText = item.shop;
+                    } else if (item.shop.includes('DNS')) {
+                        shopBadgeClass = 'badge-dns';
+                        shopText = item.shop;
+                    } else if (item.shop !== '—' && item.shop !== '?') {
                         shopBadgeClass = 'badge-ot';
                         shopText = item.shop;
                     }
@@ -579,7 +585,8 @@
                 `;
             } else {
                 const shopColor = item.shop.includes('Авито') ? '#3b82f6' :
-                                 (item.shop.includes('Wildberries') ? '#ec4899' : '#06b6d4');
+                                 (item.shop.includes('Wildberries') ? '#ec4899' :
+                                 (item.shop.includes('DNS') ? '#fb923c' : '#06b6d4'));
 
                 this.tooltipEl.innerHTML = `
                     <div class="tooltip-header">
@@ -681,7 +688,9 @@
                 return tdp ? `${tdp[1]}W TDP` : 'Башенный кулер';
             }
             if (key === 'case') {
-                return 'Отличная продуваемость';
+                const isXastra = /xastra/i.test(name);
+                const shopLabel = (shop && shop !== '—' && shop !== 'Маркетплейс') ? shop : 'Wildberries';
+                return isXastra ? `XASTRA • ${shopLabel}` : `Корпус • ${shopLabel}`;
             }
 
             return 'В наличии • ' + shop;
@@ -732,7 +741,14 @@
 
                         if (mLink) {
                             url = mLink[1];
-                            name = mLink[2].replace(/<[^>]+>/g, '').trim();
+                            const linkText = mLink[2].replace(/<[^>]+>/g, '').trim();
+                            // If link text is just store name or generic word, extract component name from before the link
+                            if (/^(wildberries|онлайнтрейд|onlinetrade|авито|avito|wb|ссылка|купить)$/i.test(linkText)) {
+                                const mName = lineClean.match(/:\s*(?:<\/b>)?\s*(.*?)(?:—|-|<a|\d+\s*(?:руб|₽))/i);
+                                name = mName ? mName[1].replace(/<[^>]+>/g, '').trim() : linkText;
+                            } else {
+                                name = linkText;
+                            }
                         } else if (mMd) {
                             name = mMd[1].replace(/<[^>]+>/g, '').trim();
                             url = mMd[2].trim();
@@ -751,16 +767,25 @@
                         }
 
                         // Detect Shop
-                        let shop = "Маркетплейс";
-                        if (url.includes("avito.ru")) shop = "Авито (Б/У)";
-                        else if (url.includes("wildberries.ru")) shop = "Wildberries";
+                        let shop = "";
+                        if (url.includes("wildberries.ru")) shop = "Wildberries";
                         else if (url.includes("onlinetrade.ru")) shop = "ОнлайнТрейд";
                         else if (url.includes("dns-shop.ru")) shop = "DNS";
+                        else if (url.includes("avito.ru")) shop = "Авито (Б/У)";
+
+                        if (!shop) {
+                            if (/wildberries|вайлдберриз|\bwb\b/i.test(lineClean)) shop = "Wildberries";
+                            else if (/онлайнтрейд|онлайн-трейд|onlinetrade/i.test(lineClean)) shop = "ОнлайнТрейд";
+                            else if (/dns|днс/i.test(lineClean)) shop = "DNS";
+                            else if (/авито|avito|\(б\/у\)/i.test(lineClean)) shop = "Авито (Б/У)";
+                            else if (cat.key === 'case') shop = "Wildberries";
+                            else shop = "Авито (Б/У)";
+                        }
 
                         const currentPart = this.state.items[cat.key] || {};
                         let searchUrl = url;
                         const cleanItemName = (name || currentPart.name || "").replace(/<[^>]+>/g, "").replace(/\(Б\/У\)/gi, "").replace(/\(б\/у\)/gi, "").trim();
-                        if (cleanItemName && cleanItemName !== "?") {
+                        if (!searchUrl && cleanItemName && cleanItemName !== "?") {
                             const enc = encodeURIComponent(cleanItemName);
                             if (shop.includes("Wildberries")) searchUrl = `https://www.wildberries.ru/catalog/0/search.aspx?search=${enc}`;
                             else if (shop.includes("ОнлайнТрейд")) searchUrl = `https://www.onlinetrade.ru/catalogue/?query=${enc}`;

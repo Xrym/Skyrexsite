@@ -3,6 +3,7 @@ import re
 import json
 import time
 import socket
+import sqlite3
 import logging
 import secrets
 import asyncio
@@ -691,7 +692,7 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 f"   - Материнские платы: Wildberries, Авито (Б/У) или DNS\n"
                 f"   - Блоки питания: ОнлайнТрейд или Wildberries (только модели Powercase PW, GamerStorm PF600X+, 1stPlayer NGDP — обычные DeepCool не использовать)\n"
                 f"   - Кулеры для процессоров: ОнлайнТрейд или Wildberries\n"
-                f"   - Корпус: ОнлайнТрейд или Wildberries (только бренд XASTRA! Никаких других брендов корпусов не использовать)"
+                f"   - Корпус: ОнлайнТрейд или Wildberries (только бренд XASTRA! Никаких других брендов корпусов не использовать). ОБЯЗАТЕЛЬНО оформляй пункт 8 активной кликабельной HTML-ссылкой из каталога: <a href='ССЫЛКА_ИЗ_КАТАЛОГА' target='_blank'>Корпус XASTRA Модель</a> с указанием магазина в скобках: (Wildberries) или (ОнлайнТрейд). Категорически запрещено оставлять корпус обычным текстом без ссылки!"
             )
         if budget and budget < 35000:
             context_parts.append(
@@ -729,8 +730,8 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
 
             price_str = f"{p['price']:,} руб".replace(",", " ")
             old_str = f" (старая цена: {p['old_price']:,} руб)".replace(",", " ") if p.get('old_price') else ""
-            search_url = make_marketplace_search_url(p.get('shop', ''), p['name'])
-            return f"- [{p.get('shop', 'ОнлайнТрейд')}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {search_url}"
+            product_url = p.get('url') if p.get('url') and str(p['url']).startswith('http') else make_marketplace_search_url(p.get('shop', ''), p['name'])
+            return f"- [{p.get('shop', 'ОнлайнТрейд')}] {p['name']}. Цена: {price_str}{old_str}{tag_str}. Ссылка: {product_url}"
 
         # 1. CPUs
         if cpus:
@@ -811,7 +812,7 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
         # 8. Cases
         if cases:
             context_parts.append("\n=== 11. КОРПУСА ДЛЯ ПК (СТРОГО ТОЛЬКО БРЕНД XASTRA) ===")
-            for p in cases[:4]:
+            for p in cases[:6]:
                 context_parts.append(format_product_line(p))
 
     return "\n".join(context_parts)
@@ -909,9 +910,105 @@ def sync_exact_total_sum(text: str) -> str:
 
     return text
 
+def get_xastra_catalog_cases():
+    """Возвращает список корпусов XASTRA из catalog.db."""
+    try:
+        from db.database import get_connection
+        with get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT name, price, shop, url FROM products WHERE category = 'case' AND (name LIKE '%XASTRA%' OR name LIKE '%xastra%') ORDER BY price ASC"
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error fetching XASTRA cases: {e}")
+        return []
+
+def find_matching_xastra_case(line_text: str, cases: list) -> Optional[dict]:
+    if not cases:
+        return None
+    line_upper = line_text.upper()
+    prefers_ot = 'ОНЛАЙН' in line_upper or 'ONLINE' in line_upper
+    prefers_wb = 'WILDBERRIES' in line_upper or 'ВАЙЛД' in line_upper or 'WB' in line_upper
+
+    # 1. Match specific model + shop preference
+    for c in cases:
+        m = re.search(r'\b(A\d{3}[A-Z]?|Q\d{3}[A-Z]?|QW\d{3}[A-Z]?)\b', c['name'], re.I)
+        if m and m.group(1).upper() in line_upper:
+            if prefers_ot and 'Онлайн' in c.get('shop', ''):
+                return c
+            if prefers_wb and 'Wildberries' in c.get('shop', ''):
+                return c
+
+    # 2. Match specific model regardless of shop
+    for c in cases:
+        m = re.search(r'\b(A\d{3}[A-Z]?|Q\d{3}[A-Z]?|QW\d{3}[A-Z]?)\b', c['name'], re.I)
+        if m and m.group(1).upper() in line_upper:
+            return c
+
+    # 3. Match by shop if specified
+    if prefers_ot:
+        ot_cases = [c for c in cases if 'Онлайн' in c.get('shop', '')]
+        if ot_cases:
+            return ot_cases[0]
+
+    # 4. Fallback to cheapest/default case (usually A305M)
+    return cases[0]
+
+def ensure_case_link_and_shop(text: str) -> str:
+    """Гарантирует, что пункт 8 (Корпус) всегда имеет активную кликабельную ссылку на Wildberries или ОнлайнТрейд
+    и содержит указание магазина в скобках.
+    """
+    if not text:
+        return text
+
+    cases = get_xastra_catalog_cases()
+    if not cases:
+        return text
+
+    case_regex = re.compile(
+        r'((?:^|<br\s*/?>|\n)\s*(?:<li>)?\s*(?:<b>)?\s*(?:8[\.\)]\s*(?:<b>)?\s*(?:Корпус(?:\s+для\s+ПК)?)?|(?:Корпус(?:\s+для\s+ПК)?))\s*:?(?:</b>)?\s*)(.*?)(?=(?:<br|\n|</li>|$))',
+        re.I
+    )
+
+    def repl(m):
+        prefix = m.group(1)
+        body = m.group(2)
+        visible_text = re.sub(r'<[^>]+>', '', body)
+        has_shop_in_text = bool(re.search(r'\b(wildberries|вайлдберриз|онлайнтрейд|онлайн-трейд)\b', visible_text, re.I))
+
+        # Если ссылка уже есть, проверяем наличие подписи магазина
+        if '<a ' in body:
+            if not has_shop_in_text:
+                m_href = re.search(r'href=[\'"]([^\'"]+)[\'"]', body)
+                if m_href:
+                    if 'wildberries.ru' in m_href.group(1):
+                        body = re.sub(r'(</a>)', r'\1 (Wildberries)', body)
+                    elif 'onlinetrade.ru' in m_href.group(1):
+                        body = re.sub(r'(</a>)', r'\1 (ОнлайнТрейд)', body)
+            return prefix + body
+
+        # Если ссылки нет, находим подходящий корпус XASTRA и формируем ссылку
+        c = find_matching_xastra_case(body, cases)
+        if not c:
+            return prefix + body
+
+        m_price = re.search(r'(\s*(?:—|–|-)\s*[\d\s\xa0]+(?:руб|₽).*)', body, re.I)
+        price_part = m_price.group(1) if m_price else f' — {c["price"]:,} руб.'.replace(',', ' ')
+        raw_name = body[:m_price.start()].strip() if m_price else body.strip()
+        raw_name = re.sub(r'<\/?b>', '', raw_name).strip()
+        raw_name = re.sub(r'(?i)\s*\((?:wildberries|онлайнтрейд|вайлдберриз)\)', '', raw_name).strip()
+        price_part = re.sub(r'(?i)\s*\((?:wildberries|онлайнтрейд|вайлдберриз)\)', '', price_part).rstrip()
+        if not raw_name or len(raw_name) < 3:
+            raw_name = f'Корпус XASTRA {c["name"]}'
+
+        return f'{prefix}<a href="{c["url"]}" target="_blank">{raw_name}</a> ({c["shop"]}){price_part}'
+
+    return case_regex.sub(repl, text)
+
 def clean_marketplace_links(text: str) -> str:
     """Гарантирует, что ВСЕ ссылки (Авито, Wildberries, ОнлайнТрейд, DNS) ведут на страницу поиска
-    по названию компонента в поисковой строке, а не на прямые/устаревшие карточки товаров.
+    по названию компонента в поисковой строке, либо на прямые карточки каталога (XASTRA).
     Также синхронизирует итоговую сумму с математически точным расчетом позиций.
     """
     if not text:
@@ -923,15 +1020,19 @@ def clean_marketplace_links(text: str) -> str:
     text = re.sub(r'(?i)deepcool\s+gamerstorm', 'GamerStorm', text)
     text = re.sub(r'(?i)deepcool\s*(pf\d+[xd]?)', r'GamerStorm \1', text)
 
-    # 2. Преобразование Markdown-ссылок [текст](url) в чистый HTML с поисковой ссылкой
+    # 2. Преобразование Markdown-ссылок [текст](url) в чистый HTML
     def md_link_replacer(match):
         title = match.group(1)
         url = match.group(2)
         shop = "Авито"
         if "wildberries.ru" in url:
             shop = "Wildberries"
+            if "/catalog/" in url:
+                return f"<a href='{url}' target='_blank'>{title}</a>"
         elif "onlinetrade.ru" in url:
             shop = "ОнлайнТрейд"
+            if "/catalogue/" in url:
+                return f"<a href='{url}' target='_blank'>{title}</a>"
         elif "dns-shop.ru" in url:
             shop = "DNS"
         search_url = make_marketplace_search_url(shop, title)
@@ -948,8 +1049,12 @@ def clean_marketplace_links(text: str) -> str:
         shop = "Авито"
         if "wildberries.ru" in href:
             shop = "Wildberries"
+            if "/catalog/" in href:
+                return f"<a href='{href}' target='_blank'>{inner_text}</a>"
         elif "onlinetrade.ru" in href:
             shop = "ОнлайнТрейд"
+            if "/catalogue/" in href:
+                return f"<a href='{href}' target='_blank'>{inner_text}</a>"
         elif "dns-shop.ru" in href:
             shop = "DNS"
         elif "avito.ru" in href:
@@ -962,6 +1067,9 @@ def clean_marketplace_links(text: str) -> str:
 
     html_a_pattern = re.compile(r"<a\s+[^>]*href=['\"]([^'\"]+)['\"][^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL)
     text = html_a_pattern.sub(html_link_replacer, text)
+
+    # 3b. Обязательное форматирование корпуса (строго XASTRA с активной ссылкой и магазином)
+    text = ensure_case_link_and_shop(text)
 
     # 4. Предотвращение слипания ключевых блоков текста (Точная сумма, Примечание, Советы по проверке)
     text = re.sub(
