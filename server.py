@@ -677,7 +677,8 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 f"     База = Цена(Процессор) + Цена(Материнская плата) + Цена(Кулер) + Цена(ОЗУ) + Цена(SSD) + Цена(Блок питания) + Цена(Корпус).\n"
                 f"   - Вычисли максимально допустимый остаток бюджета на видеокарту: Доступно_на_GPU = {budget:,} руб - База.\n"
                 f"   - Выбери из каталога видеокарту, цена которой СТРОГО МЕНЬШЕ или РАВНА полученному остатку (Цена(GPU) <= Доступно_на_GPU)!\n"
-                f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО брать видеокарту дороже вычисленного остатка, иначе сумма превысит бюджет!\n\n"
+                f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО брать видеокарту дороже вычисленного остатка, иначе сумма превысит бюджет!\n"
+                f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО заниматься искусственной «подгонкой под бюджет» и раздувать цены на ОЗУ, SSD, БП или корпус XASTRA (корпуса XASTRA стоят строго 2 988 – 4 500 руб, никаких 10 000 руб!). Весь оставшийся бюджет направляй в максимально мощную видеокарту из каталога! Если видеокарта дешевле остатка — остаток честно пиши отдельной строкой 'Остаток от бюджета: X руб.' без накрутки цен на детали!\n\n"
                 f"3. ИТОГОВАЯ МАТЕМАТИЧЕСКАЯ ПРОВЕРКА:\n"
                 f"   - В сборке ОБЯЗАНЫ присутствовать строго ВСЕ 8 пронумерованных компонентов: 1. Процессор, 2. Материнская плата, 3. Кулер, 4. Память, 5. Видеокарта, 6. SSD, 7. Блок питания, 8. Корпус!\n"
                 f"   - Точная сумма ВСЕХ 8 позиций ОБЯЗАНА БЫТЬ строго меньше или равна {budget:,} руб (Сумма <= {budget:,} руб)!\n"
@@ -977,7 +978,11 @@ def ensure_case_link_and_shop(text: str) -> str:
         visible_text = re.sub(r'<[^>]+>', '', body)
         has_shop_in_text = bool(re.search(r'\b(wildberries|вайлдберриз|онлайнтрейд|онлайн-трейд)\b', visible_text, re.I))
 
-        # Если ссылка уже есть, проверяем наличие подписи магазина
+        c = find_matching_xastra_case(body, cases)
+        real_price = c.get('price', 3359) if c else 3359
+        threshold = max(5500, int(real_price * 1.35))
+
+        # Если ссылка уже есть, проверяем наличие подписи магазина и корректируем цену, если она искусственно завышена
         if '<a ' in body:
             if not has_shop_in_text:
                 m_href = re.search(r'href=[\'"]([^\'"]+)[\'"]', body)
@@ -986,15 +991,29 @@ def ensure_case_link_and_shop(text: str) -> str:
                         body = re.sub(r'(</a>)', r'\1 (Wildberries)', body)
                     elif 'onlinetrade.ru' in m_href.group(1):
                         body = re.sub(r'(</a>)', r'\1 (ОнлайнТрейд)', body)
+            # Проверяем, не завысил ли ИИ цену корпуса (подгонка под бюджет)
+            m_price = re.search(r'(\s*(?:—|–|-)\s*([\d\s\xa0]+)\s*(?:руб|₽).*)', body, re.I)
+            if m_price:
+                raw_digits = re.sub(r'[^\d]', '', m_price.group(2))
+                parsed_p = int(raw_digits) if raw_digits else 0
+                if parsed_p > threshold or parsed_p < 1500:
+                    corrected_price = f' — {real_price:,} руб.'.replace(',', ' ')
+                    body = body[:m_price.start(1)] + corrected_price
             return prefix + body
 
         # Если ссылки нет, находим подходящий корпус XASTRA и формируем ссылку
-        c = find_matching_xastra_case(body, cases)
         if not c:
             return prefix + body
 
-        m_price = re.search(r'(\s*(?:—|–|-)\s*[\d\s\xa0]+(?:руб|₽).*)', body, re.I)
-        price_part = m_price.group(1) if m_price else f' — {c["price"]:,} руб.'.replace(',', ' ')
+        m_price = re.search(r'(\s*(?:—|–|-)\s*([\d\s\xa0]+)\s*(?:руб|₽).*)', body, re.I)
+        raw_digits = re.sub(r'[^\d]', '', m_price.group(2)) if m_price else ''
+        parsed_p = int(raw_digits) if raw_digits else 0
+
+        if not m_price or parsed_p > threshold or parsed_p < 1500:
+            price_part = f' — {real_price:,} руб.'.replace(',', ' ')
+        else:
+            price_part = m_price.group(1)
+
         raw_name = body[:m_price.start()].strip() if m_price else body.strip()
         raw_name = re.sub(r'<\/?b>', '', raw_name).strip()
         raw_name = re.sub(r'(?i)\s*\((?:wildberries|онлайнтрейд|вайлдберриз)\)', '', raw_name).strip()
