@@ -75,7 +75,7 @@ def load_bot_db():
 BOT_DB = load_bot_db()
 
 from bot_tools import search_price, format_price_results
-from bot_tools.hardware_matcher import match_expert_assessment, enrich_and_rank_products
+from bot_tools.hardware_matcher import match_expert_assessment, enrich_and_rank_products, extract_chipset
 from db.database import seed_from_bot_db, get_stats, get_connection, get_expert_components
 from db.auth_db import (
     init_auth_db, login_user, register_user,
@@ -223,7 +223,7 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
     expert_components = get_expert_components(limit=300)
     specific_results = enrich_and_rank_products(specific_results, expert_components)
 
-    general_build_keywords = ['пк', 'сборк', 'собери', 'компьютер', 'бюджет', 'детал', 'конфигурац', 'купить', 'ценами', 'ситилинк', 'цена', 'сколько']
+    general_build_keywords = ['пк', 'сборк', 'собери', 'собрать', 'компьютер', 'системн', 'конфигурац']
     is_build_request = any(k in user_message.lower() for k in general_build_keywords)
     budget = extract_budget(user_message)
     
@@ -239,7 +239,7 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
     ]
 
     cat_items = []
-    if is_build_request or budget or len(specific_results) < 5:
+    if is_build_request or budget:
         with get_connection() as conn:
             # Dynamic market minimum entry prices queried directly from live catalog.db (no hardcoded numbers)
             market_mins = {}
@@ -599,6 +599,49 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 ).fetchall()]
             if raw_cases:
                 cat_items.extend(enrich_and_rank_products(raw_cases, expert_components, limit=5, sort_by_price_desc=False))
+
+    # 0. Provide verified reference medians for queried hardware (e.g. RTX 3060, RX 6600, etc.)
+    matched_expert_medians = []
+    seen_exp_ids = set()
+
+    extracted_chips = set()
+    for term in search_terms:
+        c = extract_chipset(term)
+        if c:
+            extracted_chips.add(c)
+    msg_chip = extract_chipset(user_message)
+    if msg_chip:
+        extracted_chips.add(msg_chip)
+
+    for exp in expert_components:
+        exp_chip = extract_chipset(exp.get("componentname", ""))
+        if exp_chip and exp_chip in extracted_chips:
+            if exp.get("id") not in seen_exp_ids:
+                matched_expert_medians.append(exp)
+                seen_exp_ids.add(exp.get("id"))
+
+    if not matched_expert_medians and specific_results:
+        for p in specific_results:
+            exp_match = match_expert_assessment(p.get("name", ""), p.get("category", ""), expert_components)
+            if exp_match and exp_match.get("expert_name"):
+                for exp in expert_components:
+                    if exp.get("componentname") == exp_match["expert_name"]:
+                        if exp.get("id") not in seen_exp_ids:
+                            matched_expert_medians.append(exp)
+                            seen_exp_ids.add(exp.get("id"))
+                        break
+
+    if matched_expert_medians:
+        context_parts.append("=== ВЕРИФИЦИРОВАННЫЕ МЕДИАННЫЕ РЫНОЧНЫЕ ЦЕНЫ (АВИТО Б/У) ===")
+        for exp in matched_expert_medians:
+            p_str = f"{exp['price']:,} руб".replace(",", " ")
+            comm = f" — {exp['comment']}" if exp.get('comment') else ""
+            context_parts.append(f"• {exp['componentname']}: {p_str}{comm}")
+        context_parts.append(
+            "⚠️ ПРАВИЛО МЕДИАННЫХ ЦЕН: При ответе на вопрос о цене, стоимости или медиане конкретной модели на вторичном рынке (Авито Б/У) "
+            "СТРОГО называй указанную выше верифицированную медианную цену из каталога! "
+            "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО завышать или занижать медиану или называть другие цифры!"
+        )
 
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]
     
@@ -981,7 +1024,7 @@ def check_used_decision(message: str, history: list = None) -> Optional[str]:
 
 def is_pc_build_request(message: str, history: list = None) -> bool:
     """Detects whether the current prompt or active dialogue is a PC build request."""
-    build_keywords = ['пк', 'сборк', 'собери', 'компьютер', 'системник', 'конфигурац', 'детал']
+    build_keywords = ['пк', 'сборк', 'собери', 'собрать', 'компьютер', 'системн', 'конфигурац']
     msg_lower = (message or "").lower()
     if any(k in msg_lower for k in build_keywords):
         return True
