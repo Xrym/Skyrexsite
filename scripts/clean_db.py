@@ -9,9 +9,19 @@ deleted_psu = cursor.rowcount
 print(f"Deleted {deleted_psu} Avito PSUs.")
 
 # 2. Delete garbage titles (e.g. 'Ещё\n3 фото')
-cursor.execute("DELETE FROM products WHERE name LIKE 'Ещё%фото%' OR name LIKE '%фото\n%' OR length(trim(name)) < 5")
+cursor.execute("DELETE FROM products WHERE name LIKE '%Ещё%фото%' OR name LIKE '%фото%' OR length(trim(name)) < 5")
 deleted_garbage = cursor.rowcount
 print(f"Deleted {deleted_garbage} garbage titles.")
+
+# 2b. Delete broken hardware & laptop SODIMMs from Avito
+cursor.execute("""
+    DELETE FROM products 
+    WHERE shop LIKE '%Авито%' 
+      AND (name LIKE '%неисправн%' OR name LIKE '%на запчасти%' OR name LIKE '%дефект%' 
+           OR name LIKE '%sodimm%' OR name LIKE '%so-dimm%' OR name LIKE '%ноут%')
+""")
+deleted_broken = cursor.rowcount
+print(f"Deleted {deleted_broken} broken/laptop parts.")
 
 # 3. Clean 'Подробнее о «' and trailing '»' from OnlineTrade products
 cursor.execute("""

@@ -35,9 +35,17 @@ chips = [
     '600w', '650w', '700w', '750w', '850w',
 ]
 
+# Filter out CPU bundles, laptop RAM, single sticks, and broken parts
+ram_bad = ['ноут', 'sodimm', 'so-dimm', 'so dimm', 'неисправн', 'дефект', 'сломан', 'на запчасти', '1x16', '1х16', '1 шт', 'сервер', 'ecc', 'reg', 'под заказ', 'связка', 'ssd']
+
 grouped = defaultdict(list)
 for name, cat, price in avito_rows:
     nl = name.lower().replace("-", " ")
+    if cat == 'ram':
+        if any(b in nl for b in ram_bad):
+            continue
+        if re.search(r'\b8\s*(?:gb|гб)\b', nl) and not re.search(r'(?:2x8|2х8|2\*8|8x2|8х2|\(8gb\s*x\s*2\))', nl):
+            continue
     for c in sorted(chips, key=lambda x: -len(x)):
         c_clean = c.replace("-", " ")
         if re.search(r'\b' + re.escape(c_clean) + r'\b', nl):

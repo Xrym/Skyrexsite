@@ -81,10 +81,14 @@ AVITO_CATEGORIES: Dict[str, Dict[str, Any]] = {
         "items": [
             {"name": "Оперативная память 16 ГБ DDR4", "query": "DDR4 16Gb 2x8"},
             {"name": "Оперативная память DDR4 32 ГБ", "query": "DDR4 32Gb 2x16"},
-            {"name": "DDR5 16GB", "query": "DDR5 16Gb"},
+            {"name": "DDR5 16GB", "query": "DDR5 16Gb 2x8"},
             {"name": "Оперативная память DDR5 32GB", "query": "DDR5 32Gb 2x16"},
         ],
-        "exclude": ["ноутбук", "sodimm", "so-dimm", "серверная", "ecc", "reg", "чехол", "радиатор", "ремонт", "скупка", "куплю"]
+        "exclude": [
+            "ноутбук", "ноут", "sodimm", "so-dimm", "so dimm", "серверная", "ecc", "reg",
+            "чехол", "радиатор", "ремонт", "скупка", "куплю", "неисправн", "не рабоч",
+            "на запчасти", "сломан", "дефект", "1x16", "1х16", "1x8", "1х8", "1 шт"
+        ]
     },
     "motherboard": {
         "title": "Материнские платы",
@@ -252,6 +256,16 @@ class AvitoScraper:
         for exc in cat_info.get("exclude", []):
             if exc in name_lower:
                 return False
+
+        # Специальные санитарные проверки для категорий:
+        if category_key == "ram":
+            # Отсекаем одиночные 8GB планки (например "Kingston DDR5 8Gb"), если мы парсим комплекты 16GB / 32GB
+            if re.search(r'\b8\s*(?:gb|гб)\b', name_lower) and not re.search(r'(?:2x8|2х8|2\*8|8x2|8х2|\(8gb\s*x\s*2\))', name_lower):
+                return False
+            # Отсекаем ноутбучные планки
+            if any(w in name_lower for w in ["sodimm", "so-dimm", "so dimm", "ноут"]):
+                return False
+
         return True
 
     def update_expert_component_median(self, target_name: str, median_price: int, comp_type: str = ""):
