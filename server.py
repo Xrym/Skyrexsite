@@ -1004,25 +1004,60 @@ def auto_fit_build_to_budget(text: str, budget: int) -> str:
 
     from db.database import get_connection
 
-    # Если остатка на GPU критически мало, проверяем возможность замены SSD 1TB на 512GB из базы
-    if available_for_gpu < 5000:
-        ssd_item = items.get(6)
-        if ssd_item and ssd_item["price"] > 6000:
-            with get_connection() as conn:
-                cur = conn.cursor()
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # 1. Если остатка на видеокарту недостаточно для актуальной игровой видеокарты,
+        # проверяем возможность динамической оптимизации памяти (32 ГБ -> 16 ГБ того же поколения)
+        if available_for_gpu < 16500:
+            ram_item = items.get(4)
+            if ram_item:
+                ram_nl = ram_item["name"].lower()
+                if "32" in ram_nl or ram_item["price"] >= 14000:
+                    if "ddr5" in ram_nl:
+                        cur.execute("SELECT componentname, price FROM expert_components WHERE type = 'ram' AND componentname LIKE '%ddr5%' AND (componentname LIKE '%16%' OR price < 30000) ORDER BY price ASC LIMIT 1")
+                    else:
+                        cur.execute("SELECT componentname, price FROM expert_components WHERE type = 'ram' AND componentname LIKE '%ddr4%' AND componentname LIKE '%16%' ORDER BY price ASC LIMIT 1")
+                    ram_row = cur.fetchone()
+                    if ram_row and ram_row[1] < ram_item["price"]:
+                        new_ram_name, new_ram_price = ram_row
+                        base_without_gpu -= (ram_item["price"] - new_ram_price)
+                        available_for_gpu = budget - base_without_gpu
+                        old_ram_line = ram_item["raw_line"]
+                        new_ram_url = make_marketplace_search_url("Авито", new_ram_name)
+                        new_ram_line = f"4. Оперативная память (RAM): <a href='{new_ram_url}' target='_blank'>{new_ram_name} (Б/У)</a> — {new_ram_price:,} руб.".replace(',', ' ')
+                        ram_line_pattern = re.compile(
+                            r'(\b4[\.\)]\s*)(?:<[^>]+>)*\s*Оперативная\s+память[^\n<]*(?:—|–|-)\s*[\d\s\xa0]{3,}\s*(?:руб|₽)[^\n<]*',
+                            re.IGNORECASE
+                        )
+                        if ram_line_pattern.search(text):
+                            text = ram_line_pattern.sub(new_ram_line, text, count=1)
+                        elif old_ram_line in text:
+                            text = text.replace(old_ram_line, new_ram_line)
+
+        # 2. Если остатка на GPU всё ещё недостаточно, проверяем возможность замены SSD 1TB на 512GB из базы
+        if available_for_gpu < 16500:
+            ssd_item = items.get(6)
+            if ssd_item and ssd_item["price"] > 6000:
                 cur.execute("SELECT componentname, price FROM expert_components WHERE type = 'ssd' AND componentname LIKE '%512%' LIMIT 1")
                 ssd_row = cur.fetchone()
-                if ssd_row:
+                if ssd_row and ssd_row[1] < ssd_item["price"]:
                     new_ssd_name, new_ssd_price = ssd_row
                     base_without_gpu -= (ssd_item["price"] - new_ssd_price)
                     available_for_gpu = budget - base_without_gpu
                     old_ssd_line = ssd_item["raw_line"]
                     new_ssd_url = make_marketplace_search_url("Авито", new_ssd_name)
                     new_ssd_line = f"6. Накопитель: <a href='{new_ssd_url}' target='_blank'>{new_ssd_name} (Б/У)</a> — {new_ssd_price:,} руб.".replace(',', ' ')
-                    text = text.replace(old_ssd_line, new_ssd_line)
+                    ssd_line_pattern = re.compile(
+                        r'(\b6[\.\)]\s*)(?:<[^>]+>)*\s*Накопитель[^\n<]*(?:—|–|-)\s*[\d\s\xa0]{3,}\s*(?:руб|₽)[^\n<]*',
+                        re.IGNORECASE
+                    )
+                    if ssd_line_pattern.search(text):
+                        text = ssd_line_pattern.sub(new_ssd_line, text, count=1)
+                    elif old_ssd_line in text:
+                        text = text.replace(old_ssd_line, new_ssd_line)
 
-    with get_connection() as conn:
-        cur = conn.cursor()
+        # 3. Подбираем лучшую видеокарту под оставшийся бюджет
         cur.execute("""
             SELECT componentname, price 
             FROM expert_components 
@@ -1052,7 +1087,11 @@ def auto_fit_build_to_budget(text: str, budget: int) -> str:
         if old_chip and new_chip and old_chip.lower() != new_chip.lower():
             text = re.sub(re.escape(old_chip), new_chip, text, flags=re.IGNORECASE)
 
-    # Убираем любые отговорки нейросети о торге на вторичном рынке
+    # Убираем любые отговорки нейросети о превышении бюджета или торге на вторичном рынке
+    text = re.sub(r'Однако из-за[^\n]*(?:превысил|превышает)[^\n]*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'([Тт]екущая|[Ии]тоговая|[Ээ]та)\s+сумма\s+[^\n]*(?:превысила|превышает)[^\n]*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'[Сс]умма сборки[^\n]*(?:превысила|превышает)[^\n]*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'[Сс]борка превышает[^\n]*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s*\([Сс] уч[её]том торга[^\)]*\)', '', text)
     return text
 
@@ -1133,7 +1172,7 @@ def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
             re.IGNORECASE
         )
         rem_regex = re.compile(
-            r'((?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?([^\n<]+)(?:<\/b>)?',
+            r'((?:<br\s*\/?>|\n)?\s*(?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?([^\n<]+)(?:<\/b>)?',
             re.IGNORECASE
         )
 
@@ -1153,7 +1192,7 @@ def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
         if has_rem and budget and budget >= exact_sum:
             rem = budget - exact_sum
             rem_str = f"{rem:,} руб.".replace(",", " ")
-            text = rem_regex.sub(rf'\g<1><b>{rem_str}</b>', text, count=1)
+            text = rem_regex.sub(rf'<br>Остаток от бюджета: <b>{rem_str}</b>', text, count=1)
         elif not (budget and budget >= exact_sum):
             # Если ИИ вывел отрицательный остаток от бюджета, удаляем его
             text = re.sub(r'(?:<br\s*\/?>|\n)?\s*(?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*(?:<b>)?[^\n<]+(?:<\/b>)?', '', text, flags=re.IGNORECASE)
