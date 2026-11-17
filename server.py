@@ -941,8 +941,23 @@ def auto_fit_build_to_budget(text: str, budget: int) -> str:
         old_gpu_line = gpu_item["raw_line"]
         new_gpu_url = make_marketplace_search_url("Авито", new_gpu_name)
         new_gpu_line = f"5. Видеокарта (GPU): <a href='{new_gpu_url}' target='_blank'>{new_gpu_name} (Б/У)</a> — {new_gpu_price:,} руб.".replace(',', ' ')
-        text = text.replace(old_gpu_line, new_gpu_line)
+        
+        gpu_line_pattern = re.compile(
+            r'(\b5[\.\)]\s*)(?:<[^>]+>)*\s*Видеокарта[^\n<]*(?:—|–|-)\s*[\d\s\xa0]{3,}\s*(?:руб|₽)[^\n<]*',
+            re.IGNORECASE
+        )
+        if gpu_line_pattern.search(text):
+            text = gpu_line_pattern.sub(new_gpu_line, text, count=1)
+        elif old_gpu_line in text:
+            text = text.replace(old_gpu_line, new_gpu_line)
 
+        old_chip = extract_chipset(gpu_item["name"])
+        new_chip = extract_chipset(new_gpu_name)
+        if old_chip and new_chip and old_chip.lower() != new_chip.lower():
+            text = re.sub(re.escape(old_chip), new_chip, text, flags=re.IGNORECASE)
+
+    # Убираем любые отговорки нейросети о торге на вторичном рынке
+    text = re.sub(r'\s*\([Сс] уч[её]том торга[^\)]*\)', '', text)
     return text
 
 
@@ -1379,10 +1394,34 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
                 "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать состав сборки (1. Процессор, 2. Плата...) в этом ответе! Сначала получи выбор клиента!"
             )
         elif used_decision == 'used':
+            user_budget = extract_budget(user_message)
+            if not user_budget and history:
+                for msg in reversed(history):
+                    if msg.get("sender") == "user":
+                        b = extract_budget(msg.get("text", ""))
+                        if b:
+                            user_budget = b
+                            break
+            budget_clause = f" в {user_budget:,} руб.".replace(",", " ") if user_budget else ""
+            budget_guidance = ""
+            if user_budget and user_budget <= 90000:
+                budget_guidance = (
+                    f"\n\nВАЖНЕЙШИЙ БАЛАНС ДЛЯ БЮДЖЕТА {user_budget:,} РУБ:\n"
+                    f"- Платформа AM5 с DDR5 (22 300 руб.) и платой B650 (14 500 руб.) заберет на каркас более 58 000 руб., "
+                    f"оставив на видеокарту всего ~20 000 руб. (уровень лишь RX 6600 XT).\n"
+                    f"- Чтобы выжать МАКСИМУМ FPS в играх в бюджете {user_budget:,} руб., ОБЯЗАТЕЛЬНО выбирай проверенную платформу на DDR4:\n"
+                    f"  1. Процессор Intel Core i5-12400F (9 200 руб.) или Ryzen 5 5600 (10 000 руб.)\n"
+                    f"  2. Материнская плата LGA1700 H610/B760 DDR4 (5 300 руб.) или AM4 B550 (7 100 руб.)\n"
+                    f"  4. Память 16 ГБ DDR4 3200 (8 000 руб.)\n"
+                    f"  Это сэкономит более 20 000 руб. и позволит поставить МОЩНЕЙШУЮ видеокарту уровня NVIDIA RTX 3070 (29 000 руб.) или RTX 3070 Ti / RTX 3080!\n"
+                    f"  Такая сборка даст в 1.5–2 раза БОЛЬШЕ FPS в любых играх в 2K!\n"
+                    f"- Итоговая сумма ВСЕХ 8 компонентов обязана быть СТРОГО <= {user_budget:,} руб. без учета торга!".replace(",", " ")
+                )
             prompt_sections.append(
-                "✅ КЛИЕНТ СОГЛАСЕН НА ИСПОЛЬЗОВАНИЕ Б/У КОМПЛЕКТУЮЩИХ:\n"
-                "Сформируй лучшую сборку под бюджет, используя мощные проверенные Б/У комплектующие (особенно видеокарту и процессор с Авито) для максимума FPS!\n"
-                "Строго соблюдай все 8 нумерованных позиций, точный бюджет и корпус ТОЛЬКО бренда XASTRA!"
+                f"✅ КЛИЕНТ СОГЛАСЕН НА ИСПОЛЬЗОВАНИЕ Б/У КОМПЛЕКТУЮЩИХ:\n"
+                f"Сформируй лучшую сборку под бюджет{budget_clause}, используя мощные проверенные Б/У комплектующие (особенно видеокарту и процессор с Авито) для максимума FPS!\n"
+                f"Строго соблюдай все 8 нумерованных позиций, точный бюджет и корпус ТОЛЬКО бренда XASTRA!"
+                f"{budget_guidance}"
             )
         elif used_decision == 'new':
             prompt_sections.append(
@@ -1914,6 +1953,15 @@ async def handle_chat(request):
         if not message:
             return web.json_response({"response": "Сообщение не может быть пустым."})
 
+        user_budget = extract_budget(message)
+        if not user_budget and history:
+            for msg in reversed(history):
+                if msg.get("sender") == "user":
+                    b = extract_budget(msg.get("text", ""))
+                    if b:
+                        user_budget = b
+                        break
+
         if wants_stream:
             response = web.StreamResponse(
                 status=200,
@@ -1927,9 +1975,19 @@ async def handle_chat(request):
             )
             await response.prepare(request)
             try:
+                full_stream_chunks = []
                 async for chunk in stream_llm(message, history):
+                    full_stream_chunks.append(chunk)
                     payload = json.dumps({"chunk": chunk}, ensure_ascii=False)
                     await response.write(f"data: {payload}\n\n".encode('utf-8'))
+
+                accumulated = "".join(full_stream_chunks)
+                if accumulated and not accumulated.startswith("⚠️"):
+                    final_text = clean_marketplace_links(accumulated, budget=user_budget)
+                    if final_text and final_text != accumulated:
+                        payload = json.dumps({"final": final_text}, ensure_ascii=False)
+                        await response.write(f"data: {payload}\n\n".encode('utf-8'))
+
                 await response.write(b"data: [DONE]\n\n")
             except Exception as se:
                 logger.error(f"Error during streaming: {se}")

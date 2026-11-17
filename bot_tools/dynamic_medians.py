@@ -99,11 +99,18 @@ def calculate_component_median_from_db(
         cat_lower = category.lower().strip() if category else ""
         cat_filter = f"AND category = '{cat_lower}'" if cat_lower else ""
 
+        # For PSUs, coolers, cases: use retail catalog products (Wildberries, ОнлайнТрейд)
+        # For used core components (CPU, GPU, RAM, Motherboard, SSD): prioritize Avito
+        if cat_lower in ("psu", "cooler", "case"):
+            shop_filter = ""
+        else:
+            shop_filter = "AND (shop LIKE '%Авито%' OR url LIKE '%avito%')"
+
         cur.execute(f"""
             SELECT name, category, price, shop, url 
             FROM products 
-            WHERE (shop LIKE '%Авито%' OR url LIKE '%avito%')
-              AND price >= 500 AND price <= 500000
+            WHERE price >= 500 AND price <= 500000
+              {shop_filter}
               {cat_filter}
         """)
         rows = cur.fetchall()
@@ -174,7 +181,25 @@ def calculate_component_median_from_db(
                     matched_prices.append(price)
                     matched_items.append({"name": name, "price": price, "url": url})
 
-        # 4. GPU, CPU matching via Chipset / Model Token
+        # 4. Specialized logic for Power Supplies (PSU: Wattage & Models)
+        elif cat_lower == "psu" or "блок питания" in q_lower or "питания" in q_lower:
+            target_watts = []
+            for w in [500, 550, 600, 650, 700, 750, 800, 850, 1000]:
+                if str(w) in q_lower:
+                    target_watts.append(str(w))
+            for name, cat, price, shop, url in rows:
+                if cat != "psu":
+                    continue
+                nl = name.lower()
+                if target_watts:
+                    if any(w in nl for w in target_watts):
+                        matched_prices.append(price)
+                        matched_items.append({"name": name, "price": price, "url": url})
+                else:
+                    matched_prices.append(price)
+                    matched_items.append({"name": name, "price": price, "url": url})
+
+        # 5. GPU, CPU matching via Chipset / Model Token
         else:
             chip = extract_chipset(query_or_chip)
             target_token = chip.lower().replace(" ", "") if chip else q_lower.replace(" ", "")

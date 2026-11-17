@@ -657,6 +657,18 @@ document.addEventListener("DOMContentLoaded", () => {
                                     }
                                 }
                             }
+                            if (parsed.final) {
+                                accumulatedText = parsed.final;
+                                if (botContentDiv) {
+                                    botContentDiv.innerHTML = parseBotContent(accumulatedText);
+                                    if (isAtBottom()) {
+                                        scrollChatToBottom();
+                                    }
+                                }
+                                if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
+                                    window.SkyrexRig.updateFromAiResponse(accumulatedText);
+                                }
+                            }
                         } catch (pe) {
                             // Non-json or raw chunk
                         }
