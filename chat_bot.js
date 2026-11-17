@@ -241,9 +241,16 @@ document.addEventListener("DOMContentLoaded", () => {
             const exactNum = parseInt(rawExact, 10);
             if (!isNaN(exactNum) && exactNum > 0) {
                 const formatted = exactNum.toLocaleString('ru-RU') + " руб.";
-                text = text.replace(/((?:<b>)?(?:Точная суммарная стоимость|Итого(?:вая)? стоимость|Суммарная стоимость)[^:\n<]*:(?:<\/b>)?\s*)(?:[^\n<]+)/gi, `$1${formatted}`);
+                text = text.replace(
+                    /((?:<b>)?\s*(?:Точная суммарная стоимость|Итого(?:вая)? стоимость|Суммарная стоимость)[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?(?:[\d\s\xa0]+(?:\s*руб\.?|₽)?(?:<\/b>)?)+/gi,
+                    (m, g1) => `${g1}<b>${formatted}</b>`
+                );
             }
         }
+
+        // Clean any accidental duplicate total prices (e.g. "98 000 руб.98 000 руб." -> "98 000 руб.")
+        text = text.replace(/(<b>\s*[\d\s\xa0]+(?:\s*руб\.?|₽)\s*<\/b>)\s*<b>\s*[\d\s\xa0]+(?:\s*руб\.?|₽)\s*<\/b>/gi, "$1");
+        text = text.replace(/([\d\s\xa0]{3,}\s*(?:руб\.?|₽))\s*\1/gi, "$1");
 
         // 10. Clean newlines: convert newlines to <br> unless adjacent to block tags
         text = text.replace(/([^\n>])\n([^\n<])/g, "$1<br>$2");

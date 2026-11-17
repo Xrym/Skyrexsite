@@ -744,7 +744,7 @@
                             const linkText = mLink[2].replace(/<[^>]+>/g, '').trim();
                             // If link text is just store name or generic word, extract component name from before the link
                             if (/^(wildberries|онлайнтрейд|onlinetrade|авито|avito|wb|ссылка|купить)$/i.test(linkText)) {
-                                const mName = lineClean.match(/:\s*(?:<\/b>)?\s*(.*?)(?:—|-|<a|\d+\s*(?:руб|₽))/i);
+                                const mName = lineClean.match(/:\s*(?:<\/b>)?\s*(.*?)(?:\s*(?:—|–|-)\s*[\d\s\xa0]{2,}\s*(?:руб|₽)|<a|\d+\s*(?:руб|₽)|$)/i);
                                 name = mName ? mName[1].replace(/<[^>]+>/g, '').trim() : linkText;
                             } else {
                                 name = linkText;
@@ -753,12 +753,12 @@
                             name = mMd[1].replace(/<[^>]+>/g, '').trim();
                             url = mMd[2].trim();
                         } else {
-                            const mName = lineClean.match(/:\s*(?:<\/b>)?\s*(.*?)(?:—|-|\d+\s*(?:руб|₽))/i);
+                            const mName = lineClean.match(/:\s*(?:<\/b>)?\s*(.*?)(?:\s*(?:—|–|-)\s*[\d\s\xa0]{2,}\s*(?:руб|₽)|\d+\s*(?:руб|₽)|$)/i);
                             name = mName ? mName[1].replace(/<[^>]+>/g, '').trim() : '';
                         }
 
                         // Extract Price
-                        const mPrice = lineClean.match(/(?:—|-)?\s*([\d\s\xa0,.]+)\s*(?:руб|₽)/i);
+                        const mPrice = lineClean.match(/(?:—|–|-)?\s*([\d\s\xa0,.]+)\s*(?:руб|₽)/i);
                         let price = "";
                         if (mPrice) {
                             const rawP = mPrice[1].replace(/[\s\xa0]/g, '').replace(/,/g, '');
@@ -778,13 +778,21 @@
                             else if (/онлайнтрейд|онлайн-трейд|onlinetrade/i.test(lineClean)) shop = "ОнлайнТрейд";
                             else if (/dns|днс/i.test(lineClean)) shop = "DNS";
                             else if (/авито|avito|\(б\/у\)/i.test(lineClean)) shop = "Авито (Б/У)";
+                            else if (/\(новый\)|(?:\bновый\b)/i.test(lineClean)) shop = "ОнлайнТрейд";
                             else if (cat.key === 'case') shop = "Wildberries";
+                            else if (cat.key === 'cooler') shop = "ОнлайнТрейд";
                             else shop = "Авито (Б/У)";
                         }
 
                         const currentPart = this.state.items[cat.key] || {};
                         let searchUrl = url;
-                        const cleanItemName = (name || currentPart.name || "").replace(/<[^>]+>/g, "").replace(/\(Б\/У\)/gi, "").replace(/\(б\/у\)/gi, "").trim();
+                        const cleanItemName = (name || currentPart.name || "")
+                            .replace(/<[^>]+>/g, "")
+                            .replace(/\(Б\/У\)/gi, "")
+                            .replace(/\(б\/у\)/gi, "")
+                            .replace(/\(Новый\)/gi, "")
+                            .replace(/\(новый\)/gi, "")
+                            .trim();
                         if (!searchUrl && cleanItemName && cleanItemName !== "?") {
                             const enc = encodeURIComponent(cleanItemName);
                             if (shop.includes("Wildberries")) searchUrl = `https://www.wildberries.ru/catalog/0/search.aspx?search=${enc}`;

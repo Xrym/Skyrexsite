@@ -1129,28 +1129,37 @@ def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
         formatted_sum = f"{exact_sum:,} руб.".replace(",", " ")
 
         total_regex = re.compile(
-            r'((?:<b>)?\s*(?:Точная суммарная стоимость|Итоговая стоимость|Суммарная стоимость|Итого|Стоимость сборки)[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?([^\n<]+)(?:<\/b>)?',
+            r'((?:<b>)?\s*(?:Точная суммарная стоимость|Итоговая стоимость|Суммарная стоимость|Итого|Стоимость сборки)[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?(?:[\d\s\xa0]+(?:\s*руб\.?|₽)?(?:<\/b>)?)+',
             re.IGNORECASE
         )
+        rem_regex = re.compile(
+            r'((?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?([^\n<]+)(?:<\/b>)?',
+            re.IGNORECASE
+        )
+
+        has_rem = bool(rem_regex.search(text))
+        if budget and budget >= exact_sum and (budget - exact_sum) > 0 and not has_rem:
+            rem = budget - exact_sum
+            rem_str = f"{rem:,} руб.".replace(",", " ")
+            total_replacement = rf'\g<1><b>{formatted_sum}</b><br>Остаток от бюджета: <b>{rem_str}</b>'
+        else:
+            total_replacement = rf'\g<1><b>{formatted_sum}</b>'
+
         if total_regex.search(text):
-            text = total_regex.sub(rf'\g<1><b>{formatted_sum}</b>', text)
+            text = total_regex.sub(total_replacement, text, count=1)
         else:
             text += f"\n\n<b>Точная суммарная стоимость:</b> {formatted_sum}"
 
-        if budget and budget >= exact_sum:
+        if has_rem and budget and budget >= exact_sum:
             rem = budget - exact_sum
             rem_str = f"{rem:,} руб.".replace(",", " ")
-            rem_regex = re.compile(
-                r'((?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?([^\n<]+)(?:<\/b>)?',
-                re.IGNORECASE
-            )
-            if rem_regex.search(text):
-                text = rem_regex.sub(rf'\g<1><b>{rem_str}</b>', text)
-            elif rem > 0:
-                text = total_regex.sub(rf'\g<1><b>{formatted_sum}</b><br>Остаток от бюджета: <b>{rem_str}</b>', text)
-        else:
+            text = rem_regex.sub(rf'\g<1><b>{rem_str}</b>', text, count=1)
+        elif not (budget and budget >= exact_sum):
             # Если ИИ вывел отрицательный остаток от бюджета, удаляем его
             text = re.sub(r'(?:<br\s*\/?>|\n)?\s*(?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*(?:<b>)?[^\n<]+(?:<\/b>)?', '', text, flags=re.IGNORECASE)
+
+        # Clean any accidental double prices in text (e.g. "98 000 руб.98 000 руб." -> "98 000 руб.")
+        text = re.sub(r'([\d\s\xa0]{3,}\s*(?:руб\.?|₽))\s*\1', r'\1', text, flags=re.IGNORECASE)
 
     return text
 
@@ -1268,6 +1277,58 @@ def ensure_case_link_and_shop(text: str) -> str:
 
     return case_regex.sub(repl, text)
 
+def ensure_cooler_link_and_shop(text: str) -> str:
+    """Гарантирует, что пункт 3 (Кулер для процессора) всегда имеет активную кликабельную ссылку
+    на ОнлайнТрейд или Wildberries с явной подписью магазина в скобках (ОнлайнТрейд)/(Wildberries),
+    если он не со вторички (Авито).
+    """
+    if not text:
+        return text
+
+    cooler_regex = re.compile(
+        r'((?:^|<br\s*/?>|\n)\s*(?:<li>)?\s*(?:<b>)?\s*(?:3[\.\)]\s*(?:<b>)?\s*(?:Кулер(?:\s+для\s+процессора)?)?|(?:Кулер(?:\s+для\s+процессора)?))\s*:?(?:</b>)?\s*)(.*?)(?=(?:<br|\n|</li>|$))',
+        re.I
+    )
+
+    def repl(m):
+        prefix = m.group(1)
+        body = m.group(2)
+        visible_text = re.sub(r'<[^>]+>', '', body)
+        
+        has_link = '<a ' in body
+        has_shop = bool(re.search(r'\b(онлайнтрейд|онлайн-трейд|onlinetrade|wildberries|вайлдберриз|\bwb\b|авито|avito)\b', visible_text, re.I))
+
+        # Extract price part
+        m_price = re.search(r'(\s*(?:—|–|-)\s*[\d\s\xa0]+\s*(?:руб|₽).*)', body, re.I)
+        price_part = m_price.group(1) if m_price else ""
+        raw_name = body[:m_price.start()].strip() if m_price else body.strip()
+
+        if has_link:
+            if not has_shop:
+                m_href = re.search(r'href=[\'"]([^\'"]+)[\'"]', body)
+                if m_href:
+                    href = m_href.group(1)
+                    if 'onlinetrade.ru' in href:
+                        body = re.sub(r'(</a>)', r'\1 (ОнлайнТрейд)', body)
+                    elif 'wildberries.ru' in href:
+                        body = re.sub(r'(</a>)', r'\1 (Wildberries)', body)
+                    elif 'avito.ru' in href:
+                        body = re.sub(r'(</a>)', r'\1 (Авито)', body)
+            return prefix + body
+
+        clean_name = re.sub(r'<\/?b>', '', raw_name)
+        clean_name = re.sub(r'\((?:новый|новое|б\/у|бу)\)', '', clean_name, flags=re.I).strip()
+        clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+
+        is_used = bool(re.search(r'\(б\/у\)|авито', visible_text, re.I))
+        shop = "Авито" if is_used else "ОнлайнТрейд"
+        shop_tag = "(Авито (Б/У))" if is_used else "(ОнлайнТрейд)"
+        url = make_marketplace_search_url(shop, clean_name)
+
+        return f'{prefix}<a href="{url}" target="_blank">{clean_name}</a> {shop_tag}{price_part}'
+
+    return cooler_regex.sub(repl, text)
+
 def sanitize_ai_html(text: str) -> str:
     """Removes any dangerous HTML tags, attributes, event handlers, and javascript: links."""
     if not text:
@@ -1357,6 +1418,8 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
 
     # 3b. Обязательное форматирование корпуса (строго XASTRA с активной ссылкой и магазином)
     text = ensure_case_link_and_shop(text)
+    # 3c. Обязательное форматирование кулера (ссылка на магазин и подпись ОнлайнТрейд/WB/Авито)
+    text = ensure_cooler_link_and_shop(text)
 
     # 4. Предотвращение слипания ключевых блоков текста (Точная сумма, Примечание, Советы по проверке)
     text = re.sub(
