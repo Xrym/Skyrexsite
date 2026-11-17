@@ -411,12 +411,21 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             # D. Select Motherboards matching candidate sockets (partitioned per socket to guarantee 100% compatibility)
             selected_mbs = []
             target_sockets_list = list(candidate_sockets) if candidate_sockets else ["AM4", "LGA 1700"]
+            is_zen1 = bool(
+                re.search(r'Ryzen\s*(?:3|5|7)\s*(?:1\d{3}|2\d{3})\b', user_message, re.I) or
+                any(re.search(r'Ryzen\s*(?:3|5|7)\s*(?:1\d{3}|2\d{3})\b', c.get("name", ""), re.I) for c in selected_cpus) or
+                any(re.search(r'Ryzen\s*(?:3|5|7)\s*(?:1\d{3}|2\d{3})\b', p.get("name", ""), re.I) for p in specific_results)
+            )
             for target_socket in target_sockets_list:
                 socket_kw = []
                 if target_socket == "AM5":
                     socket_kw = ["%B650%", "%A620%", "%X670%", "%B850%", "%X870%", "%AM5%"]
                 elif target_socket == "AM4":
-                    socket_kw = ["%B450%", "%B550%", "%A520%", "%X570%", "%AM4%"]
+                    if is_zen1:
+                        # Hardware rule: Zen 1/Zen+ (Ryzen 1000/2000) are NOT supported by A520/B550 BIOS AGESA. Only B450/A320/B350
+                        socket_kw = ["%B450%", "%A320%", "%B350%", "%AM4%"]
+                    else:
+                        socket_kw = ["%B450%", "%B550%", "%A520%", "%X570%", "%AM4%"]
                 elif target_socket == "LGA 1700":
                     socket_kw = ["%H610%", "%B760%", "%Z790%", "%Z690%", "%1700%"]
                 elif target_socket == "LGA 1200":
@@ -436,6 +445,9 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                     compatible = []
                     for m in rows:
                         specs = detect_hardware_specs(m)
+                        m_name = m.get("name", "").upper()
+                        if is_zen1 and any(chip in m_name for chip in ["A520", "B550"]):
+                            continue  # Firmware incompatible: Zen 1/Zen+ will not boot on A520/B550
                         if specs["socket"] == target_socket or not specs["socket"]:
                             m["detected_socket"] = target_socket
                             m["detected_ram"] = specs["ram_type"] or ("DDR5" if target_socket == "AM5" else "DDR4")
@@ -494,13 +506,22 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             cat_items.extend(selected_rams)
 
             # F. Select PSUs fitting budget (whitelisted customer models: Powercase, GamerStorm PF >=600W, 1STPLAYER NGDP)
-            psu_whitelist = """
-                AND (
-                    (name LIKE '%Powercase%' AND (name LIKE '%PW500%' OR name LIKE '%PW600%' OR name LIKE '%PW700%' OR name LIKE '%PW 500%' OR name LIKE '%PW 600%' OR name LIKE '%PW 700%' OR name LIKE '%PW-500%' OR name LIKE '%PW-600%' OR name LIKE '%PW-700%'))
-                    OR (name LIKE '%GAMERSTORM%' AND (name LIKE '%PF600%' OR name LIKE '%PF650%' OR name LIKE '%PF700%' OR name LIKE '%PF750%' OR name LIKE '%PF800%' OR name LIKE '%PF850%' OR name LIKE '%PF 600%' OR name LIKE '%PF 650%' OR name LIKE '%PF 700%' OR name LIKE '%PF 750%' OR name LIKE '%PF 800%' OR name LIKE '%PF 850%' OR name LIKE '%PF%X%' OR name LIKE '%PF%D%'))
-                    OR (name LIKE '%1STPLAYER%' AND name LIKE '%NGDP%' AND name NOT LIKE '%1200%')
-                )
-            """
+            has_flagship_gpu = any(
+                any(k in g.get("name", "").upper() for k in ["5080", "5090", "4080", "4090", "3080", "3090", "7900 XTX", "7900XTX", "7900 XT"])
+                for g in raw_gpus
+            ) or (budget and budget >= 160000)
+
+            if has_flagship_gpu:
+                # Flagship GPUs strictly require ATX 3.1 80+ Gold (1stPlayer NGDP 850W/1000W); PF Bronze prohibited
+                psu_whitelist = " AND (name LIKE '%1STPLAYER%' AND name LIKE '%NGDP%' AND name NOT LIKE '%1200%') "
+            else:
+                psu_whitelist = """
+                    AND (
+                        (name LIKE '%Powercase%' AND (name LIKE '%PW500%' OR name LIKE '%PW600%' OR name LIKE '%PW700%' OR name LIKE '%PW 500%' OR name LIKE '%PW 600%' OR name LIKE '%PW 700%' OR name LIKE '%PW-500%' OR name LIKE '%PW-600%' OR name LIKE '%PW-700%'))
+                        OR (name LIKE '%GAMERSTORM%' AND (name LIKE '%PF600%' OR name LIKE '%PF650%' OR name LIKE '%PF700%' OR name LIKE '%PF750%' OR name LIKE '%PF800%' OR name LIKE '%PF850%' OR name LIKE '%PF 600%' OR name LIKE '%PF 650%' OR name LIKE '%PF 700%' OR name LIKE '%PF 750%' OR name LIKE '%PF 800%' OR name LIKE '%PF 850%' OR name LIKE '%PF%X%' OR name LIKE '%PF%D%'))
+                        OR (name LIKE '%1STPLAYER%' AND name LIKE '%NGDP%' AND name NOT LIKE '%1200%')
+                    )
+                """
             raw_psus = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products WHERE category = 'psu' AND price <= ? {psu_whitelist} {new_filter} ORDER BY price ASC LIMIT 20",
                 (max_psu_price,)
@@ -537,7 +558,30 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 " AND name NOT LIKE '%/ 256%' "
                 " AND name NOT LIKE '%/ 512%' "
             )
-            cap_filter = " AND (name LIKE '%512%' OR name LIKE '%500%' OR name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') " if (budget and budget >= 50000) else ""
+
+            # Check if user explicitly asked for SSD capacity in message
+            user_ssd_cap = None
+            if re.search(r'\b(?:2\s*тб|2\s*tb|2000\s*(?:гб|gb))\b', user_message, re.I):
+                user_ssd_cap = 2048
+            elif re.search(r'\b(?:1\s*тб|1\s*tb|1000\s*(?:гб|gb)|1024\s*(?:гб|gb))\b', user_message, re.I):
+                user_ssd_cap = 1024
+            elif re.search(r'\b(?:512\s*(?:гб|gb)|500\s*(?:гб|gb))\b', user_message, re.I):
+                user_ssd_cap = 512
+            elif re.search(r'\b(?:256\s*(?:гб|gb)|250\s*(?:гб|gb)|128\s*(?:гб|gb))\b', user_message, re.I):
+                user_ssd_cap = 256
+
+            if user_ssd_cap:
+                min_ssd_cap = user_ssd_cap
+                cap_filter = f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%') "
+            elif budget and budget >= 160000:
+                min_ssd_cap = 1024
+                cap_filter = " AND (name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') "
+            elif budget and budget >= 50000:
+                min_ssd_cap = 512
+                cap_filter = " AND (name LIKE '%512%' OR name LIKE '%500%' OR name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') "
+            else:
+                min_ssd_cap = 256
+                cap_filter = ""
 
             raw_ssds = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {cap_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 25",
@@ -560,11 +604,16 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             for s in raw_ssds:
                 s["detected_capacity"] = get_ssd_capacity(s.get("name", ""))
 
-            min_ssd_cap = 512 if (budget and budget >= 50000) else 256
-            valid_ssds = [
-                s for s in raw_ssds 
-                if (s.get("detected_capacity", 0) >= min_ssd_cap and (min_ssd_cap < 512 or re.search(r'(?:512|500|1000|1024|1\s*тб|1\s*tb)', s.get("name", ""), re.I)))
-            ]
+            if user_ssd_cap:
+                valid_ssds = [
+                    s for s in raw_ssds 
+                    if s.get("detected_capacity", 0) == user_ssd_cap or (user_ssd_cap == 1024 and 960 <= s.get("detected_capacity", 0) <= 1024)
+                ]
+            else:
+                valid_ssds = [
+                    s for s in raw_ssds 
+                    if (s.get("detected_capacity", 0) >= min_ssd_cap and (min_ssd_cap < 512 or re.search(r'(?:512|500|1000|1024|1\s*тб|1\s*tb)', s.get("name", ""), re.I)))
+                ]
             if not valid_ssds:
                 valid_ssds = raw_ssds
 
@@ -598,7 +647,18 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 "AND url NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' AND name NOT LIKE '%radeon%' "
                 "AND name NOT LIKE '%rtx%' AND name NOT LIKE '%gtx%'"
             )
-            min_cooler_price = 1400 if (budget and budget >= 70000) else market_mins.get('cooler', 683)
+            has_hot_cpu = any(
+                any(k in c.get("name", "").upper() for k in ["7800X3D", "9800X3D", "7900", "7950", "9900", "9950", "13700", "14700", "13900", "14900", "I7", "I9", "RYZEN 7", "RYZEN 9"])
+                for c in selected_cpus
+            ) or (budget and budget >= 160000)
+
+            if has_hot_cpu:
+                # Hot & flagship CPUs strictly require dual-tower coolers or AIO
+                min_cooler_price = 3500
+                cooler_filter += " AND (name LIKE '%AK620%' OR name LIKE '%AG620%' OR name LIKE '%PEERLESS%' OR name LIKE '%ASSASSIN%' OR name LIKE '%PHANTOM%' OR name LIKE '%FROZEN%' OR name LIKE '%AIO%' OR name LIKE '%СЖО%' OR price >= 4000) "
+            else:
+                min_cooler_price = 1400 if (budget and budget >= 70000) else market_mins.get('cooler', 683)
+
             raw_coolers = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products {cooler_filter} {new_filter} AND price >= ? AND price <= ? ORDER BY price ASC LIMIT 20",
                 (min_cooler_price, max_cooler_price)
@@ -637,6 +697,13 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
     msg_chip = extract_chipset(user_message)
     if msg_chip:
         extracted_chips.add(msg_chip)
+
+    # Also extract chipsets of candidate GPUs and CPUs in cat_items so dynamic medians are ALWAYS included for builds
+    for item in cat_items:
+        if item.get("category") in ("gpu", "cpu") or "Авито" in item.get("shop", ""):
+            c = extract_chipset(item.get("name", ""))
+            if c:
+                extracted_chips.add(c)
 
     # 1. Primary: Calculate real-time dynamic median directly from live Avito listings in catalog.db
     for chip in extracted_chips:
@@ -677,9 +744,10 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             comm = f" — {exp['comment']}" if exp.get('comment') else ""
             context_parts.append(f"• {exp['componentname']}: {p_str}{comm}")
         context_parts.append(
-            "⚠️ ПРАВИЛО МЕДИАННЫХ ЦЕН: При ответе на вопрос о цене, стоимости или медиане конкретной модели на вторичном рынке (Авито Б/У) "
-            "СТРОГО называй указанную выше динамически рассчитанную медианную цену из базы данных! "
-            "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО завышать или занижать медиану или называть другие цифры!"
+            "⚠️ ПРАВИЛО МЕДИАННЫХ ЦЕН: При ответе на вопрос о цене, стоимости или рекомендации конкретной модели на вторичном рынке (Авито Б/У) "
+            "СТРОГО называй указанную выше динамически рассчитанную медианную цену из базы данных (например: для RX 580 — строго 5 500 руб.)! "
+            "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО завышать или занижать медиану (например, писать за RX 580 3 500 руб.) ради подгонки под бюджет! "
+            "Если сборка не влезает в бюджет с честными медианами — честно предупреди о минимальном пороге или предложи встроенное видеоядро!"
         )
 
     all_products = specific_results + [p for p in cat_items if not any(x['id'] == p['id'] for x in specific_results)]
@@ -691,23 +759,29 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             context_parts.append(
                 f"🧠 ОБЯЗАТЕЛЬНЫЙ ЭТАП ПРЕДВАРИТЕЛЬНОГО РАСЧЕТА И АНАЛИЗА (В УМЕ ПЕРЕД ВЫДАЧЕЙ ОТВЕТА):\n"
                 f"1. ПРОВЕРКА СОВМЕСТИМОСТИ СОКЕТА И ПЛАТФОРМЫ:\n"
-                f"   - Определи сокет выбранного процессора (например, AM4, AM5, LGA1700).\n"
-                f"   - Выбирай материнскую плату ИСКЛЮЧИТЕЛЬНО на том же сокете (для AM4 — строго AM4: A520/B450/B550; для AM5 — строго AM5: B650/A620; для LGA1700 — строго H610/B760)!\n"
+                f"   - Определи сокет и микроархитектуру выбранного процессора (например, AM4 Zen 1 vs Zen 3, AM5, LGA1700).\n"
+                f"   - Выбирай материнскую плату ИСКЛЮЧИТЕЛЬНО совместимую по сокету и чипсету:\n"
+                f"     * Для AM4: для Ryzen 1000/2000 (Ryzen 5 1600, 2600) — СТРОГО A320 или B450! Платы A520 и B550 категорически запрещены (нет поддержки в BIOS, ПК не запустится)!\n"
+                f"     * Для AM4: для Ryzen 3000/4000/5000 (Ryzen 3600, 5500, 5600) — A520, B450 или B550.\n"
+                f"     * Для AM5 — строго AM5: B650/A620; для LGA1700 — строго H610/B760!\n"
                 f"   - Поколение оперативной памяти ОБЯЗАНО в точности совпадать с материнской платой (DDR4 к DDR4, DDR5 к DDR5)!\n\n"
-                f"2. ДИНАМИЧЕСКИЙ МАТЕМАТИЧЕСКИЙ РАСЧЕТ ОСТАТКА НА ВИДЕОКАРТУ:\n"
+                f"2. ТРЕБОВАНИЯ К НАКОПИТЕЛЮ (SSD M.2 NVMe):\n"
+                f"   - Если клиент в запросе или в диалоге прямо указал объем накопителя (например: 512 ГБ, 1 ТБ или 2 ТБ) — СТРОГО выбирай SSD запрошенного пользователем объема!\n"
+                f"   - Если клиент не уточнил объем, подбирай качественный емкий SSD из каталога (для средних и топовых сборок — строго 1–2 ТБ, 512 ГБ используй только в ультрабюджетных сборках)!\n\n"
+                f"3. ДИНАМИЧЕСКИЙ МАТЕМАТИЧЕСКИЙ РАСЧЕТ ОСТАТКА НА ВИДЕОКАРТУ:\n"
                 f"   - Сложи реальные актуальные цены 7 базовых компонентов из переданного каталога:\n"
                 f"     База = Цена(Процессор) + Цена(Материнская плата) + Цена(Кулер) + Цена(ОЗУ) + Цена(SSD) + Цена(Блок питания) + Цена(Корпус).\n"
                 f"   - Вычисли максимально допустимый остаток бюджета на видеокарту: Доступно_на_GPU = {budget:,} руб - База.\n"
                 f"   - Выбери из каталога видеокарту, цена которой СТРОГО МЕНЬШЕ или РАВНА полученному остатку (Цена(GPU) <= Доступно_на_GPU)!\n"
                 f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО брать видеокарту дороже вычисленного остатка, иначе сумма превысит бюджет!\n"
                 f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО заниматься искусственной «подгонкой под бюджет» и раздувать цены на ОЗУ, SSD, БП или корпус XASTRA (корпуса XASTRA стоят строго 2 988 – 4 500 руб, никаких 10 000 руб!). Весь оставшийся бюджет направляй в максимально мощную видеокарту из каталога! Если видеокарта дешевле остатка — остаток честно пиши отдельной строкой 'Остаток от бюджета: X руб.' без накрутки цен на детали!\n\n"
-                f"3. ИТОГОВАЯ МАТЕМАТИЧЕСКАЯ ПРОВЕРКА:\n"
+                f"4. ИТОГОВАЯ МАТЕМАТИЧЕСКАЯ ПРОВЕРКА:\n"
                 f"   - В сборке ОБЯЗАНЫ присутствовать строго ВСЕ 8 пронумерованных компонентов: 1. Процессор, 2. Материнская плата, 3. Кулер, 4. Память, 5. Видеокарта, 6. SSD, 7. Блок питания, 8. Корпус!\n"
                 f"   - Точная сумма ВСЕХ 8 позиций ОБЯЗАНА БЫТЬ строго меньше или равна {budget:,} руб (Сумма <= {budget:,} руб)!\n"
                 f"   - В строке 'Точная суммарная стоимость:' выведи математически точную сумму цен всех 8 выбранных позиций.\n"
                 f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО превышать этот лимит даже на 1 рубль, начинать пересчитывать сборку на ходу ('Стоп, пересчитываем...') или писать в примечании оправдания!\n"
                 f"   - Сразу выведи ОДИН идеальный вариант, который строго укладывается в {budget:,} руб, без ошибок в арифметике и без повторных пересчётов!\n\n"
-                f"4. СТРОГИЕ ИСТОЧНИКИ КОМПЛЕКТУЮЩИХ (согласно регламенту Skyrex):\n"
+                f"5. СТРОГИЕ ИСТОЧНИКИ КОМПЛЕКТУЮЩИХ (согласно регламенту Skyrex):\n"
                 f"   - Видеокарты: Авито (Б/У) или Wildberries\n"
                 f"   - Оперативная память: Авито (Б/У) или Wildberries\n"
                 f"   - Процессоры: Wildberries или Авито (Б/У)\n"
@@ -720,10 +794,10 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
         if budget and budget < 35000:
             context_parts.append(
                 f"⚠️ ПРАВИЛО УЛЬТРАНИЗКОГО БЮДЖЕТА ({budget:,} РУБ):\n"
-                f"1. В бюджете до 35 000 руб. собрать ПК из новых магазинных комплектующих невозможно (одна плата и память съедят бюджет).\n"
+                f"1. В бюджете до 35 000 руб. собрать современный игровой ПК из новых магазинных деталей невозможно.\n"
                 f"2. ПРАВИЛО ЧЕСТНОГО БЮДЖЕТА: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО говорить во вступлении 'Вот сборка под ваш бюджет {budget:,} руб.', а затем насчитывать сумму в 40 000 руб.!\n"
-                f"   - Либо собери ПК ПОЛНОСТЬЮ на проверенном Б/У рынке (Авито) со ссылками на поиск Авито, чтобы итоговая сумма была ровно <= {budget:,} руб. (например: Ryzen 5 2600 + A320 + RX 580 8GB + 16GB DDR4 + БП + SSD = ровно до 20 000 руб.)!\n"
-                f"   - Либо СРАЗУ в первой же строчке честно скажи клиенту: 'В бюджете {budget:,} руб. современную платформу i3/Ryzen собрать невозможно, минимальный порог для неё — около 35 000 – 40 000 руб. Вот оптимальная конфигурация на 40 000 руб...'."
+                f"   - Либо собери ПК ПОЛНОСТЬЮ на проверенном Б/У рынке (Авито) со ссылками на поиск Авито и честными медианными ценами (или на базе процессора со встроенной графикой вроде Ryzen 5 2400G / 4600G без дискретной карты), чтобы итоговая сумма была ровно <= {budget:,} руб.!\n"
+                f"   - Либо СРАЗУ в первой же строчке честно скажи клиенту: 'В бюджете {budget:,} руб. современную игровую платформу с дискретной видеокартой собрать невозможно, минимальный порог входа — от 35 000 – 40 000 руб. Вот оптимальная конфигурация на этот минимальный бюджет...'."
             )
         # Partition into category buckets
         cpus = [p for p in all_products if p.get('category') == 'cpu']
@@ -995,6 +1069,15 @@ def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
     if budget and budget > 0:
         text = auto_fit_build_to_budget(text, budget)
 
+    expert_gpu_medians = []
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT componentname, price FROM expert_components WHERE type = 'gpu'")
+            expert_gpu_medians = cur.fetchall()
+    except Exception:
+        expert_gpu_medians = []
+
     # Ищем строки нумерованных позиций сборки: например '1. Процессор ... — 10 800 руб.'
     # Поддерживаем как разделение по переводам строк, так и по <br> / <li>
     normalized = re.sub(r'<\/?(?:li|ul|ol)[^>]*>', '\n', text)
@@ -1016,6 +1099,23 @@ def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
                 raw_p = re.sub(r'[\s\xa0]', '', m.group(3))
                 if raw_p.isdigit():
                     p_val = int(raw_p)
+                    # Enforce verified expert medians for secondary GPUs (prevent hallucinated/understated prices like 3500 for RX 580)
+                    if num == 5 and expert_gpu_medians:
+                        item_name = m.group(2)
+                        for exp_name, exp_price in expert_gpu_medians:
+                            chip_exp = extract_chipset(exp_name)
+                            if chip_exp and chip_exp.lower() in item_name.lower():
+                                if p_val < int(exp_price * 0.85):
+                                    old_p_str = m.group(3)
+                                    new_p_str = f"{exp_price:,}".replace(",", " ")
+                                    text = re.sub(
+                                        rf'(\b5[\.\)][^\n<]*?(?:—|–|-)\s*){re.escape(old_p_str)}(\s*(?:руб|₽))',
+                                        rf'\g<1>{new_p_str}\g<2>',
+                                        text,
+                                        flags=re.IGNORECASE
+                                    )
+                                    p_val = exp_price
+                                    break
                     if 500 <= p_val <= 300000:
                         item_prices.append((num, p_val))
 
