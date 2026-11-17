@@ -1000,6 +1000,21 @@ def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
         else:
             text += f"\n\n<b>Точная суммарная стоимость:</b> {formatted_sum}"
 
+        if budget and budget >= exact_sum:
+            rem = budget - exact_sum
+            rem_str = f"{rem:,} руб.".replace(",", " ")
+            rem_regex = re.compile(
+                r'((?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?([^\n<]+)(?:<\/b>)?',
+                re.IGNORECASE
+            )
+            if rem_regex.search(text):
+                text = rem_regex.sub(rf'\g<1><b>{rem_str}</b>', text)
+            elif rem > 0:
+                text = total_regex.sub(rf'\g<1><b>{formatted_sum}</b><br>Остаток от бюджета: <b>{rem_str}</b>', text)
+        else:
+            # Если ИИ вывел отрицательный остаток от бюджета, удаляем его
+            text = re.sub(r'(?:<br\s*\/?>|\n)?\s*(?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*(?:<b>)?[^\n<]+(?:<\/b>)?', '', text, flags=re.IGNORECASE)
+
     return text
 
 def get_xastra_catalog_cases():
