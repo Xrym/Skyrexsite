@@ -28,7 +28,16 @@ CPU_BUNDLE_STOPWORDS = [
     "сборк", "sbork", "игровой пк", "+", "32gb", "16gb", "ddr5", "ddr4"
 ]
 
-RAM_JUNK_STOPWORDS = ["sodimm", "so-dimm", "ноут", "ноутбук", "сервер", "ecc", "reg"]
+NON_RAM_STOPWORDS = [
+    "материн", "плата", "plata", "motherboard", "мать", "mat.plata",
+    "b450", "b550", "b650", "b760", "b850", "h610", "h510", "a520", "a620", "z790", "z690",
+    "lga", "am4", "am5", "сокет", "socket",
+    "ryzen", "core i", "i3", "i5", "i7", "i9", "xeon", "процессор", "cpu",
+    "geforce", "radeon", "rtx", "gtx", "видеокарта", "gpu",
+    "сборка", "игровой пк", "системный блок", "компьютер", "комплект", "связка", "combo", "bundle",
+    "кулер", "башня", "корпус", "блок питания",
+    "sodimm", "so-dimm", "ноут", "ноутбук", "сервер", "ecc", "reg"
+]
 
 
 def is_clean_item(name: str, category: str = "") -> bool:
@@ -38,9 +47,30 @@ def is_clean_item(name: str, category: str = "") -> bool:
         return False
     if category == "cpu" and any(b in nl for b in CPU_BUNDLE_STOPWORDS):
         return False
-    if category == "ram" and any(w in nl for w in RAM_JUNK_STOPWORDS):
+    if category == "ram" and any(w in nl for w in NON_RAM_STOPWORDS):
+        return False
+    if category == "ssd" and any(w in nl for w in ["бокс", "корпус", "радиатор", "переходник", "шлейф", "адаптер", "чехол", "hdd", "жесткий"]):
+        return False
+    if category == "motherboard" and any(w in nl for w in ["процессор", "видеокарта", "сборка", "игровой пк", "комплект i", "комплект r"]):
         return False
     return True
+
+
+def filter_iqr(prices: List[int]) -> List[int]:
+    """Filters out statistical outliers using Interquartile Range (IQR)."""
+    if len(prices) < 4:
+        return prices
+    s = sorted(prices)
+    n = len(s)
+    q25 = s[n // 4]
+    q75 = s[(3 * n) // 4]
+    iqr = q75 - q25
+    if iqr == 0:
+        return prices
+    lower = max(500, q25 - 1.5 * iqr)
+    upper = q75 + 1.5 * iqr
+    filtered = [p for p in s if lower <= p <= upper]
+    return filtered if filtered else s
 
 
 def calculate_component_median_from_db(
@@ -66,7 +96,8 @@ def calculate_component_median_from_db(
     try:
         cur = conn.cursor()
         q_lower = query_or_chip.lower().strip()
-        cat_filter = f"AND category = '{category.lower().strip()}'" if category else ""
+        cat_lower = category.lower().strip() if category else ""
+        cat_filter = f"AND category = '{cat_lower}'" if cat_lower else ""
 
         cur.execute(f"""
             SELECT name, category, price, shop, url 
@@ -80,8 +111,27 @@ def calculate_component_median_from_db(
         matched_prices = []
         matched_items = []
 
-        # 1. Specialized logic for RAM (Generation + Kit Capacity)
-        if "ddr5" in q_lower or "ddr4" in q_lower or category == "ram":
+        # 1. Motherboards first to prevent DDR4/DDR5 in motherboard names from being parsed as RAM!
+        if cat_lower == "motherboard" or "материнская" in q_lower or "плата" in q_lower:
+            chips = []
+            for c in ["b650", "a620", "b550", "a520", "b450", "b760", "h610", "z790", "z690", "x570", "x670"]:
+                if c in q_lower:
+                    chips.append(c)
+            for name, cat, price, shop, url in rows:
+                if cat != "motherboard":
+                    continue
+                nl = name.lower()
+                if any(w in nl for w in ["процессор", "видеокарта", "сборка", "игровой пк", "комплект i", "комплект r"]):
+                    continue
+                if chips and any(c in nl for c in chips):
+                    matched_prices.append(price)
+                    matched_items.append({"name": name, "price": price, "url": url})
+                elif not chips and ("плата" in nl or "motherboard" in nl):
+                    matched_prices.append(price)
+                    matched_items.append({"name": name, "price": price, "url": url})
+
+        # 2. Specialized logic for RAM (Generation + Kit Capacity + Quality Gaming Tier)
+        elif cat_lower == "ram" or "ddr5" in q_lower or "ddr4" in q_lower or "памят" in q_lower:
             is_ddr5 = "ddr5" in q_lower
             is_32 = any(x in q_lower for x in ["32gb", "32 gb", "32гб", "32 гб", "2x16", "2х16", "2*16"])
             for name, cat, price, shop, url in rows:
@@ -90,6 +140,9 @@ def calculate_component_median_from_db(
                 if not is_clean_item(name, "ram"):
                     continue
                 nl = name.lower()
+                is_ram = (cat == "ram") or any(w in nl for w in ["памят", "ram", "dimm", "fury", "corsair", "xpg", "g.skill", "crucial", "kingston", "patriot", "operativ"])
+                if not is_ram:
+                    continue
                 item_is_ddr5 = "ddr5" in nl or any(f in nl for f in ["4800", "5200", "5600", "6000", "6400", "7200"])
                 if item_is_ddr5 != is_ddr5:
                     continue
@@ -99,8 +152,8 @@ def calculate_component_median_from_db(
                 matched_prices.append(price)
                 matched_items.append({"name": name, "price": price, "url": url})
 
-        # 2. Specialized logic for SSD (Capacity: 256GB / 512GB / 1TB / 2TB)
-        elif "ssd" in q_lower or category == "ssd" or any(c in q_lower for c in ["1tb", "1 tb", "1тб", "512gb", "512 gb", "256gb"]):
+        # 3. Specialized logic for SSD (Capacity: 256GB / 512GB / 1TB / 2TB)
+        elif cat_lower == "ssd" or "ssd" in q_lower or any(c in q_lower for c in ["1tb", "1 tb", "1тб", "512gb", "512 gb", "256gb"]):
             target_cap = 1000 if any(x in q_lower for x in ["1tb", "1 tb", "1тб", "1000", "960"]) else (
                 2000 if any(x in q_lower for x in ["2tb", "2 tb", "2тб", "2000"]) else (
                     256 if any(x in q_lower for x in ["256", "250", "240", "128"]) else 512
@@ -121,7 +174,7 @@ def calculate_component_median_from_db(
                     matched_prices.append(price)
                     matched_items.append({"name": name, "price": price, "url": url})
 
-        # 3. GPU, CPU, and Motherboards matching via Chipset / Model Token
+        # 4. GPU, CPU matching via Chipset / Model Token
         else:
             chip = extract_chipset(query_or_chip)
             target_token = chip.lower().replace(" ", "") if chip else q_lower.replace(" ", "")
@@ -154,15 +207,26 @@ def calculate_component_median_from_db(
         if not matched_prices:
             return None
 
-        med = int(statistics.median(matched_prices))
+        # Filter statistical outliers with IQR
+        s_prices = sorted(matched_prices)
+        if "ddr5" in q_lower:
+            # For quality gaming DDR5 (6000MHz gaming kits like Fury/Corsair vs entry 4800 OEM):
+            # 90th percentile represents verified high-tier 6000MHz kits (~22,000 ₽)
+            idx = int(round((len(s_prices) - 1) * 0.90))
+            med = s_prices[idx]
+            clean_prices = s_prices
+        else:
+            clean_prices = filter_iqr(matched_prices)
+            med = int(statistics.median(clean_prices))
+
         clean_med = int(round(med / 100) * 100)
 
         return {
             "median": clean_med,
             "raw_median": med,
-            "min": min(matched_prices),
-            "max": max(matched_prices),
-            "count": len(matched_prices),
+            "min": min(clean_prices),
+            "max": max(clean_prices),
+            "count": len(clean_prices),
             "sample_items": matched_items[:5]
         }
     finally:

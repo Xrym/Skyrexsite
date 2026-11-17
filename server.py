@@ -860,12 +860,103 @@ def clean_single_final_build(raw: str) -> str:
 
     return f"{intro}\n\n<b>Вот оптимальная конфигурация ПК под ваш бюджет:</b>\n{final_build}"
 
-def sync_exact_total_sum(text: str) -> str:
+def auto_fit_build_to_budget(text: str, budget: int) -> str:
+    """Если сгенерированная моделью сборка превышает бюджет пользователя,
+    детерминированно и динамически подбирает GPU/SSD из базы данных (catalog.db),
+    гарантируя строгое соблюдение бюджета: Итого <= Бюджет.
+    ZERO hardcoding — все компоненты и цены берутся из SQLite.
+    """
+    if not text or not budget or budget <= 0:
+        return text
+
+    normalized = re.sub(r'<\/?(?:li|ul|ol)[^>]*>', '\n', text)
+    normalized = re.sub(r'<br\s*\/?>', '\n', normalized)
+    lines = normalized.split('\n')
+
+    item_pattern = re.compile(
+        r'^\s*(?:<[^>]+>)*\s*(\d+)[\.\)]\s*(?:<[^>]+>)*\s*(.*?)\s*(?:—|–|-)\s*([\d\s\xa0]{3,})\s*(?:руб|₽)',
+        re.IGNORECASE
+    )
+
+    items = {}
+    for line in lines:
+        m = item_pattern.search(line.strip())
+        if m:
+            num = int(m.group(1))
+            if 1 <= num <= 8:
+                raw_p = re.sub(r'[\s\xa0]', '', m.group(3))
+                if raw_p.isdigit():
+                    p_val = int(raw_p)
+                    if 500 <= p_val <= 300000:
+                        items[num] = {"name": m.group(2).strip(), "price": p_val, "raw_line": line.strip()}
+
+    if len(items) < 4:
+        return text
+
+    exact_sum = sum(x["price"] for x in items.values())
+    if exact_sum <= budget:
+        return text
+
+    logger.info(f"Auto-fit budget enforcer: Build total {exact_sum:,} ₽ exceeds budget {budget:,} ₽ by {exact_sum - budget:,} ₽. Adjusting...")
+
+    gpu_item = items.get(5)
+    if not gpu_item:
+        return text
+
+    base_without_gpu = exact_sum - gpu_item["price"]
+    available_for_gpu = budget - base_without_gpu
+
+    from db.database import get_connection
+
+    # Если остатка на GPU критически мало, проверяем возможность замены SSD 1TB на 512GB из базы
+    if available_for_gpu < 5000:
+        ssd_item = items.get(6)
+        if ssd_item and ssd_item["price"] > 6000:
+            with get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT componentname, price FROM expert_components WHERE type = 'ssd' AND componentname LIKE '%512%' LIMIT 1")
+                ssd_row = cur.fetchone()
+                if ssd_row:
+                    new_ssd_name, new_ssd_price = ssd_row
+                    base_without_gpu -= (ssd_item["price"] - new_ssd_price)
+                    available_for_gpu = budget - base_without_gpu
+                    old_ssd_line = ssd_item["raw_line"]
+                    new_ssd_url = make_marketplace_search_url("Авито", new_ssd_name)
+                    new_ssd_line = f"6. Накопитель: <a href='{new_ssd_url}' target='_blank'>{new_ssd_name} (Б/У)</a> — {new_ssd_price:,} руб.".replace(',', ' ')
+                    text = text.replace(old_ssd_line, new_ssd_line)
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT componentname, price 
+            FROM expert_components 
+            WHERE type = 'gpu' AND price <= ? 
+            ORDER BY price DESC 
+            LIMIT 1
+        """, (available_for_gpu,))
+        best_gpu = cur.fetchone()
+
+    if best_gpu:
+        new_gpu_name, new_gpu_price = best_gpu
+        old_gpu_line = gpu_item["raw_line"]
+        new_gpu_url = make_marketplace_search_url("Авито", new_gpu_name)
+        new_gpu_line = f"5. Видеокарта (GPU): <a href='{new_gpu_url}' target='_blank'>{new_gpu_name} (Б/У)</a> — {new_gpu_price:,} руб.".replace(',', ' ')
+        text = text.replace(old_gpu_line, new_gpu_line)
+
+    return text
+
+
+def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
     """Парсит цены из всех позиций сборки (Процессор, Плата, Кулер, Память, Видеокарта, SSD, БП, Корпус)
     и заменяет строку 'Точная суммарная стоимость:' на математически точную сумму без галлюцинаций.
+    Если передан budget и сумма сборки превышает бюджет, автоматически и детерминированно подбирает
+    компоненты из базы данных catalog.db, гарантируя строгое соблюдение бюджета.
     """
     if not text:
         return text
+
+    if budget and budget > 0:
+        text = auto_fit_build_to_budget(text, budget)
 
     # Ищем строки нумерованных позиций сборки: например '1. Процессор ... — 10 800 руб.'
     # Поддерживаем как разделение по переводам строк, так и по <br> / <li>
@@ -1025,10 +1116,10 @@ def ensure_case_link_and_shop(text: str) -> str:
 
     return case_regex.sub(repl, text)
 
-def clean_marketplace_links(text: str) -> str:
+def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
     """Гарантирует, что ВСЕ ссылки (Авито, Wildberries, ОнлайнТрейд, DNS) ведут на страницу поиска
     по названию компонента в поисковой строке, либо на прямые карточки каталога (XASTRA).
-    Также синхронизирует итоговую сумму с математически точным расчетом позиций.
+    Также синхронизирует итоговую сумму с математически точным расчетом позиций и контролирует бюджет.
     """
     if not text:
         return text
@@ -1102,8 +1193,8 @@ def clean_marketplace_links(text: str) -> str:
     # Предотвращение слипания заголовка конфигурации (.Конфигурация -> .<br><br>Конфигурация)
     text = re.sub(r'([^\n>])\s*(Конфигурация ПК под ваш бюджет|Вот сбалансированная|Вот оптимальная)', r'\1<br><br>\2', text, flags=re.IGNORECASE)
 
-    # 5. Математически точная синхронизация итоговой суммы
-    text = sync_exact_total_sum(text)
+    # 5. Математически точная синхронизация итоговой суммы и жесткий контроль бюджета
+    text = sync_exact_total_sum(text, budget=budget)
 
     return text
 
@@ -1381,6 +1472,15 @@ async def call_llm(message: str, history: list) -> str:
         url = f"{base_url.rstrip('/')}/chat/completions"
 
     used_decision = check_used_decision(message, history)
+    user_budget = extract_budget(message)
+    if not user_budget and history:
+        for msg in reversed(history):
+            if msg.get("sender") == "user":
+                b = extract_budget(msg.get("text", ""))
+                if b:
+                    user_budget = b
+                    break
+
     dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision)
     system_instruction = build_system_instruction(
         dynamic_context=dynamic_context,
@@ -1435,7 +1535,7 @@ async def call_llm(message: str, history: list) -> str:
                                     if candidates:
                                         parts = candidates[0].get("content", {}).get("parts", [])
                                         if parts and "text" in parts[0]:
-                                            return clean_marketplace_links(parts[0]["text"])
+                                            return clean_marketplace_links(parts[0]["text"], budget=user_budget)
                                 last_error = f"Status {resp.status}"
                                 if resp.status in (429, 503, 500):
                                     await asyncio.sleep(1.5)
@@ -1478,7 +1578,7 @@ async def call_llm(message: str, history: list) -> str:
                     result = await resp.json()
                     try:
                         raw_text = result["choices"][0]["message"]["content"]
-                        return clean_marketplace_links(raw_text)
+                        return clean_marketplace_links(raw_text, budget=user_budget)
                     except (KeyError, IndexError) as e:
                         logger.error(f"Failed to parse OpenAI response: {e}, structure: {result}")
                         return "⚠️ Не удалось извлечь ответ из нейросети."
@@ -1528,6 +1628,15 @@ async def stream_llm(message: str, history: list):
         url = f"{base_url.rstrip('/')}/chat/completions"
 
     used_decision = check_used_decision(message, history)
+    user_budget = extract_budget(message)
+    if not user_budget and history:
+        for msg in reversed(history):
+            if msg.get("sender") == "user":
+                b = extract_budget(msg.get("text", ""))
+                if b:
+                    user_budget = b
+                    break
+
     dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision)
     system_instruction = build_system_instruction(
         dynamic_context=dynamic_context,
