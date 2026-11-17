@@ -15,19 +15,41 @@ import aiohttp
 from aiohttp import web
 import dotenv
 
-# Chat rate limiter: max 20 requests per minute per IP
+# Sliding window rate limiters with memory self-pruning
 CHAT_RATE_LIMITS = defaultdict(list)
-CHAT_MAX_REQUESTS_PER_MINUTE = 20
+AUTH_LOGIN_LIMITS = defaultdict(list)
+AUTH_REGISTER_LIMITS = defaultdict(list)
+CHAT_MAX_REQUESTS_PER_MINUTE = 25
+
+def get_client_ip(request: web.Request) -> str:
+    """Securely resolves real client IP, prioritizing X-Real-IP from trusted reverse proxy (Nginx)."""
+    real_ip = request.headers.get("X-Real-IP", "").strip()
+    if real_ip:
+        return real_ip
+    xff = request.headers.get("X-Forwarded-For", "").strip()
+    if xff:
+        ips = [ip.strip() for ip in xff.split(",") if ip.strip()]
+        if ips:
+            return ips[-1] if len(ips) > 1 else ips[0]
+    return request.remote or "127.0.0.1"
+
+def check_ip_rate_limit(limits_dict: dict, ip: str, max_requests: int, window_seconds: int = 60) -> bool:
+    """Enforces sliding window rate limit per IP and prunes memory when large."""
+    now = time.time()
+    valid_ts = [t for t in limits_dict[ip] if now - t < window_seconds]
+    if len(valid_ts) >= max_requests:
+        return False
+    valid_ts.append(now)
+    limits_dict[ip] = valid_ts
+    if len(limits_dict) > 10000:
+        stale_keys = [k for k, ts in limits_dict.items() if not ts or (now - ts[-1] > window_seconds * 2)]
+        for k in stale_keys[:5000]:
+            limits_dict.pop(k, None)
+    return True
 
 def check_rate_limit(ip: str) -> bool:
     """Enforces rate limiting per IP address to avoid API quota exhaustion."""
-    now = time.time()
-    valid_ts = [t for t in CHAT_RATE_LIMITS[ip] if now - t < 60]
-    if len(valid_ts) >= CHAT_MAX_REQUESTS_PER_MINUTE:
-        return False
-    valid_ts.append(now)
-    CHAT_RATE_LIMITS[ip] = valid_ts
-    return True
+    return check_ip_rate_limit(CHAT_RATE_LIMITS, ip, max_requests=CHAT_MAX_REQUESTS_PER_MINUTE, window_seconds=60)
 
 from tg_admin_bot import TelegramAdminBot
 
@@ -1146,6 +1168,30 @@ def ensure_case_link_and_shop(text: str) -> str:
 
     return case_regex.sub(repl, text)
 
+def sanitize_ai_html(text: str) -> str:
+    """Removes any dangerous HTML tags, attributes, event handlers, and javascript: links."""
+    if not text:
+        return ""
+    # 1. Strip dangerous tags with content
+    text = re.sub(
+        r'<\s*(?:script|iframe|object|embed|style|link|meta|form|input|button|svg|canvas|base|applet)[^>]*>[\s\S]*?<\s*\/\s*(?:script|iframe|object|embed|style|link|meta|form|input|button|svg|canvas|base|applet)\s*>',
+        '',
+        text,
+        flags=re.IGNORECASE
+    )
+    # 2. Strip dangerous self-closing/standalone tags
+    text = re.sub(
+        r'<\s*(?:script|iframe|object|embed|style|link|meta|form|input|button|svg|canvas|base|applet|img)[^>]*\/?>',
+        '',
+        text,
+        flags=re.IGNORECASE
+    )
+    # 3. Strip all on* event handlers (e.g. onload=, onerror=, onclick=)
+    text = re.sub(r'\s+on[a-zA-Z]+\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)', '', text, flags=re.IGNORECASE)
+    # 4. Strip dangerous URI schemes in href attributes (javascript:, data:, vbscript:)
+    text = re.sub(r'(href\s*=\s*[\'"])(?:javascript|data|vbscript):[^\'"]*([\'"])', r'\1#\2', text, flags=re.IGNORECASE)
+    return text
+
 def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
     """Гарантирует, что ВСЕ ссылки (Авито, Wildberries, ОнлайнТрейд, DNS) ведут на страницу поиска
     по названию компонента в поисковой строке, либо на прямые карточки каталога (XASTRA).
@@ -1154,6 +1200,7 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
     if not text:
         return text
 
+    text = sanitize_ai_html(text)
     text = clean_single_final_build(text)
 
     # 1. Заменяем любые упоминания 'Deepcool GAMERSTORM' / 'DeepCool GAMERSTORM' / 'DeepCool PF...' на 'GamerStorm'
@@ -1225,6 +1272,9 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
 
     # 5. Математически точная синхронизация итоговой суммы и жесткий контроль бюджета
     text = sync_exact_total_sum(text, budget=budget)
+
+    # 6. Финальная очистка от любых потенциально опасных тегов и скриптов
+    text = sanitize_ai_html(text)
 
     return text
 
@@ -1832,7 +1882,7 @@ async def handle_search_price(request):
         shop = request.query.get("shop", "").strip() or None
         max_price_raw = request.query.get("max_price", "").strip()
         max_price = int(max_price_raw) if max_price_raw.isdigit() else None
-        limit = min(int(request.query.get("limit", 10)), 50)
+        limit = min(max(int(request.query.get("limit", 10)), 1), 50)
         
         results = search_price(query=query, category=category, shop=shop, max_price=max_price, limit=limit)
         return web.json_response({
@@ -1843,78 +1893,143 @@ async def handle_search_price(request):
         })
     except Exception as e:
         logger.error(f"Error in handle_search_price: {e}")
-        return web.json_response({"error": str(e)}, status=500)
+        err_msg = str(e) if DEBUG else "Ошибка при поиске по каталогу."
+        return web.json_response({"error": err_msg}, status=500)
 
 
 # Security & CORS Middleware: Handles preflight, blocks sensitive files & sets security headers
 @web.middleware
 async def security_middleware(request, handler):
-    origin = request.headers.get("Origin", "*")
-    
-    # 1. Handle CORS Preflight OPTIONS requests for all API endpoints
+    origin = request.headers.get("Origin", "")
+
+    # 1. Allowed CORS origins check
+    allowed_origin_patterns = [
+        r'^https?://(?:www\.)?skyrex\.pro(?::\d+)?$',
+        r'^https?://87\.120\.84\.33(?::\d+)?$',
+        r'^https?://localhost(?::\d+)?$',
+        r'^https?://127\.0\.0\.1(?::\d+)?$',
+    ]
+    is_allowed_origin = False
+    if origin:
+        for pat in allowed_origin_patterns:
+            if re.match(pat, origin, re.IGNORECASE):
+                is_allowed_origin = True
+                break
+
+    cors_origin = origin if is_allowed_origin else "https://skyrex.pro"
+
+    # Handle CORS Preflight OPTIONS requests for all API endpoints
     if request.method == "OPTIONS":
         return web.Response(status=204, headers={
-            "Access-Control-Allow-Origin": origin if origin else "*",
+            "Access-Control-Allow-Origin": cors_origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
             "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, Accept, Origin",
-            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Credentials": "true" if is_allowed_origin else "false",
             "Access-Control-Max-Age": "86400"
         })
 
-    path = request.path.lower()
-    
-    # 2. Block attempts to view sensitive system and source files
+    # Decode path twice to defend against URL-encoded and double-encoded traversal attempts
+    raw_path = request.path
+    decoded_path = urllib.parse.unquote(urllib.parse.unquote(raw_path)).lower()
+
+    # 2. Block attempts to view sensitive system, source, database, and configuration files
     blocked_patterns = [
-        '.env', '.db', '.py', '.bat', '.sh', '.git', 'bot_db.js',
-        'catalog', 'users.db', 'requirements.txt'
+        '..', '.env', '.db', '.sqlite', '.py', '.bat', '.sh', '.git',
+        '.key', '.pem', '.log', '.jsonl', '.yml', '.yaml', '.sql',
+        'bot_db.js', 'catalog', 'users.db', 'requirements.txt', '__pycache__',
+        'id_rsa', 'shadow', 'passwd'
     ]
-    if any(b in path for b in blocked_patterns) and not path.startswith('/api/'):
-        logger.warning(f"Blocked unauthorized access attempt to sensitive file: {request.path} from {request.remote}")
+    if any(b in decoded_path for b in blocked_patterns):
+        client_ip = get_client_ip(request)
+        logger.warning(f"Blocked unauthorized access attempt to sensitive file: {request.path} from {client_ip}")
         return web.Response(text="403 Forbidden: Access Denied", status=403)
-        
+
     try:
         response = await handler(request)
     except web.HTTPException as ex:
         response = ex
 
     # 3. Set hardened security and CORS headers
-    response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+    response.headers["Access-Control-Allow-Origin"] = cors_origin
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept, Origin"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
+    if is_allowed_origin:
+        response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self' https:; "
+        "font-src 'self' data:; "
+        "frame-ancestors 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self';"
+    )
     return response
 
 
 # Auth Request Handlers
 async def handle_auth_register(request):
     """Directly registers a new user with username and password in users.db."""
+    client_ip = get_client_ip(request)
+    if not check_ip_rate_limit(AUTH_REGISTER_LIMITS, client_ip, max_requests=5, window_seconds=60):
+        return web.json_response(
+            {"success": False, "error": "⏳ Слишком много регистраций с вашего IP. Пожалуйста, подождите минуту."},
+            status=429
+        )
     try:
         data = await request.json()
-        username = (data.get("username") or data.get("login") or "").strip()
-        password = data.get("password", "")
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    try:
+        username = str(data.get("username") or data.get("login") or "").strip()
+        password = str(data.get("password") or "")
+        if len(username) > 32:
+            return web.json_response({"success": False, "error": "Логин не должен превышать 32 символа."}, status=400)
+        if len(password) > 128:
+            return web.json_response({"success": False, "error": "Пароль не должен превышать 128 символов."}, status=400)
+
         result = register_user(username, password)
         status = 200 if result.get("success") else 400
         return web.json_response(result, status=status)
     except Exception as e:
         logger.error(f"Error in handle_auth_register: {e}")
-        return web.json_response({"success": False, "error": str(e)}, status=500)
+        err_msg = str(e) if DEBUG else "Ошибка при регистрации. Пожалуйста, попробуйте снова."
+        return web.json_response({"success": False, "error": err_msg}, status=500)
 
 async def handle_auth_login(request):
     """Authenticates user with username and password against users.db."""
+    client_ip = get_client_ip(request)
+    if not check_ip_rate_limit(AUTH_LOGIN_LIMITS, client_ip, max_requests=10, window_seconds=60):
+        return web.json_response(
+            {"success": False, "error": "⏳ Слишком много попыток входа. Пожалуйста, подождите минуту перед следующей попыткой."},
+            status=429
+        )
     try:
         data = await request.json()
-        username = (data.get("username") or data.get("login") or "").strip()
-        password = data.get("password", "")
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    try:
+        username = str(data.get("username") or data.get("login") or "").strip()
+        password = str(data.get("password") or "")
+        if len(username) > 32 or len(password) > 128:
+            return web.json_response({"success": False, "error": "Неверный логин или пароль."}, status=401)
+
         result = login_user(username, password)
         status = 200 if result.get("success") else 401
         return web.json_response(result, status=status)
     except Exception as e:
         logger.error(f"Error in handle_auth_login: {e}")
-        return web.json_response({"success": False, "error": str(e)}, status=500)
+        err_msg = str(e) if DEBUG else "Ошибка авторизации. Пожалуйста, попробуйте снова."
+        return web.json_response({"success": False, "error": err_msg}, status=500)
 
 async def handle_auth_me(request):
     auth_header = request.headers.get("Authorization", "")
@@ -1933,8 +2048,8 @@ async def handle_auth_logout(request):
 async def handle_chat(request):
     try:
         # Rate limit per IP address
-        remote_ip = request.headers.get("X-Forwarded-For", request.remote or "unknown").split(",")[0].strip()
-        if not check_rate_limit(remote_ip):
+        remote_ip = get_client_ip(request)
+        if not check_ip_rate_limit(CHAT_RATE_LIMITS, remote_ip, max_requests=CHAT_MAX_REQUESTS_PER_MINUTE, window_seconds=60):
             return web.json_response(
                 {"response": "⏳ Слишком много запросов. Пожалуйста, подождите минуту перед следующим сообщением."},
                 status=429
@@ -1945,9 +2060,29 @@ async def handle_chat(request):
         token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
         current_user = get_user_by_token(token) if token else None
 
-        data = await request.json()
-        message = data.get("message", "").strip()
-        history = data.get("history", [])
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"response": "Некорректный формат запроса (ожидался JSON)."}, status=400)
+
+        message = data.get("message", "")
+        if not isinstance(message, str) or not message.strip():
+            return web.json_response({"response": "Сообщение не может быть пустым."})
+
+        message = message.strip()
+        if len(message) > 4000:
+            return web.json_response({"response": "Сообщение слишком длинное (максимум 4000 символов)."}, status=400)
+
+        history_raw = data.get("history", [])
+        if not isinstance(history_raw, list):
+            history_raw = []
+        history = []
+        for h in history_raw[-15:]:
+            if isinstance(h, dict) and "text" in h and "sender" in h:
+                h_text = str(h.get("text", ""))[:4000]
+                history.append({"sender": str(h.get("sender", "user")), "text": h_text})
+
+        wants_stream = bool(data.get("stream", False))
         wants_stream = bool(data.get("stream", False))
         
         if not message:
@@ -2022,7 +2157,7 @@ async def handle_safe_static(request):
 
 # 5. Initialize application
 async def init_app():
-    app = web.Application(middlewares=[security_middleware])
+    app = web.Application(middlewares=[security_middleware], client_max_size=1024 * 512)
     
     # API endpoints
     app.router.add_post('/api/chat', handle_chat)

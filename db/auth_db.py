@@ -13,9 +13,10 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 USERS_DB_PATH = os.path.join(PROJECT_ROOT, "users.db")
 
 def get_auth_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(USERS_DB_PATH, timeout=10.0)
+    conn = sqlite3.connect(USERS_DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA busy_timeout = 20000;")
     return conn
 
 def init_auth_db():
@@ -126,6 +127,8 @@ def register_user(username: str, password: str) -> Dict[str, Any]:
         return {"success": False, "error": "Логин может содержать только буквы, цифры, дефис, точку и подчеркивание."}
     if not password or len(password) < 6:
         return {"success": False, "error": "Пароль должен содержать минимум 6 символов."}
+    if len(password) > 128:
+        return {"success": False, "error": "Пароль не должен превышать 128 символов."}
 
     init_auth_db()
     with get_auth_connection() as conn:
@@ -166,6 +169,9 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
     if not username or not password:
         return {"success": False, "error": "Введите логин и пароль."}
 
+    if len(password) > 128:
+        return {"success": False, "error": "Пароль слишком длинный (максимум 128 символов)."}
+
     init_auth_db()
     with get_auth_connection() as conn:
         cursor = conn.cursor()
@@ -174,7 +180,7 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
             return {"success": False, "error": "Неверный логин или пароль."}
 
         calc_hash = hash_password(password, user["salt"])
-        if calc_hash != user["password_hash"]:
+        if not secrets.compare_digest(calc_hash, user["password_hash"]):
             return {"success": False, "error": "Неверный логин или пароль."}
 
         token = create_session(user["id"])

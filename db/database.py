@@ -11,9 +11,10 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(PROJECT_ROOT, "catalog.db")
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn = sqlite3.connect(DB_PATH, timeout=20.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL;")  # High concurrency
+    conn.execute("PRAGMA busy_timeout = 20000;")
     conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
 

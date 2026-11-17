@@ -97,22 +97,23 @@ def calculate_component_median_from_db(
         cur = conn.cursor()
         q_lower = query_or_chip.lower().strip()
         cat_lower = category.lower().strip() if category else ""
-        cat_filter = f"AND category = '{cat_lower}'" if cat_lower else ""
 
         # For PSUs, coolers, cases: use retail catalog products (Wildberries, ОнлайнТрейд)
         # For used core components (CPU, GPU, RAM, Motherboard, SSD): prioritize Avito
-        if cat_lower in ("psu", "cooler", "case"):
-            shop_filter = ""
-        else:
-            shop_filter = "AND (shop LIKE '%Авито%' OR url LIKE '%avito%')"
-
-        cur.execute(f"""
+        query_sql = """
             SELECT name, category, price, shop, url 
             FROM products 
             WHERE price >= 500 AND price <= 500000
-              {shop_filter}
-              {cat_filter}
-        """)
+        """
+        sql_params = []
+        if cat_lower not in ("psu", "cooler", "case"):
+            query_sql += " AND (shop LIKE '%Авито%' OR url LIKE '%avito%')"
+
+        if cat_lower:
+            query_sql += " AND category = ?"
+            sql_params.append(cat_lower)
+
+        cur.execute(query_sql, sql_params)
         rows = cur.fetchall()
 
         matched_prices = []

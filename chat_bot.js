@@ -256,6 +256,12 @@ document.addEventListener("DOMContentLoaded", () => {
             text = text.replace(`__CODE_BLOCK_${idx}__`, blockHtml);
         });
 
+        // 11. Security sanitizer: strip any potentially dangerous tags, event handlers or javascript: protocols
+        text = text.replace(/<\s*(?:script|iframe|object|embed|style|link|meta|form|input|button|svg|canvas|base|applet)[^>]*>[\s\S]*?<\s*\/\s*(?:script|iframe|object|embed|style|link|meta|form|input|button|svg|canvas|base|applet)\s*>/gi, "");
+        text = text.replace(/<\s*(?:script|iframe|object|embed|style|link|meta|form|input|button|svg|canvas|base|applet|img)[^>]*\/?>/gi, "");
+        text = text.replace(/\s+on[a-zA-Z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+        text = text.replace(/(href\s*=\s*['"])(?:javascript|data|vbscript):[^'"]*(['"])/gi, "$1#$2");
+
         return text;
     }
 
