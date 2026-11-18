@@ -1077,7 +1077,17 @@ def auto_fit_build_to_budget(text: str, budget: int) -> str:
         old_chip = extract_chipset(gpu_item["name"])
         new_chip = extract_chipset(new_gpu_name)
         if old_chip and new_chip and old_chip.lower() != new_chip.lower():
-            text = re.sub(re.escape(old_chip), new_chip, text, flags=re.IGNORECASE)
+            old_num_m = re.search(r'\d{3,4}', old_chip)
+            if old_num_m:
+                on = old_num_m.group(0)
+                text = re.sub(
+                    r'\b(?:(?:GeForce|NVIDIA|AMD|Radeon)\s+)?(?:RTX|GTX|RX)\s*' + on + r'(?:\s*(?:Ti|Super|XT|XTX|GRE))?\b|\b(?:RTX|GTX|RX)' + on + r'\b',
+                    new_chip,
+                    text,
+                    flags=re.IGNORECASE
+                )
+            else:
+                text = re.sub(re.escape(old_chip), new_chip, text, flags=re.IGNORECASE)
 
     # Убираем любые отговорки нейросети о превышении бюджета или торге на вторичном рынке
     text = re.sub(r'Однако из-за[^\n]*(?:превысил|превышает)[^\n]*', '', text, flags=re.IGNORECASE)
@@ -1086,6 +1096,56 @@ def auto_fit_build_to_budget(text: str, budget: int) -> str:
     text = re.sub(r'[Сс]борка превышает[^\n]*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s*\([Сс] уч[её]том торга[^\)]*\)', '', text)
     return text
+
+def sync_gpu_mentions_in_narrative(text: str) -> str:
+    """Гарантирует, что во вводном тексте и в 'Примечании эксперта'
+    упоминается ИСКЛЮЧИТЕЛЬНО та видеокарта, которая фактически выбрана в пункте 5 сборки.
+    Устраняет любые расхождения (например, RTX 3070 / RTX3070 в тексте при наличии RTX 3060 в списке).
+    """
+    if not text:
+        return text
+
+    gpu_line_match = re.search(r'(\b5[\.\)]\s*(?:<[^>]+>)*\s*Видеокарта.*?(?=(?:<br\s*\/?>|\n|$)))', text, re.I)
+    if not gpu_line_match:
+        return text
+
+    gpu_line = gpu_line_match.group(1)
+
+    m_chip = re.search(r'\b(?:RTX|GTX|RX)\s*\d{3,4}(?:\s*(?:Ti|Super|XT|XTX|GRE))?\b', gpu_line, re.I)
+    if not m_chip:
+        return text
+
+    actual_chip = m_chip.group(0).strip()
+    m_num = re.search(r'\d{3,4}', actual_chip)
+    if not m_num:
+        return text
+    actual_num = m_num.group(0)
+
+    pattern = re.compile(
+        r'\b(?:(?:GeForce|NVIDIA|AMD|Radeon)\s+)?(RTX|GTX|RX)\s*(\d{3,4}(?:\s*(?:Ti|Super|XT|XTX|GRE))?)\b|\b(RTX|GTX|RX)(\d{3,4})\b',
+        re.I
+    )
+
+    def replace_conflicting_chips(segment: str) -> str:
+        def repl(m):
+            num_part = m.group(2) or m.group(4)
+            full_match = m.group(0)
+            if actual_num not in num_part:
+                return actual_chip
+            return full_match
+        return pattern.sub(repl, segment)
+
+    start_idx = gpu_line_match.start()
+    end_idx = gpu_line_match.end()
+
+    before_part = text[:start_idx]
+    line_part = text[start_idx:end_idx]
+    after_part = text[end_idx:]
+
+    new_before = replace_conflicting_chips(before_part)
+    new_after = replace_conflicting_chips(after_part)
+
+    return new_before + line_part + new_after
 
 
 def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
@@ -1487,6 +1547,9 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
     # 5. Математически точная синхронизация итоговой суммы и жесткий контроль бюджета
     text = sync_exact_total_sum(text, budget=budget)
 
+    # 5.1. Синхронизация упоминаний видеокарты во всем тексте с реальным пунктом 5
+    text = sync_gpu_mentions_in_narrative(text)
+
     # 6. Финальная очистка от любых потенциально опасных тегов и скриптов
     text = sanitize_ai_html(text)
 
@@ -1715,15 +1778,10 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
             budget_guidance = ""
             if user_budget and user_budget <= 90000:
                 budget_guidance = (
-                    f"\n\nВАЖНЕЙШИЙ БАЛАНС ДЛЯ БЮДЖЕТА {user_budget:,} РУБ:\n"
-                    f"- Платформа AM5 с DDR5 (22 300 руб.) и платой B650 (14 500 руб.) заберет на каркас более 58 000 руб., "
-                    f"оставив на видеокарту всего ~20 000 руб. (уровень лишь RX 6600 XT).\n"
-                    f"- Чтобы выжать МАКСИМУМ FPS в играх в бюджете {user_budget:,} руб., ОБЯЗАТЕЛЬНО выбирай проверенную платформу на DDR4:\n"
-                    f"  1. Процессор Intel Core i5-12400F (9 200 руб.) или Ryzen 5 5600 (10 000 руб.)\n"
-                    f"  2. Материнская плата LGA1700 H610/B760 DDR4 (5 300 руб.) или AM4 B550 (7 100 руб.)\n"
-                    f"  4. Память 16 ГБ DDR4 3200 (8 000 руб.)\n"
-                    f"  Это сэкономит более 20 000 руб. и позволит поставить МОЩНЕЙШУЮ видеокарту уровня NVIDIA RTX 3070 (29 000 руб.) или RTX 3070 Ti / RTX 3080!\n"
-                    f"  Такая сборка даст в 1.5–2 раза БОЛЬШЕ FPS в любых играх в 2K!\n"
+                    f"\n\nПРИНЦИП БАЛАНСИРОВКИ ДЛЯ БЮДЖЕТА {user_budget:,} РУБ:\n"
+                    f"- Чтобы выжать МАКСИМУМ FPS в играх в бюджете {user_budget:,} руб., выбирай проверенную доступную платформу на DDR4 (Intel Core i5-12400F или Ryzen 5 5600) с 16 ГБ памяти.\n"
+                    f"- Это высвобождает средства от базового каркаса под наиболее производительную игровую видеокарту из каталога под реальный остаток бюджета!\n"
+                    f"- В примечании эксперта и в описании сборки ОБЯЗАТЕЛЬНО описывай ИСКЛЮЧИТЕЛЬНО ту видеокарту, которую ты фактически включил в пункт 5 сборки! Категорически запрещено упоминать в тексте одну видеокарту, если в пункте 5 выбрана другая!\n"
                     f"- Итоговая сумма ВСЕХ 8 компонентов обязана быть СТРОГО <= {user_budget:,} руб. без учета торга!".replace(",", " ")
                 )
             prompt_sections.append(
