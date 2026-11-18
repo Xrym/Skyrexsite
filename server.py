@@ -1167,38 +1167,55 @@ def sync_exact_total_sum(text: str, budget: Optional[int] = None) -> str:
         exact_sum = sum(unique_pos.values())
         formatted_sum = f"{exact_sum:,} руб.".replace(",", " ")
 
-        total_regex = re.compile(
-            r'((?:<b>)?\s*(?:Точная суммарная стоимость|Итоговая стоимость|Суммарная стоимость|Итого|Стоимость сборки)[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?(?:[\d\s\xa0]+(?:\s*руб\.?|₽)?(?:<\/b>)?)+',
-            re.IGNORECASE
-        )
-        rem_regex = re.compile(
-            r'((?:<br\s*\/?>|\n)?\s*(?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?([^\n<]+)(?:<\/b>)?',
-            re.IGNORECASE
+        # 1. Удаляем любые старые строки "Остаток от бюджета", чтобы избежать дублирования
+        text = re.sub(
+            r'(?:<br\s*\/?>|\n)?\s*(?:<b>)?\s*Остаток от бюджета[^:\n<—–-]*[:—–-]?(?:<\/b>)?(?:\s*<br\s*\/?>|\s*\n|\s)*(?:<b>)?\s*[\d\s\xa0]{1,}(?:\s*руб\.?|₽)?\s*(?:<\/b>)?',
+            '',
+            text,
+            flags=re.IGNORECASE
         )
 
-        has_rem = bool(rem_regex.search(text))
-        if budget and budget >= exact_sum and (budget - exact_sum) > 0 and not has_rem:
+        # 2. Формируем единый блок итоговой стоимости и остатка
+        if budget and budget >= exact_sum and (budget - exact_sum) > 0:
             rem = budget - exact_sum
             rem_str = f"{rem:,} руб.".replace(",", " ")
-            total_replacement = rf'\g<1><b>{formatted_sum}</b><br>Остаток от бюджета: <b>{rem_str}</b>'
+            total_replacement = f"<b>Точная суммарная стоимость:</b> <b>{formatted_sum}</b><br>Остаток от бюджета: <b>{rem_str}</b>"
         else:
-            total_replacement = rf'\g<1><b>{formatted_sum}</b>'
+            total_replacement = f"<b>Точная суммарная стоимость:</b> <b>{formatted_sum}</b>"
 
-        if total_regex.search(text):
-            text = total_regex.sub(total_replacement, text, count=1)
+        # 3. Регулярное выражение для захвата ЛЮБОГО блока суммы (включая многократные цены/переводы строк)
+        total_block_pattern = re.compile(
+            r'(?:<b>)?\s*(?:Точная суммарная стоимость|Итоговая стоимость|Суммарная стоимость|Стоимость сборки|Итого)(?:<\/b>)?\s*[:—–-]?\s*(?:<\/b>)?(?:\s*<br\s*\/?>|\s*\n|\s)*(?:(?:<b>)?\s*[\d\s\xa0]{3,}(?:\s*руб\.?|₽)?\s*(?:<\/b>)?(?:\s*<br\s*\/?>|\s)*)+',
+            re.IGNORECASE
+        )
+
+        replaced_total = False
+        def total_replacer(m):
+            nonlocal replaced_total
+            if not replaced_total:
+                replaced_total = True
+                return total_replacement
+            return ""
+
+        if total_block_pattern.search(text):
+            text = total_block_pattern.sub(total_replacer, text)
         else:
-            text += f"\n\n<b>Точная суммарная стоимость:</b> {formatted_sum}"
+            text += f"\n\n{total_replacement}"
 
-        if has_rem and budget and budget >= exact_sum:
-            rem = budget - exact_sum
-            rem_str = f"{rem:,} руб.".replace(",", " ")
-            text = rem_regex.sub(rf'<br>Остаток от бюджета: <b>{rem_str}</b>', text, count=1)
-        elif not (budget and budget >= exact_sum):
-            # Если ИИ вывел отрицательный остаток от бюджета, удаляем его
-            text = re.sub(r'(?:<br\s*\/?>|\n)?\s*(?:<b>)?\s*Остаток от бюджета[^:\n<]*:(?:<\/b>)?\s*(?:<b>)?[^\n<]+(?:<\/b>)?', '', text, flags=re.IGNORECASE)
+    # 4. Двойная дедупликация любых случайно склеенных цен в тексте (с учетом неразрывных пробелов и тегов)
+    price_dup_pattern = re.compile(
+        r'((?:<b>)?\s*[\d\s\xa0]{3,}\s*(?:руб\.?|₽)\s*(?:<\/b>)?)\s*(?:<br\s*\/?>)?\s*(?:<b>)?\s*([\d\s\xa0]{3,}\s*(?:руб\.?|₽))\s*(?:<\/b>)?',
+        re.IGNORECASE
+    )
+    def repl_dup(m):
+        p1 = re.sub(r'\D', '', m.group(1))
+        p2 = re.sub(r'\D', '', m.group(2))
+        if p1 and p2 and p1 == p2:
+            return m.group(1)
+        return m.group(0)
 
-        # Clean any accidental double prices in text (e.g. "98 000 руб.98 000 руб." -> "98 000 руб.")
-        text = re.sub(r'([\d\s\xa0]{3,}\s*(?:руб\.?|₽))\s*\1', r'\1', text, flags=re.IGNORECASE)
+    text = price_dup_pattern.sub(repl_dup, text)
+    text = price_dup_pattern.sub(repl_dup, text)
 
     return text
 

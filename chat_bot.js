@@ -241,16 +241,29 @@ document.addEventListener("DOMContentLoaded", () => {
             const exactNum = parseInt(rawExact, 10);
             if (!isNaN(exactNum) && exactNum > 0) {
                 const formatted = exactNum.toLocaleString('ru-RU') + " руб.";
-                text = text.replace(
-                    /((?:<b>)?\s*(?:Точная суммарная стоимость|Итого(?:вая)? стоимость|Суммарная стоимость)[^:\n<]*:(?:<\/b>)?\s*)(?:<b>)?(?:[\d\s\xa0]+(?:\s*руб\.?|₽)?(?:<\/b>)?)+/gi,
-                    (m, g1) => `${g1}<b>${formatted}</b>`
-                );
+                const totalBlockPattern = /(?:<b>)?\s*(?:Точная суммарная стоимость|Итого(?:вая)? стоимость|Суммарная стоимость|Стоимость сборки|Итого)(?:<\/b>)?\s*[:—–-]?\s*(?:<\/b>)?(?:\s*<br\s*\/?>|\s*\n|\s)*(?:(?:<b>)?\s*[\d\s\xa0]{3,}(?:\s*руб\.?|₽)?\s*(?:<\/b>)?(?:\s*<br\s*\/?>|\s)*)+/gi;
+                let replaced = false;
+                text = text.replace(totalBlockPattern, () => {
+                    if (!replaced) {
+                        replaced = true;
+                        return `<b>Точная суммарная стоимость:</b> <b>${formatted}</b>`;
+                    }
+                    return "";
+                });
             }
         }
 
-        // Clean any accidental duplicate total prices (e.g. "98 000 руб.98 000 руб." -> "98 000 руб.")
-        text = text.replace(/(<b>\s*[\d\s\xa0]+(?:\s*руб\.?|₽)\s*<\/b>)\s*<b>\s*[\d\s\xa0]+(?:\s*руб\.?|₽)\s*<\/b>/gi, "$1");
-        text = text.replace(/([\d\s\xa0]{3,}\s*(?:руб\.?|₽))\s*\1/gi, "$1");
+        // Clean any duplicate adjacent prices (e.g. "98 000 руб.98 000 руб." or "98 000 руб. 98 000 руб.")
+        const priceDupPattern = /((?:<b>)?\s*[\d\s\xa0]{3,}\s*(?:руб\.?|₽)\s*(?:<\/b>)?)\s*(?:<br\s*\/?>)?\s*(?:<b>)?\s*([\d\s\xa0]{3,}\s*(?:руб\.?|₽))\s*(?:<\/b>)?/gi;
+        const replDup = (m, g1, g2) => {
+            const p1 = g1.replace(/\D/g, '');
+            const p2 = g2.replace(/\D/g, '');
+            if (p1 && p2 && p1 === p2) {
+                return g1;
+            }
+            return m;
+        };
+        text = text.replace(priceDupPattern, replDup).replace(priceDupPattern, replDup);
 
         // 10. Clean newlines: convert newlines to <br> unless adjacent to block tags
         text = text.replace(/([^\n>])\n([^\n<])/g, "$1<br>$2");
