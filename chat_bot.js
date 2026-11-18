@@ -219,13 +219,18 @@ document.addEventListener("DOMContentLoaded", () => {
             return match;
         });
 
+
+        // Clean any pseudo-buttons with emoji dots (e.g. • «🟢 Да, можно Б/У...»)
+        text = text.replace(/(?:<br\s*\/?>|\n)?\s*[•\*\-]?[ \t]*[«"']?[🟢🔵][^\n<]+/gi, "");
+
         // 8. Unordered lists: lines starting with * or - or •
         text = text.replace(/(?:^|\n)[ \t]*[*\-•][ \t]+([^\n]+)/g, "\n<li>$1</li>");
         text = text.replace(/(?:<li>[\s\S]*?<\/li>)/g, (match) => {
             return `<ul>${match}</ul>`;
         });
-        // Fix duplicate <ul><ul> wrappers
+        // Fix duplicate <ul><ul> wrappers and empty lists
         text = text.replace(/<\/ul>\s*<ul>/g, "");
+        text = text.replace(/<ul>\s*(?:<li>\s*<\/li>\s*)*<\/ul>/gi, "");
 
         // 9. Blockquotes: > quote
         text = text.replace(/^>\s+(.+)$/gm, "<blockquote>$1</blockquote>");
@@ -264,6 +269,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return m;
         };
         text = text.replace(priceDupPattern, replDup).replace(priceDupPattern, replDup);
+
 
         // 10. Clean newlines: convert newlines to <br> unless adjacent to block tags
         text = text.replace(/([^\n>])\n([^\n<])/g, "$1<br>$2");
@@ -487,43 +493,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    function checkAndShowUsedPromptChips(botText) {
-        if (!botText || !chatReplyKeyboard) return;
-        const lower = botText.toLowerCase();
-        // Check if bot asked whether Б/У is allowed or asked about SSD storage volume
-        const isAskingUsed = (
-            (lower.includes("б/у") || lower.includes("бу")) &&
-            (lower.includes("космическ") || lower.includes("fps") || lower.includes("фпс") || lower.includes("производительност") || lower.includes("соглас") || lower.includes("рассмотреть")) &&
-            !lower.includes("точная суммарная стоимость") &&
-            !lower.includes("1. процессор")
-        );
-        const isAskingSSD = (
-            (lower.includes("накопител") || lower.includes("ssd") || lower.includes("диск")) &&
-            (lower.includes("объем") || lower.includes("потребует") || lower.includes("необходим") || lower.includes("сколько")) &&
-            !lower.includes("точная суммарная стоимость") &&
-            !lower.includes("1. процессор")
-        );
-
-        if (isAskingUsed && isAskingSSD) {
-            renderSuggestionChips([
-                { label: "🟢 Б/У + SSD 1 ТБ (Хит)", prompt: "Да, можно Б/У ради максимума FPS, накопитель нужен на 1 ТБ" },
-                { label: "🟢 Б/У + SSD 512 ГБ", prompt: "Да, можно Б/У, накопитель на 512 ГБ" },
-                { label: "🟢 Б/У + SSD 2 ТБ", prompt: "Да, можно Б/У, накопитель на 2 ТБ" },
-                { label: "🔵 Только новые детали", prompt: "Нет, только новые детали из магазина с гарантией, SSD на 1 ТБ" }
-            ]);
-        } else if (isAskingUsed) {
-            renderSuggestionChips([
-                { label: "🟢 Да, можно Б/У (максимум FPS)", prompt: "Да, можно использовать проверенные Б/У комплектующие для максимума FPS" },
-                { label: "🔵 Только новые из магазина", prompt: "Нет, собираем строго из новых комплектующих из магазина" }
-            ]);
-        } else if (isAskingSSD) {
-            renderSuggestionChips([
-                { label: "💾 SSD 1 ТБ (Оптимально)", prompt: "Накопитель нужен на 1 ТБ" },
-                { label: "💾 SSD 512 ГБ", prompt: "Накопитель на 512 ГБ" },
-                { label: "💾 SSD 2 ТБ", prompt: "Накопитель на 2 ТБ" }
-            ]);
-        }
-    }
 
     // 9. Input & Auto-resize textarea
     function autoResizeInput() {
@@ -742,7 +711,6 @@ document.addEventListener("DOMContentLoaded", () => {
                         botContentDiv.innerHTML = parseBotContent(accumulatedText);
                     }
                 }
-                checkAndShowUsedPromptChips(accumulatedText);
             } else {
                 // B. STANDARD JSON RESPONSE FALLBACK
                 const data = await response.json();
@@ -752,7 +720,6 @@ document.addEventListener("DOMContentLoaded", () => {
                         window.SkyrexRig.updateFromAiResponse(data.response);
                     }
                     appendMessage("bot", data.response);
-                    checkAndShowUsedPromptChips(data.response);
                 } else {
                     appendMessage("bot", "⚠️ К сожалению, не удалось получить ответ от ассистента.");
                 }

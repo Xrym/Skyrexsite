@@ -192,7 +192,7 @@ def detect_hardware_specs(product: dict) -> dict:
     return specs
 
 # 3. Dynamic context retrieval with budget awareness & hardware compatibility
-def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] = None) -> str:
+def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] = None, history: list = None) -> str:
     """Dynamically fetches real parsed products from SQLite catalog.db based on budget, query, and strict compatibility."""
     context_parts = []
     specific_results = []
@@ -559,16 +559,8 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 " AND name NOT LIKE '%/ 512%' "
             )
 
-            # Check if user explicitly asked for SSD capacity in message
-            user_ssd_cap = None
-            if re.search(r'\b(?:2\s*тб|2\s*tb|2000\s*(?:гб|gb))\b', user_message, re.I):
-                user_ssd_cap = 2048
-            elif re.search(r'\b(?:1\s*тб|1\s*tb|1000\s*(?:гб|gb)|1024\s*(?:гб|gb))\b', user_message, re.I):
-                user_ssd_cap = 1024
-            elif re.search(r'\b(?:512\s*(?:гб|gb)|500\s*(?:гб|gb))\b', user_message, re.I):
-                user_ssd_cap = 512
-            elif re.search(r'\b(?:256\s*(?:гб|gb)|250\s*(?:гб|gb)|128\s*(?:гб|gb))\b', user_message, re.I):
-                user_ssd_cap = 256
+            # Check if user explicitly asked for SSD capacity in message or history
+            user_ssd_cap = extract_ssd_capacity(user_message, history)
 
             if user_ssd_cap:
                 min_ssd_cap = user_ssd_cap
@@ -1420,6 +1412,9 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
     text = sanitize_ai_html(text)
     text = clean_single_final_build(text)
 
+    # 0. Удаляем псевдокнопки с цветными кружками-эмодзи (🟢/🔵)
+    text = re.sub(r'(?:<br\s*\/?>|\n)?\s*[•\*\-]?[ \t]*[«"\'\s]*[🟢🔵][^\n<]+', '', text)
+
     # 1. Заменяем любые упоминания 'Deepcool GAMERSTORM' / 'DeepCool GAMERSTORM' / 'DeepCool PF...' на 'GamerStorm'
     text = re.sub(r'(?i)deepcool\s+gamerstorm', 'GamerStorm', text)
     text = re.sub(r'(?i)deepcool\s*(pf\d+[xd]?)', r'GamerStorm \1', text)
@@ -1497,6 +1492,30 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
 
     return text
 
+def extract_ssd_capacity(message: str, history: list = None) -> Optional[int]:
+    """
+    Detects user requested SSD capacity in GB (256, 512, 1024, 2048)
+    from current message or dialogue history.
+    """
+    text_corpus = []
+    if history:
+        for msg in history:
+            if msg.get("sender") == "user":
+                text_corpus.append(msg.get("text", "").lower())
+    if message:
+        text_corpus.append(message.lower())
+
+    for text in reversed(text_corpus):
+        if re.search(r'\b(?:2\s*тб|2\s*tb|2000\s*(?:гб|gb)?|2\s*терабайт)\b', text, re.I):
+            return 2048
+        if re.search(r'\b(?:1\s*тб|1\s*tb|1000\s*(?:гб|gb)?|1024\s*(?:гб|gb)?|терабайт|1\s*терабайт)\b', text, re.I):
+            return 1024
+        if re.search(r'\b(?:512\s*(?:гб|gb)?|500\s*(?:гб|gb)?|полтерабайт)\b', text, re.I):
+            return 512
+        if re.search(r'\b(?:256\s*(?:гб|gb)?|250\s*(?:гб|gb)?|128\s*(?:гб|gb)?)\b', text, re.I):
+            return 256
+    return None
+
 def check_used_decision(message: str, history: list = None) -> Optional[str]:
     """
     Checks if the user has agreed to or refused used (Б/У) components.
@@ -1512,47 +1531,67 @@ def check_used_decision(message: str, history: list = None) -> Optional[str]:
                 text_corpus.append(msg.get("text", "").lower())
     if message:
         text_corpus.append(message.lower())
-    
+
     full_text = " ".join(text_corpus)
-    
-    # 1. Check for refusal / "only new"
+    last_msg = (message or "").strip().lower()
+
+    # Приоритетное согласие на Б/У (даже если в вопросе или тексте звучало 'новое')
+    used_override_patterns = [
+        r'\b(?:бу\s+можно|можно\s+б/?у|согласен\s+на\s+б/?у|давай\s+б/?у|б/?у\s+(?:пойдет|норм|подойдет|ок|хорошо))\b',
+        r'\b(?:да,\s*можно\s+б/?у|да\s+можно\s+б/?у|лучше\s+б/?у)\b'
+    ]
+    for p in used_override_patterns:
+        if re.search(p, full_text):
+            return 'used'
+
+    # 1. Отказ от Б/У / Строго новые детали из магазина
     refusal_patterns = [
         r'\bтолько\s+нов',
         r'\bтолько\s+из\s+магазин',
+        r'\b(?:из|в)\s+магазин',
         r'\bбез\s+б/?у\b',
         r'\bне\s+(?:хочу|надо|нужно|желательно)\s+б/?у\b',
         r'\bб/?у\s+не\s+(?:хочу|надо|нужно|предлагай)',
         r'\bникаких?\s+б/?у\b',
         r'\bисключительно\s+нов',
-        r'\bновые?\s+с\s+гарантией\b'
+        r'\bновые?\s+с\s+гарантией\b',
+        r'\bлучше\s+нов',
+        r'\bстрого\s+нов',
+        r'\bновое\b',
+        r'\bновые\b',
+        r'\bновый\b'
     ]
     for p in refusal_patterns:
         if re.search(p, full_text):
             return 'new'
-            
-    # 2. Check for acceptance of used parts
+
+    # 2. Согласие на проверенные Б/У комплектующие
     accept_patterns = [
         r'\bможно\s+б/?у\b',
+        r'\bб/?у\s+можно\b',
         r'\bсогласен\s+на\s+б/?у\b',
         r'\bдавай\s+б/?у\b',
-        r'\bб/?у\s+(?:можно|давай|ок|пойдет|подходит|нормально)\b',
+        r'\bб/?у\s+(?:давай|ок|пойдет|подходит|нормально|подойдет|норм|вариант)\b',
         r'\bс\s+авито\b',
+        r'\b(?:со?\s+)?вторичк',
         r'\bиспользовать\s+б/?у\b',
         r'\bда,\s*можно\b',
         r'\bмаксимум\s+(?:фпс|fps)\b',
+        r'\bлучше\s+б/?у\b',
+        r'\bб/?у\b',
+        r'\bбу\b'
     ]
     for p in accept_patterns:
         if re.search(p, full_text):
             return 'used'
-            
-    # Also check short affirmative/negative response to previous assistant message
-    last_msg = (message or "").strip().lower()
+
+    # Короткие утвердительные или отрицательные ответы на предыдущий вопрос консультанта
     if history and any(msg.get("sender") in ("assistant", "model", "bot") for msg in history):
-        if re.search(r'^(?:да|давай|можно|согласен|ок|ок,|okay|хорошо|конечно|ага|не против|да конечно|да, давай|да давай|да, можно|да можно)\b', last_msg):
+        if re.search(r'^(?:да|давай|можно|согласен|ок|okay|хорошо|конечно|ага|не против|пойдет)\b', last_msg):
             return 'used'
-        if re.search(r'^(?:нет|не надо|только нов|только новое|новые|без бу|не хочу)\b', last_msg):
+        if re.search(r'^(?:нет|не надо|не хочу)\b', last_msg):
             return 'new'
-            
+
     return None
 
 def is_pc_build_request(message: str, history: list = None) -> bool:
@@ -1645,22 +1684,23 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
 
     is_build_req = is_pc_build_request(user_message, history)
     if is_build_req:
+        user_ssd_cap = extract_ssd_capacity(user_message, history)
         if used_decision is None:
             prompt_sections.append(
-                "🚨 КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО — ОБЯЗАТЕЛЬНОЕ СОГЛАСОВАНИЕ Б/У ПЕРЕД ВЫДАЧЕЙ СБОРКИ:\n"
-                "Пользователь запросил сборку ПК или указал бюджет, но ЕЩЁ НЕ УТОЧНИЛ, согласен ли он на использование проверенных Б/У комплектующих!\n"
+                "🚨 КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО — ОБЯЗАТЕЛЬНОЕ СОГЛАСОВАНИЕ Б/У И ОБЪЕМА НАКОПИТЕЛЯ ПЕРЕД ВЫДАЧЕЙ СБОРКИ:\n"
+                "Пользователь запросил сборку ПК или указал бюджет, но ЕЩЁ НЕ УТОЧНИЛ, согласен ли он на использование проверенных Б/У комплектующих и какой объем накопителя ему нужен!\n"
                 "ТЫ КАТЕГОРИЧЕСКИ НЕ ДОЛЖЕН СЕЙЧАС ВЫВОДИТЬ СПИСОК 8 КОМПОНЕНТОВ СБОРКИ И НЕ ДОЛЖЕН ВЫВОДИТЬ ИТОГОВУЮ СУММУ!\n\n"
-                "Твоя задача СЕЙЧАС — ответить клиенту вежливо, профессионально и убедительно, выполнив следующие шаги:\n"
+                "Твоя задача СЕЙЧАС — ответить клиенту вежливо, профессионально и убедительно обычным живым текстом БЕЗ КНОПОК И БЕЗ СПИСКОВ С КНОПКАМИ:\n"
                 "1. Подтверди бюджет клиента (например: 'Отличный бюджет для сборки!').\n"
-                "2. ОБЯЗАТЕЛЬНО объясни, почему стоит рассмотреть проверенные Б/У комплектующие (особенно видеокарту и процессор):\n"
-                "   - Цены на новые комплектующие в розничных магазинах сейчас просто космические из-за наценок, пошлин и логистики.\n"
-                "   - Если покупать всё только новым в магазине, львиная доля бюджета уйдет на магазинные наценки, и видеокарту придется взять очень слабую.\n"
-                "   - Использование проверенных Б/У комплектующих со вторичного рынка (Авито) позволяет получить ЗНАЧИТЕЛЬНО больше игровой производительности и гораздо выше FPS за тот же самый бюджет!\n"
-                "3. Спроси у клиента, готов ли он рассмотреть проверенные Б/У комплектующие или собираем строго из новых магазинных деталей с гарантией?\n"
-                "4. Предложи два четких варианта на выбор:\n"
-                "   🟢 <b>Да, можно Б/У</b> (максимум FPS и производительности за ваш бюджет)\n"
-                "   🔵 <b>Только новые из магазина</b> (с официальной гарантией)\n\n"
-                "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать состав сборки (1. Процессор, 2. Плата...) в этом ответе! Сначала получи выбор клиента!"
+                "2. Объясни, почему стоит рассмотреть проверенные Б/У комплектующие (особенно видеокарту и процессор):\n"
+                "   - Цены на новые комплектующие в розничных магазинах сейчас очень высокие из-за наценок, пошлин и логистики.\n"
+                "   - Если покупать всё только новым в магазине, львиная доля бюджета уйдет на магазинные наценки, и видеокарту придется взять слабую.\n"
+                "   - Использование проверенных Б/У комплектующих со вторичного рынка (Авито) позволяет получить ЗНАЧИТЕЛЬНО больше игровой производительности и гораздо выше FPS за тот же бюджет (например, мощную карту RTX 3070 или RTX 4070 вместо базовой магазинной затычки).\n"
+                "3. Задай клиенту два понятных вопроса обычным текстом, чтобы он сам написал ответ своими словами:\n"
+                "   - Рассматриваете ли вы проверенные Б/У комплектующие (с Авито) ради максимальной мощности и FPS, или собираем строго на 100% новых деталях из магазина с официальной гарантией?\n"
+                "   - Какой объем накопителя (SSD M.2 NVMe) вам потребуется под систему и игры (например: 512 ГБ, 1 ТБ или 2 ТБ)?\n\n"
+                "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО рисовать имитацию кнопок или списки с кружками-кнопками вида «🟢 Да, можно Б/У...» / «🔵 Только новые...»! Просто задай вопрос обычным текстом, чтобы пользователь сам написал свой ответ своими словами (например: 'можно бу, ссд на 1 тб' или 'только новое, 512 гб').\n"
+                "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать состав сборки (1. Процессор, 2. Плата...) в этом ответе! Сначала получи ответ клиента!"
             )
         elif used_decision == 'used':
             user_budget = extract_budget(user_message)
@@ -1697,6 +1737,13 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
                 "🔵 КЛИЕНТ ВЫБРАЛ СТРОГО НОВЫЕ КОМПЛЕКТУЮЩИЕ ИЗ МАГАЗИНА:\n"
                 "Сформируй сборку ИСКЛЮЧИТЕЛЬНО из новых комплектующих (Wildberries, ОнлайнТрейд, DNS). КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать Авито и Б/У позиции!\n"
                 "Строго соблюдай все 8 нумерованных позиций, точный бюджет и корпус ТОЛЬКО бренда XASTRA!"
+            )
+
+        if used_decision is not None and user_ssd_cap:
+            cap_str = f"{user_ssd_cap // 1024} ТБ" if user_ssd_cap >= 1024 else f"{user_ssd_cap} ГБ"
+            prompt_sections.append(
+                f"💾 ЖЕЛАЕМЫЙ ОБЪЕМ НАКОПИТЕЛЯ: пользователь явно запросил объем SSD M.2 NVMe {cap_str}. "
+                f"В пункте 6 сборки (Накопитель) ОБЯЗАТЕЛЬНО выбери накопитель строго объема {cap_str}!"
             )
 
     return "\n\n".join(prompt_sections)
@@ -1804,7 +1851,7 @@ async def call_llm(message: str, history: list) -> str:
                     user_budget = b
                     break
 
-    dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision)
+    dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision, history=history)
     system_instruction = build_system_instruction(
         dynamic_context=dynamic_context,
         user_message=message,
@@ -1960,7 +2007,7 @@ async def stream_llm(message: str, history: list):
                     user_budget = b
                     break
 
-    dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision)
+    dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision, history=history)
     system_instruction = build_system_instruction(
         dynamic_context=dynamic_context,
         user_message=message,
