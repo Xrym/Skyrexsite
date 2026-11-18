@@ -121,7 +121,7 @@ def extract_budget(text: str) -> Optional[int]:
     m_k = re.search(r'(\d+(?:\.\d+)?)\s*(?:к|k|тыс|тысяч)\b', t)
     if m_k:
         val = float(m_k.group(1)) * 1000
-        if 15000 <= val <= 10000000:
+        if 3000 <= val <= 10000000:
             return int(val)
             
     # 2. Keywords followed by number: 'бюджет 500 000', 'на 500 000', 'за 500 000', 'до 500 000'
@@ -130,7 +130,7 @@ def extract_budget(text: str) -> Optional[int]:
         cleaned = re.sub(r'\s+', '', m_kw.group(1))
         if cleaned.isdigit():
             val = int(cleaned)
-            if 15000 <= val <= 10000000:
+            if 3000 <= val <= 10000000:
                 return val
 
     # 3. Standalone numbers followed by 'руб' / 'р'
@@ -139,7 +139,7 @@ def extract_budget(text: str) -> Optional[int]:
         cleaned = re.sub(r'\s+', '', m_rub.group(1))
         if cleaned.isdigit():
             val = int(cleaned)
-            if 15000 <= val <= 10000000:
+            if 3000 <= val <= 10000000:
                 return val
 
     return None
@@ -288,9 +288,10 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 # Rule 8: Core (GPU + CPU) gets remaining budget after supporting platform frame.
                 # In gaming builds, GPU is ~68% of core budget, CPU is ~32% of core budget.
                 available_core = max(budget - min_supporting, market_mins.get('cpu', 4500) + market_mins.get('gpu', 2106))
-                min_gpu_price = max(int(available_core * 0.25), market_mins.get('gpu', 2106)) if budget >= 50000 else market_mins.get('gpu', 2106)
+                has_core_headroom = available_core > (market_mins.get('cpu', 4500) + market_mins.get('gpu', 2106)) * 1.5
+                min_gpu_price = max(int(available_core * 0.25), market_mins.get('gpu', 2106)) if has_core_headroom else market_mins.get('gpu', 2106)
                 max_gpu_price = max(int(available_core * 0.68), market_mins.get('gpu', 2106))
-                min_cpu_price = max(int(available_core * 0.10), market_mins.get('cpu', 4500)) if budget >= 50000 else market_mins.get('cpu', 4500)
+                min_cpu_price = max(int(available_core * 0.10), market_mins.get('cpu', 4500)) if has_core_headroom else market_mins.get('cpu', 4500)
                 max_cpu_price = max(int(available_core * 0.32), market_mins.get('cpu', 4500))
 
                 # Dynamic ceilings for supporting platform components proportional to budget
@@ -509,7 +510,7 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             has_flagship_gpu = any(
                 any(k in g.get("name", "").upper() for k in ["5080", "5090", "4080", "4090", "3080", "3090", "7900 XTX", "7900XTX", "7900 XT"])
                 for g in raw_gpus
-            ) or (budget and budget >= 160000)
+            )
 
             if has_flagship_gpu:
                 # Flagship GPUs strictly require ATX 3.1 80+ Gold (1stPlayer NGDP 850W/1000W); PF Bronze prohibited
@@ -565,15 +566,25 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             if user_ssd_cap:
                 min_ssd_cap = user_ssd_cap
                 cap_filter = f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%') "
-            elif budget and budget >= 160000:
-                min_ssd_cap = 1024
-                cap_filter = " AND (name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') "
-            elif budget and budget >= 50000:
-                min_ssd_cap = 512
-                cap_filter = " AND (name LIKE '%512%' OR name LIKE '%500%' OR name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') "
             else:
-                min_ssd_cap = 256
-                cap_filter = ""
+                row_min_1tb = conn.execute(
+                    "SELECT MIN(price) FROM products WHERE category = 'ssd' AND (name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') AND price >= 500 AND available = 1"
+                ).fetchone()
+                min_price_1tb = int(row_min_1tb[0]) if (row_min_1tb and row_min_1tb[0]) else 4000
+                row_min_512 = conn.execute(
+                    "SELECT MIN(price) FROM products WHERE category = 'ssd' AND (name LIKE '%512%' OR name LIKE '%500%') AND price >= 500 AND available = 1"
+                ).fetchone()
+                min_price_512 = int(row_min_512[0]) if (row_min_512 and row_min_512[0]) else 2000
+
+                if max_ssd_price >= min_price_1tb:
+                    min_ssd_cap = 1024
+                    cap_filter = " AND (name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') "
+                elif max_ssd_price >= min_price_512:
+                    min_ssd_cap = 512
+                    cap_filter = " AND (name LIKE '%512%' OR name LIKE '%500%' OR name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') "
+                else:
+                    min_ssd_cap = 256
+                    cap_filter = ""
 
             raw_ssds = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {cap_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 25",
@@ -642,14 +653,17 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             has_hot_cpu = any(
                 any(k in c.get("name", "").upper() for k in ["7800X3D", "9800X3D", "7900", "7950", "9900", "9950", "13700", "14700", "13900", "14900", "I7", "I9", "RYZEN 7", "RYZEN 9"])
                 for c in selected_cpus
-            ) or (budget and budget >= 160000)
+            )
 
             if has_hot_cpu:
                 # Hot & flagship CPUs strictly require dual-tower coolers or AIO
-                min_cooler_price = 3500
+                row_min_dual = conn.execute(
+                    "SELECT MIN(price) FROM products WHERE category = 'cooler' AND (name LIKE '%AK620%' OR name LIKE '%AG620%' OR name LIKE '%PEERLESS%' OR name LIKE '%ASSASSIN%' OR name LIKE '%PHANTOM%' OR name LIKE '%СЖО%' OR name LIKE '%AIO%') AND price >= 500 AND available = 1"
+                ).fetchone()
+                min_cooler_price = int(row_min_dual[0]) if (row_min_dual and row_min_dual[0]) else 3500
                 cooler_filter += " AND (name LIKE '%AK620%' OR name LIKE '%AG620%' OR name LIKE '%PEERLESS%' OR name LIKE '%ASSASSIN%' OR name LIKE '%PHANTOM%' OR name LIKE '%FROZEN%' OR name LIKE '%AIO%' OR name LIKE '%СЖО%' OR price >= 4000) "
             else:
-                min_cooler_price = 1400 if (budget and budget >= 70000) else market_mins.get('cooler', 683)
+                min_cooler_price = market_mins.get('cooler', 683)
 
             raw_coolers = [dict(r) for r in conn.execute(
                 f"SELECT * FROM products {cooler_filter} {new_filter} AND price >= ? AND price <= ? ORDER BY price ASC LIMIT 20",
@@ -737,8 +751,8 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
             context_parts.append(f"• {exp['componentname']}: {p_str}{comm}")
         context_parts.append(
             "⚠️ ПРАВИЛО МЕДИАННЫХ ЦЕН: При ответе на вопрос о цене, стоимости или рекомендации конкретной модели на вторичном рынке (Авито Б/У) "
-            "СТРОГО называй указанную выше динамически рассчитанную медианную цену из базы данных (например: для RX 580 — строго 5 500 руб.)! "
-            "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО завышать или занижать медиану (например, писать за RX 580 3 500 руб.) ради подгонки под бюджет! "
+            "СТРОГО называй указанную выше динамически рассчитанную медианную цену из базы данных! "
+            "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО завышать или занижать медиану ради подгонки под бюджет! "
             "Если сборка не влезает в бюджет с честными медианами — честно предупреди о минимальном пороге или предложи встроенное видеоядро!"
         )
 
@@ -766,7 +780,7 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 f"   - Вычисли максимально допустимый остаток бюджета на видеокарту: Доступно_на_GPU = {budget:,} руб - База.\n"
                 f"   - Выбери из каталога видеокарту, цена которой СТРОГО МЕНЬШЕ или РАВНА полученному остатку (Цена(GPU) <= Доступно_на_GPU)!\n"
                 f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО брать видеокарту дороже вычисленного остатка, иначе сумма превысит бюджет!\n"
-                f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО заниматься искусственной «подгонкой под бюджет» и раздувать цены на ОЗУ, SSD, БП или корпус XASTRA (корпуса XASTRA стоят строго 2 988 – 4 500 руб, никаких 10 000 руб!). Весь оставшийся бюджет направляй в максимально мощную видеокарту из каталога! Если видеокарта дешевле остатка — остаток честно пиши отдельной строкой 'Остаток от бюджета: X руб.' без накрутки цен на детали!\n\n"
+                f"   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО заниматься искусственной «подгонкой под бюджет» и раздувать цены на ОЗУ, SSD, БП или корпус XASTRA (цены на корпуса XASTRA бери строго из переданного каталога товаров без искусственного завышения!). Весь оставшийся бюджет направляй в максимально мощную видеокарту из каталога! Если видеокарта дешевле остатка — остаток честно пиши отдельной строкой 'Остаток от бюджета: X руб.' без накрутки цен на детали!\n\n"
                 f"4. ИТОГОВАЯ МАТЕМАТИЧЕСКАЯ ПРОВЕРКА:\n"
                 f"   - В сборке ОБЯЗАНЫ присутствовать строго ВСЕ 8 пронумерованных компонентов: 1. Процессор, 2. Материнская плата, 3. Кулер, 4. Память, 5. Видеокарта, 6. SSD, 7. Блок питания, 8. Корпус!\n"
                 f"   - Точная сумма ВСЕХ 8 позиций ОБЯЗАНА БЫТЬ строго меньше или равна {budget:,} руб (Сумма <= {budget:,} руб)!\n"
@@ -783,13 +797,13 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 f"   - Кулеры для процессоров: ОнлайнТрейд или Wildberries\n"
                 f"   - Корпус: ОнлайнТрейд или Wildberries (только бренд XASTRA! Никаких других брендов корпусов не использовать). ОБЯЗАТЕЛЬНО оформляй пункт 8 активной кликабельной HTML-ссылкой из каталога: <a href='ССЫЛКА_ИЗ_КАТАЛОГА' target='_blank'>Корпус XASTRA Модель</a> с указанием магазина в скобках: (Wildberries) или (ОнлайнТрейд). Категорически запрещено оставлять корпус обычным текстом без ссылки!"
             )
-        if budget and budget < 35000:
+        if budget and budget < total_market_mins:
             context_parts.append(
-                f"⚠️ ПРАВИЛО УЛЬТРАНИЗКОГО БЮДЖЕТА ({budget:,} РУБ):\n"
-                f"1. В бюджете до 35 000 руб. собрать современный игровой ПК из новых магазинных деталей невозможно.\n"
-                f"2. ПРАВИЛО ЧЕСТНОГО БЮДЖЕТА: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО говорить во вступлении 'Вот сборка под ваш бюджет {budget:,} руб.', а затем насчитывать сумму в 40 000 руб.!\n"
-                f"   - Либо собери ПК ПОЛНОСТЬЮ на проверенном Б/У рынке (Авито) со ссылками на поиск Авито и честными медианными ценами (или на базе процессора со встроенной графикой вроде Ryzen 5 2400G / 4600G без дискретной карты), чтобы итоговая сумма была ровно <= {budget:,} руб.!\n"
-                f"   - Либо СРАЗУ в первой же строчке честно скажи клиенту: 'В бюджете {budget:,} руб. современную игровую платформу с дискретной видеокартой собрать невозможно, минимальный порог входа — от 35 000 – 40 000 руб. Вот оптимальная конфигурация на этот минимальный бюджет...'."
+                f"⚠️ ПРАВИЛО НЕДОСТАТОЧНОГО БЮДЖЕТА ({budget:,} РУБ):\n"
+                f"1. Заявленного бюджета ({budget:,} руб.) недостаточно, чтобы покрыть даже минимальные рыночные цены каталога и вторичного рынка для всех 8 обязательных компонентов (динамический суммарный минимум по базе составляет {total_market_mins:,} руб.).\n"
+                f"2. ПРАВИЛО ЧЕСТНОГО БЮДЖЕТА: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО занижать цены компонентов или обещать сборку за {budget:,} руб., а затем насчитывать большую сумму!\n"
+                f"   - Либо СРАЗУ в первой же строчке честно предупреди клиента: 'Собрать полноценный компьютер за данный бюджет ({budget:,} руб.) невозможно, так как даже по минимальным рыночным ценам вторичного рынка сумма обязательных компонентов превышает эту сумму. Минимальный порог для работоспособной сбалансированной сборки составляет от {total_market_mins:,} руб. Ниже представлена оптимальная конфигурация под этот минимальный порог входа:' — и выведи сборку строго по актуальным минимальным ценам каталога!\n"
+                f"   - Либо, если позволяет бюджет, предложи конфигурацию с процессором со встроенным видеоядром (APU), чтобы итоговая сумма ВСЕХ позиций была строго <= {budget:,} руб.!"
             )
         # Partition into category buckets
         cpus = [p for p in all_products if p.get('category') == 'cpu']
@@ -999,41 +1013,49 @@ def auto_fit_build_to_budget(text: str, budget: int) -> str:
     with get_connection() as conn:
         cur = conn.cursor()
 
-        # 1. Если остатка на видеокарту недостаточно для актуальной игровой видеокарты,
+        # 1. Если остатка на видеокарту недостаточно для текущей видеокарты,
         # проверяем возможность динамической оптимизации памяти (32 ГБ -> 16 ГБ того же поколения)
-        if available_for_gpu < 16500:
+        if available_for_gpu < gpu_item["price"]:
             ram_item = items.get(4)
             if ram_item:
                 ram_nl = ram_item["name"].lower()
-                if "32" in ram_nl or ram_item["price"] >= 14000:
-                    if "ddr5" in ram_nl:
-                        cur.execute("SELECT componentname, price FROM expert_components WHERE type = 'ram' AND componentname LIKE '%ddr5%' AND (componentname LIKE '%16%' OR price < 30000) ORDER BY price ASC LIMIT 1")
-                    else:
-                        cur.execute("SELECT componentname, price FROM expert_components WHERE type = 'ram' AND componentname LIKE '%ddr4%' AND componentname LIKE '%16%' ORDER BY price ASC LIMIT 1")
-                    ram_row = cur.fetchone()
-                    if ram_row and ram_row[1] < ram_item["price"]:
-                        new_ram_name, new_ram_price = ram_row
-                        base_without_gpu -= (ram_item["price"] - new_ram_price)
-                        available_for_gpu = budget - base_without_gpu
-                        old_ram_line = ram_item["raw_line"]
-                        new_ram_url = make_marketplace_search_url("Авито", new_ram_name)
-                        new_ram_line = f"4. Оперативная память (RAM): <a href='{new_ram_url}' target='_blank'>{new_ram_name} (Б/У)</a> — {new_ram_price:,} руб.".replace(',', ' ')
-                        ram_line_pattern = re.compile(
-                            r'(\b4[\.\)]\s*)(?:<[^>]+>)*\s*Оперативная\s+память[^\n<]*(?:—|–|-)\s*[\d\s\xa0]{3,}\s*(?:руб|₽)[^\n<]*',
-                            re.IGNORECASE
-                        )
-                        if ram_line_pattern.search(text):
-                            text = ram_line_pattern.sub(new_ram_line, text, count=1)
-                        elif old_ram_line in text:
-                            text = text.replace(old_ram_line, new_ram_line)
+                if "ddr5" in ram_nl:
+                    cur.execute(
+                        "SELECT componentname, price FROM expert_components WHERE type = 'ram' AND componentname LIKE '%ddr5%' AND price < ? ORDER BY price ASC LIMIT 1",
+                        (ram_item["price"],)
+                    )
+                else:
+                    cur.execute(
+                        "SELECT componentname, price FROM expert_components WHERE type = 'ram' AND componentname LIKE '%ddr4%' AND price < ? ORDER BY price ASC LIMIT 1",
+                        (ram_item["price"],)
+                    )
+                ram_row = cur.fetchone()
+                if ram_row:
+                    new_ram_name, new_ram_price = ram_row
+                    base_without_gpu -= (ram_item["price"] - new_ram_price)
+                    available_for_gpu = budget - base_without_gpu
+                    old_ram_line = ram_item["raw_line"]
+                    new_ram_url = make_marketplace_search_url("Авито", new_ram_name)
+                    new_ram_line = f"4. Оперативная память (RAM): <a href='{new_ram_url}' target='_blank'>{new_ram_name} (Б/У)</a> — {new_ram_price:,} руб.".replace(',', ' ')
+                    ram_line_pattern = re.compile(
+                        r'(\b4[\.\)]\s*)(?:<[^>]+>)*\s*Оперативная\s+память[^\n<]*(?:—|–|-)\s*[\d\s\xa0]{3,}\s*(?:руб|₽)[^\n<]*',
+                        re.IGNORECASE
+                    )
+                    if ram_line_pattern.search(text):
+                        text = ram_line_pattern.sub(new_ram_line, text, count=1)
+                    elif old_ram_line in text:
+                        text = text.replace(old_ram_line, new_ram_line)
 
-        # 2. Если остатка на GPU всё ещё недостаточно, проверяем возможность замены SSD 1TB на 512GB из базы
-        if available_for_gpu < 16500:
+        # 2. Если остатка на GPU всё ещё недостаточно, проверяем возможность замены накопителя на более доступный
+        if available_for_gpu < gpu_item["price"]:
             ssd_item = items.get(6)
-            if ssd_item and ssd_item["price"] > 6000:
-                cur.execute("SELECT componentname, price FROM expert_components WHERE type = 'ssd' AND componentname LIKE '%512%' LIMIT 1")
+            if ssd_item:
+                cur.execute(
+                    "SELECT componentname, price FROM expert_components WHERE type = 'ssd' AND price < ? ORDER BY price ASC LIMIT 1",
+                    (ssd_item["price"],)
+                )
                 ssd_row = cur.fetchone()
-                if ssd_row and ssd_row[1] < ssd_item["price"]:
+                if ssd_row:
                     new_ssd_name, new_ssd_price = ssd_row
                     base_without_gpu -= (ssd_item["price"] - new_ssd_price)
                     available_for_gpu = budget - base_without_gpu
@@ -1776,11 +1798,10 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
                             break
             budget_clause = f" в {user_budget:,} руб.".replace(",", " ") if user_budget else ""
             budget_guidance = ""
-            if user_budget and user_budget <= 90000:
+            if user_budget:
                 budget_guidance = (
                     f"\n\nПРИНЦИП БАЛАНСИРОВКИ ДЛЯ БЮДЖЕТА {user_budget:,} РУБ:\n"
-                    f"- Чтобы выжать МАКСИМУМ FPS в играх в бюджете {user_budget:,} руб., выбирай проверенную доступную платформу на DDR4 (Intel Core i5-12400F или Ryzen 5 5600) с 16 ГБ памяти.\n"
-                    f"- Это высвобождает средства от базового каркаса под наиболее производительную игровую видеокарту из каталога под реальный остаток бюджета!\n"
+                    f"- Сбалансируй платформу и видеокарту согласно Правилу 8: оптимизируй стоимость каркаса (платформа, память DDR4/DDR5 16 ГБ), чтобы направить максимум средств в наиболее производительную игровую видеокарту под реальный остаток бюджета!\n"
                     f"- В примечании эксперта и в описании сборки ОБЯЗАТЕЛЬНО описывай ИСКЛЮЧИТЕЛЬНО ту видеокарту, которую ты фактически включил в пункт 5 сборки! Категорически запрещено упоминать в тексте одну видеокарту, если в пункте 5 выбрана другая!\n"
                     f"- Итоговая сумма ВСЕХ 8 компонентов обязана быть СТРОГО <= {user_budget:,} руб. без учета торга!".replace(",", " ")
                 )
