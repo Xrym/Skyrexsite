@@ -264,15 +264,52 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
     cat_items = []
     if is_build_request or budget:
         with get_connection() as conn:
-            # Dynamic market minimum entry prices queried directly from live catalog.db (no hardcoded numbers)
+            user_ssd_cap = extract_ssd_capacity(user_message, history)
+
+            # Dynamic market minimum entry prices queried directly from live catalog.db with quality filters
             market_mins = {}
             for cat in ['cpu', 'gpu', 'motherboard', 'ram', 'ssd', 'psu', 'cooler', 'case']:
+                shop_clause = " AND shop NOT LIKE '%Авито%'" if used_decision == 'new' else ""
                 if cat == 'case':
                     row_min = conn.execute(
                         "SELECT MIN(price) FROM products WHERE category = 'case' AND (name LIKE '%XASTRA%' OR name LIKE '%xastra%') AND price >= 500 AND available = 1"
                     ).fetchone()
+                elif cat == 'cooler':
+                    row_min = conn.execute(
+                        f"SELECT MIN(price) FROM products WHERE category = 'cooler' AND name NOT LIKE '%звуков%' AND name NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' {shop_clause} AND price >= 500 AND available = 1"
+                    ).fetchone()
+                elif cat == 'psu':
+                    row_min = conn.execute(
+                        f"SELECT MIN(price) FROM products WHERE category = 'psu' AND ((name LIKE '%Powercase%' AND name LIKE '%PW%') OR (name LIKE '%GamerStorm%' AND name LIKE '%PF%') OR (name LIKE '%1stPlayer%' AND name LIKE '%NGDP%')) {shop_clause} AND price >= 500 AND available = 1"
+                    ).fetchone()
+                elif cat == 'ram':
+                    row_min = conn.execute(
+                        f"SELECT MIN(price) FROM products WHERE category = 'ram' AND (name LIKE '%DDR4%' OR name LIKE '%DDR5%') AND name NOT LIKE '%sodimm%' AND name NOT LIKE '%ноутбук%' AND name NOT LIKE '%неисправн%' {shop_clause} AND price >= 500 AND available = 1"
+                    ).fetchone()
+                elif cat == 'ssd':
+                    cap_sub = ""
+                    if user_ssd_cap:
+                        cap_sub = f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%') " if user_ssd_cap >= 1024 else f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%512%' OR name LIKE '%500%') "
+                    row_min = conn.execute(
+                        f"SELECT MIN(price) FROM products WHERE category = 'ssd' {cap_sub} AND (name LIKE '%m.2%' OR name LIKE '%m2%' OR name LIKE '%nvme%') AND name NOT LIKE '%sata%' AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
+                    ).fetchone()
+                    if not (row_min and row_min[0]) and cap_sub:
+                        row_min = conn.execute(
+                            f"SELECT MIN(price) FROM products WHERE category = 'ssd' AND (name LIKE '%m.2%' OR name LIKE '%m2%' OR name LIKE '%nvme%') AND name NOT LIKE '%sata%' AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
+                        ).fetchone()
+                elif cat == 'gpu':
+                    row_min = conn.execute(
+                        f"SELECT MIN(price) FROM products WHERE category = 'gpu' AND name NOT LIKE '%GT210%' AND name NOT LIKE '%GT 210%' AND name NOT LIKE '%GT710%' AND name NOT LIKE '%GT 710%' AND name NOT LIKE '%GT730%' AND name NOT LIKE '%GT 730%' AND name NOT LIKE '%GT740%' AND name NOT LIKE '%GT 740%' AND name NOT LIKE '%неисправн%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
+                    ).fetchone()
+                elif cat == 'motherboard':
+                    row_min = conn.execute(
+                        f"SELECT MIN(price) FROM products WHERE category = 'motherboard' AND (name LIKE '%AM4%' OR name LIKE '%AM5%' OR name LIKE '%LGA 1700%' OR name LIKE '%LGA1700%' OR name LIKE '%H610%' OR name LIKE '%B760%' OR name LIKE '%A520%' OR name LIKE '%B450%' OR name LIKE '%B550%' OR name LIKE '%B650%' OR name LIKE '%A620%') {shop_clause} AND price >= 500 AND available = 1"
+                    ).fetchone()
+                elif cat == 'cpu':
+                    row_min = conn.execute(
+                        f"SELECT MIN(price) FROM products WHERE category = 'cpu' AND (name LIKE '%Ryzen%' OR name LIKE '%Core i%' OR name LIKE '%i3%' OR name LIKE '%i5%' OR name LIKE '%i7%' OR name LIKE '%12100%' OR name LIKE '%12400%' OR name LIKE '%5500%' OR name LIKE '%5600%' OR name LIKE '%3600%') {shop_clause} AND price >= 500 AND available = 1"
+                    ).fetchone()
                 else:
-                    shop_clause = " AND shop NOT LIKE '%Авито%'" if used_decision == 'new' else ""
                     row_min = conn.execute(
                         f"SELECT MIN(price) FROM products WHERE category = ? {shop_clause} AND price >= 500 AND available = 1",
                         (cat,)
@@ -565,35 +602,27 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
 
             if user_ssd_cap:
                 min_ssd_cap = user_ssd_cap
-                cap_filter = f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%') "
+                cap_filter = f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%') " if user_ssd_cap >= 1024 else f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%512%' OR name LIKE '%500%') "
+                raw_ssds = [dict(r) for r in conn.execute(
+                    f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {cap_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 25",
+                    (max_ssd_price,)
+                ).fetchall()]
+                if not raw_ssds:
+                    # Keep user requested capacity even if slightly exceeding dynamic max_ssd_price
+                    raw_ssds = [dict(r) for r in conn.execute(
+                        f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {cap_filter} {new_filter} ORDER BY price ASC LIMIT 25"
+                    ).fetchall()]
             else:
-                row_min_1tb = conn.execute(
-                    "SELECT MIN(price) FROM products WHERE category = 'ssd' AND (name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') AND price >= 500 AND available = 1"
-                ).fetchone()
-                min_price_1tb = int(row_min_1tb[0]) if (row_min_1tb and row_min_1tb[0]) else 4000
-                row_min_512 = conn.execute(
-                    "SELECT MIN(price) FROM products WHERE category = 'ssd' AND (name LIKE '%512%' OR name LIKE '%500%') AND price >= 500 AND available = 1"
-                ).fetchone()
-                min_price_512 = int(row_min_512[0]) if (row_min_512 and row_min_512[0]) else 2000
-
-                if max_ssd_price >= min_price_1tb:
-                    min_ssd_cap = 1024
-                    cap_filter = " AND (name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') "
-                elif max_ssd_price >= min_price_512:
-                    min_ssd_cap = 512
-                    cap_filter = " AND (name LIKE '%512%' OR name LIKE '%500%' OR name LIKE '%1tb%' OR name LIKE '%1 tb%' OR name LIKE '%1тб%' OR name LIKE '%1 тб%' OR name LIKE '%1000%' OR name LIKE '%1024%') "
-                else:
-                    min_ssd_cap = 256
-                    cap_filter = ""
-
-            raw_ssds = [dict(r) for r in conn.execute(
-                f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {cap_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 25",
-                (max_ssd_price,)
-            ).fetchall()]
-            if not raw_ssds:
-                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 25", (max_ssd_price,)).fetchall()]
-            if not raw_ssds:
-                raw_ssds = [dict(r) for r in conn.execute(f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {new_filter} ORDER BY price ASC LIMIT 25").fetchall()]
+                min_ssd_cap = 256
+                # Provide a variety of SSD capacities (512GB, 1TB) so neural network can choose dynamically
+                raw_ssds = [dict(r) for r in conn.execute(
+                    f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {new_filter} AND price <= ? ORDER BY price ASC LIMIT 30",
+                    (max_ssd_price,)
+                ).fetchall()]
+                if not raw_ssds:
+                    raw_ssds = [dict(r) for r in conn.execute(
+                        f"SELECT * FROM products WHERE category = 'ssd' {ssd_filter} {new_filter} ORDER BY price ASC LIMIT 30"
+                    ).fetchall()]
 
             def get_ssd_capacity(name):
                 m_tb = re.search(r'(\d+)\s*(?:тб|tb)\b', name, re.I)
@@ -771,9 +800,9 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
                 f"     * Для AM4: для Ryzen 3000/4000/5000 (Ryzen 3600, 5500, 5600) — A520, B450 или B550.\n"
                 f"     * Для AM5 — строго AM5: B650/A620; для LGA1700 — строго H610/B760!\n"
                 f"   - Поколение оперативной памяти ОБЯЗАНО в точности совпадать с материнской платой (DDR4 к DDR4, DDR5 к DDR5)!\n\n"
-                f"2. ТРЕБОВАНИЯ К НАКОПИТЕЛЮ (SSD M.2 NVMe):\n"
-                f"   - Если клиент в запросе или в диалоге прямо указал объем накопителя (например: 512 ГБ, 1 ТБ или 2 ТБ) — СТРОГО выбирай SSD запрошенного пользователем объема!\n"
-                f"   - Если клиент не уточнил объем, подбирай качественный емкий SSD из каталога (для средних и топовых сборок — строго 1–2 ТБ, 512 ГБ используй только в ультрабюджетных сборках)!\n\n"
+                f"2. ПОДБОР НАКОПИТЕЛЯ (SSD M.2 NVMe):\n"
+                f"   - Если клиент в запросе прямо указал желаемый объем накопителя (например: 512 ГБ, 1 ТБ или 2 ТБ) — СТРОГО выбирай SSD запрошенного пользователем объема!\n"
+                f"   - Если клиент не указал объем, выбирай оптимальный объем накопителя динамически под доступный бюджет и баланс сборки из переданного каталога, чтобы не урезать ключевую мощность видеокарты и процессора.\n\n"
                 f"3. ДИНАМИЧЕСКИЙ МАТЕМАТИЧЕСКИЙ РАСЧЕТ ОСТАТКА НА ВИДЕОКАРТУ:\n"
                 f"   - Сложи реальные актуальные цены 7 базовых компонентов из переданного каталога:\n"
                 f"     База = Цена(Процессор) + Цена(Материнская плата) + Цена(Кулер) + Цена(ОЗУ) + Цена(SSD) + Цена(Блок питания) + Цена(Корпус).\n"
@@ -1519,6 +1548,7 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
         search_url = make_marketplace_search_url(shop, title)
         return f"<a href='{search_url}' target='_blank'>{title}</a>"
 
+    text = re.sub(r'\[([^\]]+)\]\((https?://.*?)\)(?=\s*(?:—|–|-|\n|<br|$|\.))', md_link_replacer, text)
     text = re.sub(r'\[([^\]]+)\]\((https?://[^\)]+)\)', md_link_replacer, text)
 
     # 3. Коррекция HTML-ссылок <a href='...'>текст</a>
@@ -1772,8 +1802,8 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
         user_ssd_cap = extract_ssd_capacity(user_message, history)
         if used_decision is None:
             prompt_sections.append(
-                "🚨 КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО — ОБЯЗАТЕЛЬНОЕ СОГЛАСОВАНИЕ Б/У И ОБЪЕМА НАКОПИТЕЛЯ ПЕРЕД ВЫДАЧЕЙ СБОРКИ:\n"
-                "Пользователь запросил сборку ПК или указал бюджет, но ЕЩЁ НЕ УТОЧНИЛ, согласен ли он на использование проверенных Б/У комплектующих и какой объем накопителя ему нужен!\n"
+                "🚨 КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО — ОБЯЗАТЕЛЬНОЕ СОГЛАСОВАНИЕ Б/У ПЕРЕД ВЫДАЧЕЙ СБОРКИ:\n"
+                "Пользователь запросил сборку ПК или указал бюджет, но ЕЩЁ НЕ УТОЧНИЛ, согласен ли он на использование проверенных Б/У комплектующих!\n"
                 "ТЫ КАТЕГОРИЧЕСКИ НЕ ДОЛЖЕН СЕЙЧАС ВЫВОДИТЬ СПИСОК 8 КОМПОНЕНТОВ СБОРКИ И НЕ ДОЛЖЕН ВЫВОДИТЬ ИТОГОВУЮ СУММУ!\n\n"
                 "Твоя задача СЕЙЧАС — ответить клиенту вежливо, профессионально и убедительно обычным живым текстом БЕЗ КНОПОК И БЕЗ СПИСКОВ С КНОПКАМИ:\n"
                 "1. Подтверди бюджет клиента (например: 'Отличный бюджет для сборки!').\n"
@@ -1781,10 +1811,10 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
                 "   - Цены на новые комплектующие в розничных магазинах сейчас очень высокие из-за наценок, пошлин и логистики.\n"
                 "   - Если покупать всё только новым в магазине, львиная доля бюджета уйдет на магазинные наценки, и видеокарту придется взять слабую.\n"
                 "   - Использование проверенных Б/У комплектующих со вторичного рынка (Авито) позволяет получить ЗНАЧИТЕЛЬНО больше игровой производительности и гораздо выше FPS за тот же бюджет (например, мощную карту RTX 3070 или RTX 4070 вместо базовой магазинной затычки).\n"
-                "3. Задай клиенту два понятных вопроса обычным текстом, чтобы он сам написал ответ своими словами:\n"
-                "   - Рассматриваете ли вы проверенные Б/У комплектующие (с Авито) ради максимальной мощности и FPS, или собираем строго на 100% новых деталях из магазина с официальной гарантией?\n"
-                "   - Какой объем накопителя (SSD M.2 NVMe) вам потребуется под систему и игры (например: 512 ГБ, 1 ТБ или 2 ТБ)?\n\n"
-                "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО рисовать имитацию кнопок или списки с кружками-кнопками вида «🟢 Да, можно Б/У...» / «🔵 Только новые...»! Просто задай вопрос обычным текстом, чтобы пользователь сам написал свой ответ своими словами (например: 'можно бу, ссд на 1 тб' или 'только новое, 512 гб').\n"
+                "3. Задай клиенту ОДИН понятный вопрос обычным текстом, чтобы он сам написал ответ своими словами:\n"
+                "   «Подскажите, рассматриваете ли вы проверенные Б/У комплектующие (с Авито) ради максимальной мощности и FPS, или собираем строго на 100% новых деталях из магазина с официальной гарантией?»\n\n"
+                "Вопрос об объеме накопителя (SSD) сейчас НЕ задавай — объем накопителя подбирай динамически под бюджет сборки, а клиент сможет скорректировать его позже.\n"
+                "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО рисовать имитацию кнопок или списки с кружками-кнопками вида «🟢 Да, можно Б/У...» / «🔵 Только новые...»! Просто задай вопрос обычным текстом, чтобы пользователь сам написал свой ответ своими словами (например: 'можно бу' или 'только новое').\n"
                 "КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать состав сборки (1. Процессор, 2. Плата...) в этом ответе! Сначала получи ответ клиента!"
             )
         elif used_decision == 'used':
@@ -1823,6 +1853,12 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
             prompt_sections.append(
                 f"💾 ЖЕЛАЕМЫЙ ОБЪЕМ НАКОПИТЕЛЯ: пользователь явно запросил объем SSD M.2 NVMe {cap_str}. "
                 f"В пункте 6 сборки (Накопитель) ОБЯЗАТЕЛЬНО выбери накопитель строго объема {cap_str}!"
+            )
+
+        if used_decision is not None:
+            prompt_sections.append(
+                "💬 ОБЯЗАТЕЛЬНЫЙ ВОПРОС КЛИЕНТУ В КОНЦЕ СБОРКИ:\n"
+                "В самом конце каждого ответа с готовой конфигурацией ПК (после Примечания эксперта и советов по проверке) ОБЯЗАТЕЛЬНО сделай двойной отступ <br><br> и вежливо спроси клиента живым текстом, что бы он хотел изменить или скорректировать в этой сборке (например: увеличить объем SSD накопителя, добавить оперативной памяти, выбрать другую видеокарту или изменить корпус)."
             )
 
     return "\n\n".join(prompt_sections)
