@@ -354,17 +354,18 @@
                     <circle cx="206" cy="173" r="1.5" fill="#38bdf8"/>
                 </g>
 
-                <!-- 5. RAM (Memory Modules) -->
+                <!-- 5. RAM (Memory Modules in Slots 1 & 3) -->
                 <g class="rig-part" id="part-ram" data-part="ram">
-                    <!-- Slot 1 -->
+                    <!-- Slot 1 (Populated) -->
                     <rect x="245" y="95" width="10" height="110" rx="3" class="rig-ram-stick" />
                     <rect x="246" y="96" width="8" height="20" rx="2" fill="url(#gradFanRgb)" />
-                    <!-- Slot 2 -->
-                    <rect x="261" y="95" width="10" height="110" rx="3" class="rig-ram-stick" />
-                    <rect x="262" y="96" width="8" height="20" rx="2" fill="url(#gradFanRgb)" />
-                    <!-- Slot 3 & 4 (dimmed) -->
-                    <rect x="277" y="97" width="8" height="106" rx="2" fill="#1e1b2e" stroke="rgba(255,255,255,0.1)"/>
-                    <rect x="291" y="97" width="8" height="106" rx="2" fill="#1e1b2e" stroke="rgba(255,255,255,0.1)"/>
+                    <!-- Slot 2 (Empty) -->
+                    <rect x="262" y="97" width="8" height="106" rx="2" fill="#1e1b2e" stroke="rgba(255,255,255,0.1)"/>
+                    <!-- Slot 3 (Populated) -->
+                    <rect x="276" y="95" width="10" height="110" rx="3" class="rig-ram-stick" />
+                    <rect x="277" y="96" width="8" height="20" rx="2" fill="url(#gradFanRgb)" />
+                    <!-- Slot 4 (Empty) -->
+                    <rect x="292" y="97" width="8" height="106" rx="2" fill="#1e1b2e" stroke="rgba(255,255,255,0.1)"/>
                 </g>
 
                 <!-- 6. SSD M.2 NVMe Slot with Armor Heatsink - NO TEXT, CRISP ALIGNMENT -->
