@@ -102,8 +102,42 @@ def init_db():
         cursor.execute(f"DELETE FROM products_fts WHERE id IN (SELECT id FROM products WHERE {psu_junk_filter});")
         cursor.execute(f"DELETE FROM products WHERE {psu_junk_filter};")
 
+        # 7. Automatic purge of stale products not updated for > 15 days
+        cursor.execute("""
+            DELETE FROM products_fts WHERE id IN (
+                SELECT id FROM products WHERE updated_at < datetime('now', '-15 days')
+            );
+        """)
+        cursor.execute("DELETE FROM products WHERE updated_at < datetime('now', '-15 days');")
+
         conn.commit()
     logger.info(f"Database initialized at {DB_PATH}")
+
+def cleanup_stale_products(max_age_days: int = 15) -> int:
+    """
+    Removes products that have not been re-scraped or updated within max_age_days (default: 15).
+    Keeps FTS5 full-text index in sync. If a product is re-scraped, its updated_at is bumped
+    and the 15-day countdown restarts.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT count(*) FROM products WHERE updated_at < datetime('now', ?)",
+            (f"-{max_age_days} days",)
+        )
+        count = cursor.fetchone()[0]
+        if count > 0:
+            cursor.execute(
+                "DELETE FROM products_fts WHERE id IN (SELECT id FROM products WHERE updated_at < datetime('now', ?))",
+                (f"-{max_age_days} days",)
+            )
+            cursor.execute(
+                "DELETE FROM products WHERE updated_at < datetime('now', ?)",
+                (f"-{max_age_days} days",)
+            )
+            conn.commit()
+            logger.info(f"Purged {count} stale products not updated in {max_age_days} days.")
+        return count
 
 def upsert_products(products: List[Dict[str, Any]]):
     """Inserts or updates a batch of products and keeps FTS5 index in sync."""
@@ -189,6 +223,7 @@ def upsert_products(products: List[Dict[str, Any]]):
             """, (p_data["id"], p_data["name"], p_data["category"], p_data["shop"]))
             
         conn.commit()
+    cleanup_stale_products(max_age_days=15)
 
 def cleanup_static_dns():
     """Removes previously seeded static DNS catalog items (43 components)."""

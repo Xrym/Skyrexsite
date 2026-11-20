@@ -38,6 +38,8 @@ class BackgroundPriceScheduler:
             try:
                 logger.info("Executing periodic catalog price update...")
                 self.scraper.run_scrape_cycle(max_pages=self.max_pages)
+                from db.database import cleanup_stale_products
+                cleanup_stale_products(max_age_days=15)
             except Exception as e:
                 logger.error(f"Error during periodic scraping: {e}")
 
