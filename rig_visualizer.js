@@ -710,7 +710,10 @@
             // Pre-normalize text: strip list tags and ensure numbered items start on fresh line even if glued
             let norm = responseText.replace(/<\/?(?:ul|ol|li)[^>]*>/gi, "\n");
             norm = norm.replace(/<br\s*\/?>/gi, "\n");
-            norm = norm.replace(/([^\n>])\s*(\b\d+[\.\)]\s*(?:<b>)?[А-ЯA-Z])/g, "$1\n$2");
+            // Only split on list items 1..10 followed by capital letter or known category name (NEVER on processor numbers like "5600. Чтобы")
+            norm = norm.replace(/([^\n>])\s*((?:[1-9]|10)[\.\)]\s*(?:<[^>]+>)?\s*(?:[А-ЯA-Z]|Процессор|Видеокарта|Материнская|Оперативная|Кулер|SSD|Блок|Корпус))/gi, "$1\n$2");
+            norm = norm.replace(/((?:руб\.?|₽|\))\s*)((?:[1-9]|10)[\.\)]\s*(?:<[^>]+>)?\s*(?:[А-ЯA-Z]|Процессор|Видеокарта|Материнская|Оперативная|Кулер|SSD|Блок|Корпус))/gi, "$1\n$2");
+            norm = norm.replace(/((?:руб\.?|₽))\s*(Точная|Итого|Остаток|Примечание)/gi, "$1\n$2");
 
             const lines = norm.split("\n");
             const newItems = {};
@@ -731,9 +734,16 @@
                 const lineClean = line.trim();
                 if (!lineClean) continue;
 
-                // Check numbered list format: e.g. "1. Процессор..." or "2) Видеокарта..."
+                // Skip non-component summary or conversational lines
+                if (/^(?:точная\s+суммарная|итого|стоимость|остаток|бюджет|примечание)/i.test(lineClean)) continue;
+                if (/(?:лимит\s+бюджета|остаток\s+от\s+бюджета|в\s+бюджет)/i.test(lineClean) && !/^\s*(?:[1-9]|10)[\.\)]/i.test(lineClean)) continue;
+
+                // Check numbered list format strictly: 1. to 10. with a category label and colon
+                const isNumberedComponent = /^\s*(?:[1-9]|10)[\.\)]\s*(?:<[^>]+>)?\s*[^:\n]+:\s*/i.test(lineClean);
+                if (!isNumberedComponent) continue;
+
                 for (const cat of catPatterns) {
-                    if (new RegExp(`^\\s*\\d+[\\.\\)]\\s*.*?${cat.regex.source}`, 'i').test(lineClean)) {
+                    if (new RegExp(`^\\s*(?:[1-9]|10)[\\.\\)]\\s*.*?${cat.regex.source}`, 'i').test(lineClean)) {
                         // Extract Link & Name (support both HTML <a> and Markdown [Title](URL))
                         let url = "";
                         let name = "";
@@ -758,8 +768,10 @@
                             name = mName ? mName[1].replace(/<[^>]+>/g, '').trim() : '';
                         }
 
-                        // Extract Price
-                        const mPrice = lineClean.match(/(?:—|–|-)?\s*([\d\s\xa0,.]+)\s*(?:руб|₽)/i);
+                        // Extract Price: strictly prefer price following dash (—)
+                        const mPrice = lineClean.match(/(?:—|–|-)\s*([\d\s\xa0,.]+)\s*(?:руб|₽)/i) ||
+                                       lineClean.match(/:\s*.*?([\d\s\xa0,.]+)\s*(?:руб|₽)\s*$/i) ||
+                                       lineClean.match(/([\d\s\xa0,.]+)\s*(?:руб|₽)/i);
                         let price = "";
                         if (mPrice) {
                             const rawP = mPrice[1].replace(/[\s\xa0]/g, '').replace(/,/g, '');

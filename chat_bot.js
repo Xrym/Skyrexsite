@@ -253,7 +253,9 @@ document.addEventListener("DOMContentLoaded", () => {
         text = text.replace(/^>\s+(.+)$/gm, "<blockquote>$1</blockquote>");
 
         // 9.1. Prevent glued numbered items and headers (e.g. "руб.2. Материнская плата" -> "руб.<br>2. Материнская плата")
-        text = text.replace(/([^\n>])\s*(\b\d+\.\s*(?:<b>)?[А-ЯA-Z])/g, "$1<br>$2");
+        text = text.replace(/([^\n>])\s*((?:[1-9]|10)\.\s*(?:<b>)?[А-ЯA-Z])/g, "$1<br>$2");
+        text = text.replace(/((?:руб\.?|₽|\))\s*)((?:[1-9]|10)\.\s*(?:<b>)?[А-ЯA-Z])/g, "$1<br>$2");
+        text = text.replace(/((?:руб\.?|₽))\s*(Точная|Итого|Остаток|Примечание)/gi, "$1<br><br>$2");
         text = text.replace(/([^\n>])\s*(Конфигурация ПК под ваш бюджет|Вот сбалансированная|Вот оптимальная|Точная суммарная стоимость|Примечание эксперта|Примечание)/gi, "$1<br><br>$2");
 
         // 9.2. Exact mathematical synchronization of total build price:
