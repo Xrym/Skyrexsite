@@ -492,12 +492,16 @@ document.addEventListener("DOMContentLoaded", () => {
         return AUTOCOMPLETE_ITEMS.filter(item => {
             const titleLower = item.title.toLowerCase();
             const promptLower = (item.prompt || "").toLowerCase();
-            const tags = item.tags || [];
+            const tags = (item.tags || []).map(t => t.toLowerCase());
 
             return tokens.every(token => {
-                return titleLower.includes(token) ||
-                       tags.some(tag => tag.toLowerCase().includes(token)) ||
-                       promptLower.includes(token);
+                if (titleLower.includes(token) || promptLower.includes(token)) return true;
+                if (tags.some(tag => tag.includes(token) || token.includes(tag))) return true;
+                if (token.length >= 4) {
+                    const stem = token.slice(0, 4);
+                    if (titleLower.includes(stem) || tags.some(tag => tag.includes(stem))) return true;
+                }
+                return false;
             });
         }).slice(0, 6);
     }
@@ -507,16 +511,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const tokens = query.trim().split(/\s+/).filter(t => t.length > 0);
         if (tokens.length === 0) return escapeHtml(text);
 
+        const safeText = escapeHtml(text);
         const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-        const regex = new RegExp(`(${escaped})`, 'gi');
-
-        const parts = text.split(regex);
-        return parts.map(part => {
-            if (regex.test(part)) {
-                return `<span class="ac-match">${escapeHtml(part)}</span>`;
-            }
-            return escapeHtml(part);
-        }).join('');
+        const regex = new RegExp('(' + escaped + ')', 'gi');
+        return safeText.replace(regex, '<span class="ac-match">$1</span>');
     }
 
     function showAutocomplete(matches, query) {
@@ -553,6 +551,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     </button>
                 </div>
             `;
+
+            // Prevent blur of chatInput when clicking suggestion
+            itemEl.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+            });
 
             const sendBtn = itemEl.querySelector(".ac-send-btn");
             if (sendBtn) {
@@ -648,6 +651,15 @@ document.addEventListener("DOMContentLoaded", () => {
             showAutocomplete(matches, val);
         } else {
             hideAutocomplete();
+        }
+    });
+
+    chatInput.addEventListener("focus", () => {
+        if (state.isGenerating) return;
+        const val = chatInput.value;
+        if (val.trim().length >= 1) {
+            const matches = getAutocompleteMatches(val);
+            showAutocomplete(matches, val);
         }
     });
 

@@ -1299,6 +1299,7 @@ footer {
 /* Chat Message Body */
 .chat-body {
     flex-grow: 1;
+    min-height: 0;
     padding: 24px;
     overflow-y: auto;
     display: flex;
@@ -1640,20 +1641,24 @@ footer {
 .chat-autocomplete {
     display: none;
     flex-direction: column;
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 20px;
+    right: 20px;
     gap: 4px;
-    background: rgba(20, 17, 32, 0.96);
-    border: 1px solid rgba(139, 92, 246, 0.28);
+    background: rgba(18, 15, 28, 0.98);
+    border: 1px solid rgba(139, 92, 246, 0.35);
     border-radius: 14px;
-    padding: 6px;
-    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.55), 0 0 20px rgba(139, 92, 246, 0.15);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    max-height: 240px;
+    padding: 8px 6px;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.7), 0 0 25px rgba(139, 92, 246, 0.2);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    max-height: 250px;
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
     animation: acSlideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 30;
+    z-index: 100;
 }
 
 @keyframes acSlideUp {
