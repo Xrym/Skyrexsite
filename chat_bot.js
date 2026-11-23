@@ -627,9 +627,14 @@ document.addEventListener("DOMContentLoaded", () => {
     function autoResizeInput() {
         if (!chatInput) return;
         chatInput.style.height = "auto";
-        const newHeight = Math.min(chatInput.scrollHeight, 130);
+        const maxHeight = 130;
+        const scrollH = chatInput.scrollHeight;
+        const newHeight = Math.min(scrollH, maxHeight);
         chatInput.style.height = (newHeight > 44 ? newHeight : 44) + "px";
+        chatInput.style.overflowY = scrollH > maxHeight ? "auto" : "hidden";
     }
+
+    autoResizeInput();
 
     chatInput.addEventListener("input", () => {
         autoResizeInput();

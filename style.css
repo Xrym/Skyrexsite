@@ -1837,9 +1837,36 @@ footer {
     line-height: 1.45;
     resize: none;
     min-height: 44px;
+    height: 44px;
     max-height: 130px;
-    overflow-y: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
     transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+#chat-input::-webkit-scrollbar {
+    width: 5px;
+}
+
+#chat-input::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#chat-input::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.35);
+    border-radius: 4px;
+}
+
+#chat-input::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 92, 246, 0.6);
+}
+
+#chat-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 #chat-input:focus {
