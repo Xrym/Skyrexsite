@@ -912,11 +912,6 @@ class TelegramAdminBot:
 
             category = CATEGORY_ICONS.get(component.get("category", "other"), "⚙️ Комплектующее")
             price = f"{component.get('price', 0):,} ₽".replace(",", " ")
-            min_price = (
-                f" (мин. {component.get('minprice'):,} ₽)"
-                if component.get("minprice")
-                else ""
-            )
             comment = component.get("comment") or "Нет комментария"
             card = (
                 "⭐️ <b>Подтвердите добавление в Базу мнений и оценок:</b>\n\n"
@@ -925,7 +920,7 @@ class TelegramAdminBot:
                 f"• <b>Оценка эксперта:</b> ⭐️ <b>{component.get('mark') or 8}/10</b>\n"
             )
             if component.get('price'):
-                card += f"• <b>Ориентир цены:</b> {price}{min_price}\n"
+                card += f"• <b>Ориентир цены:</b> {price}\n"
             card += f"• <b>Вердикт/мнение:</b> <i>{comment}</i>\n"
             if component.get("analogue"):
                 card += f"• <b>Аналоги:</b> {component['analogue']}\n"
@@ -1082,7 +1077,6 @@ class TelegramAdminBot:
                     "componentname": item_data.get("name", "Без названия"),
                     "mark": item_data.get("mark", 8),
                     "price": int(item_data.get("price", 0)),
-                    "minprice": int(item_data.get("minprice")) if item_data.get("minprice") else None,
                     "comment": item_data.get("comment", ""),
                     "analogue": item_data.get("analogue", ""),
                     "created_by": str(user_id),

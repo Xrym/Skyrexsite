@@ -36,20 +36,48 @@ def get_client_ip(request: web.Request) -> str:
 def check_ip_rate_limit(limits_dict: dict, ip: str, max_requests: int, window_seconds: int = 60) -> bool:
     """Enforces sliding window rate limit per IP and prunes memory when large."""
     now = time.time()
-    valid_ts = [t for t in limits_dict[ip] if now - t < window_seconds]
+    valid_ts = [t for t in limits_dict.get(ip, []) if now - t < window_seconds]
     if len(valid_ts) >= max_requests:
         return False
     valid_ts.append(now)
     limits_dict[ip] = valid_ts
-    if len(limits_dict) > 10000:
-        stale_keys = [k for k, ts in limits_dict.items() if not ts or (now - ts[-1] > window_seconds * 2)]
-        for k in stale_keys[:5000]:
+    if len(limits_dict) > 2000:
+        cutoff = now - (window_seconds * 2)
+        stale_keys = [k for k, ts in limits_dict.items() if not ts or ts[-1] < cutoff]
+        for k in stale_keys:
             limits_dict.pop(k, None)
     return True
 
 def check_rate_limit(ip: str) -> bool:
     """Enforces rate limiting per IP address to avoid API quota exhaustion."""
     return check_ip_rate_limit(CHAT_RATE_LIMITS, ip, max_requests=CHAT_MAX_REQUESTS_PER_MINUTE, window_seconds=60)
+
+# Shared high-performance HTTP client session and concurrency limiter for LLM calls
+_SHARED_CLIENT_SESSION: Optional[aiohttp.ClientSession] = None
+MAX_CONCURRENT_LLM_REQUESTS = int(os.getenv("MAX_CONCURRENT_LLM_REQUESTS", "20"))
+_LLM_SEMAPHORE: Optional[asyncio.Semaphore] = None
+
+def get_llm_semaphore() -> asyncio.Semaphore:
+    global _LLM_SEMAPHORE
+    if _LLM_SEMAPHORE is None:
+        _LLM_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_LLM_REQUESTS)
+    return _LLM_SEMAPHORE
+
+def get_shared_client_session() -> aiohttp.ClientSession:
+    global _SHARED_CLIENT_SESSION
+    if _SHARED_CLIENT_SESSION is None or _SHARED_CLIENT_SESSION.closed:
+        connector = aiohttp.TCPConnector(
+            limit=100,
+            limit_per_host=30,
+            enable_cleanup_closed=True,
+            keepalive_timeout=60
+        )
+        _SHARED_CLIENT_SESSION = aiohttp.ClientSession(
+            connector=connector,
+            trust_env=True,
+            timeout=aiohttp.ClientTimeout(total=75, connect=10)
+        )
+    return _SHARED_CLIENT_SESSION
 
 from tg_admin_bot import TelegramAdminBot
 
@@ -191,6 +219,68 @@ def detect_hardware_specs(product: dict) -> dict:
 
     return specs
 
+# High-concurrency cached minimum prices per hardware category (TTL: 10 minutes)
+_MARKET_MINS_CACHE: Dict[tuple, Dict[str, Any]] = {}
+
+def get_cached_market_mins(conn, used_decision: Optional[str] = None, user_ssd_cap: Optional[int] = None) -> Dict[str, int]:
+    cache_key = (used_decision, user_ssd_cap)
+    now = time.time()
+    cached = _MARKET_MINS_CACHE.get(cache_key)
+    if cached and (now - cached["ts"] < 600.0):
+        return dict(cached["data"])
+
+    market_mins = {}
+    shop_clause = " AND shop NOT LIKE '%Авито%'" if used_decision == 'new' else ""
+    for cat in ['cpu', 'gpu', 'motherboard', 'ram', 'ssd', 'psu', 'cooler', 'case']:
+        if cat == 'case':
+            row_min = conn.execute(
+                "SELECT MIN(price) FROM products WHERE category = 'case' AND (name LIKE '%XASTRA%' OR name LIKE '%xastra%') AND price >= 500 AND available = 1"
+            ).fetchone()
+        elif cat == 'cooler':
+            row_min = conn.execute(
+                f"SELECT MIN(price) FROM products WHERE category = 'cooler' AND name NOT LIKE '%звуков%' AND name NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' {shop_clause} AND price >= 500 AND available = 1"
+            ).fetchone()
+        elif cat == 'psu':
+            row_min = conn.execute(
+                f"SELECT MIN(price) FROM products WHERE category = 'psu' AND ((name LIKE '%Powercase%' AND name LIKE '%PW%') OR (name LIKE '%GamerStorm%' AND name LIKE '%PF%') OR (name LIKE '%1stPlayer%' AND name LIKE '%NGDP%')) {shop_clause} AND price >= 500 AND available = 1"
+            ).fetchone()
+        elif cat == 'ram':
+            row_min = conn.execute(
+                f"SELECT MIN(price) FROM products WHERE category = 'ram' AND (name LIKE '%DDR4%' OR name LIKE '%DDR5%') AND name NOT LIKE '%sodimm%' AND name NOT LIKE '%ноутбук%' AND name NOT LIKE '%неисправн%' {shop_clause} AND price >= 500 AND available = 1"
+            ).fetchone()
+        elif cat == 'ssd':
+            cap_sub = ""
+            if user_ssd_cap:
+                cap_sub = f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%') " if user_ssd_cap >= 1024 else f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%512%' OR name LIKE '%500%') "
+            row_min = conn.execute(
+                f"SELECT MIN(price) FROM products WHERE category = 'ssd' {cap_sub} AND (name LIKE '%m.2%' OR name LIKE '%m2%' OR name LIKE '%nvme%') AND name NOT LIKE '%sata%' AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
+            ).fetchone()
+            if not (row_min and row_min[0]) and cap_sub:
+                row_min = conn.execute(
+                    f"SELECT MIN(price) FROM products WHERE category = 'ssd' AND (name LIKE '%m.2%' OR name LIKE '%m2%' OR name LIKE '%nvme%') AND name NOT LIKE '%sata%' AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
+                ).fetchone()
+        elif cat == 'gpu':
+            row_min = conn.execute(
+                f"SELECT MIN(price) FROM products WHERE category = 'gpu' AND name NOT LIKE '%GT210%' AND name NOT LIKE '%GT 210%' AND name NOT LIKE '%GT710%' AND name NOT LIKE '%GT 710%' AND name NOT LIKE '%GT730%' AND name NOT LIKE '%GT 730%' AND name NOT LIKE '%GT740%' AND name NOT LIKE '%GT 740%' AND name NOT LIKE '%неисправн%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
+            ).fetchone()
+        elif cat == 'motherboard':
+            row_min = conn.execute(
+                f"SELECT MIN(price) FROM products WHERE category = 'motherboard' AND (name LIKE '%AM4%' OR name LIKE '%AM5%' OR name LIKE '%LGA 1700%' OR name LIKE '%LGA1700%' OR name LIKE '%H610%' OR name LIKE '%B760%' OR name LIKE '%A520%' OR name LIKE '%B450%' OR name LIKE '%B550%' OR name LIKE '%B650%' OR name LIKE '%A620%') {shop_clause} AND price >= 500 AND available = 1"
+            ).fetchone()
+        elif cat == 'cpu':
+            row_min = conn.execute(
+                f"SELECT MIN(price) FROM products WHERE category = 'cpu' AND (name LIKE '%Ryzen%' OR name LIKE '%Core i%' OR name LIKE '%i3%' OR name LIKE '%i5%' OR name LIKE '%i7%' OR name LIKE '%12100%' OR name LIKE '%12400%' OR name LIKE '%5500%' OR name LIKE '%5600%' OR name LIKE '%3600%') {shop_clause} AND price >= 500 AND available = 1"
+            ).fetchone()
+        else:
+            row_min = conn.execute(
+                f"SELECT MIN(price) FROM products WHERE category = ? {shop_clause} AND price >= 500 AND available = 1",
+                (cat,)
+            ).fetchone()
+        market_mins[cat] = int(row_min[0]) if (row_min and row_min[0]) else 1000
+
+    _MARKET_MINS_CACHE[cache_key] = {"data": market_mins, "ts": now}
+    return dict(market_mins)
+
 # 3. Dynamic context retrieval with budget awareness & hardware compatibility
 def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] = None, history: list = None) -> str:
     """Dynamically fetches real parsed products from SQLite catalog.db based on budget, query, and strict compatibility."""
@@ -266,56 +356,8 @@ def get_parsed_catalog_context(user_message: str, used_decision: Optional[str] =
         with get_connection() as conn:
             user_ssd_cap = extract_ssd_capacity(user_message, history)
 
-            # Dynamic market minimum entry prices queried directly from live catalog.db with quality filters
-            market_mins = {}
-            for cat in ['cpu', 'gpu', 'motherboard', 'ram', 'ssd', 'psu', 'cooler', 'case']:
-                shop_clause = " AND shop NOT LIKE '%Авито%'" if used_decision == 'new' else ""
-                if cat == 'case':
-                    row_min = conn.execute(
-                        "SELECT MIN(price) FROM products WHERE category = 'case' AND (name LIKE '%XASTRA%' OR name LIKE '%xastra%') AND price >= 500 AND available = 1"
-                    ).fetchone()
-                elif cat == 'cooler':
-                    row_min = conn.execute(
-                        f"SELECT MIN(price) FROM products WHERE category = 'cooler' AND name NOT LIKE '%звуков%' AND name NOT LIKE '%videokarty%' AND name NOT LIKE '%geforce%' {shop_clause} AND price >= 500 AND available = 1"
-                    ).fetchone()
-                elif cat == 'psu':
-                    row_min = conn.execute(
-                        f"SELECT MIN(price) FROM products WHERE category = 'psu' AND ((name LIKE '%Powercase%' AND name LIKE '%PW%') OR (name LIKE '%GamerStorm%' AND name LIKE '%PF%') OR (name LIKE '%1stPlayer%' AND name LIKE '%NGDP%')) {shop_clause} AND price >= 500 AND available = 1"
-                    ).fetchone()
-                elif cat == 'ram':
-                    row_min = conn.execute(
-                        f"SELECT MIN(price) FROM products WHERE category = 'ram' AND (name LIKE '%DDR4%' OR name LIKE '%DDR5%') AND name NOT LIKE '%sodimm%' AND name NOT LIKE '%ноутбук%' AND name NOT LIKE '%неисправн%' {shop_clause} AND price >= 500 AND available = 1"
-                    ).fetchone()
-                elif cat == 'ssd':
-                    cap_sub = ""
-                    if user_ssd_cap:
-                        cap_sub = f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%1tb%' OR name LIKE '%1тб%' OR name LIKE '%2tb%' OR name LIKE '%2тб%') " if user_ssd_cap >= 1024 else f" AND (name LIKE '%{user_ssd_cap}%' OR name LIKE '%512%' OR name LIKE '%500%') "
-                    row_min = conn.execute(
-                        f"SELECT MIN(price) FROM products WHERE category = 'ssd' {cap_sub} AND (name LIKE '%m.2%' OR name LIKE '%m2%' OR name LIKE '%nvme%') AND name NOT LIKE '%sata%' AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
-                    ).fetchone()
-                    if not (row_min and row_min[0]) and cap_sub:
-                        row_min = conn.execute(
-                            f"SELECT MIN(price) FROM products WHERE category = 'ssd' AND (name LIKE '%m.2%' OR name LIKE '%m2%' OR name LIKE '%nvme%') AND name NOT LIKE '%sata%' AND name NOT LIKE '%нерабоч%' AND name NOT LIKE '%под ремонт%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
-                        ).fetchone()
-                elif cat == 'gpu':
-                    row_min = conn.execute(
-                        f"SELECT MIN(price) FROM products WHERE category = 'gpu' AND name NOT LIKE '%GT210%' AND name NOT LIKE '%GT 210%' AND name NOT LIKE '%GT710%' AND name NOT LIKE '%GT 710%' AND name NOT LIKE '%GT730%' AND name NOT LIKE '%GT 730%' AND name NOT LIKE '%GT740%' AND name NOT LIKE '%GT 740%' AND name NOT LIKE '%неисправн%' AND name NOT LIKE '%на запчаст%' {shop_clause} AND price >= 500 AND available = 1"
-                    ).fetchone()
-                elif cat == 'motherboard':
-                    row_min = conn.execute(
-                        f"SELECT MIN(price) FROM products WHERE category = 'motherboard' AND (name LIKE '%AM4%' OR name LIKE '%AM5%' OR name LIKE '%LGA 1700%' OR name LIKE '%LGA1700%' OR name LIKE '%H610%' OR name LIKE '%B760%' OR name LIKE '%A520%' OR name LIKE '%B450%' OR name LIKE '%B550%' OR name LIKE '%B650%' OR name LIKE '%A620%') {shop_clause} AND price >= 500 AND available = 1"
-                    ).fetchone()
-                elif cat == 'cpu':
-                    row_min = conn.execute(
-                        f"SELECT MIN(price) FROM products WHERE category = 'cpu' AND (name LIKE '%Ryzen%' OR name LIKE '%Core i%' OR name LIKE '%i3%' OR name LIKE '%i5%' OR name LIKE '%i7%' OR name LIKE '%12100%' OR name LIKE '%12400%' OR name LIKE '%5500%' OR name LIKE '%5600%' OR name LIKE '%3600%') {shop_clause} AND price >= 500 AND available = 1"
-                    ).fetchone()
-                else:
-                    row_min = conn.execute(
-                        f"SELECT MIN(price) FROM products WHERE category = ? {shop_clause} AND price >= 500 AND available = 1",
-                        (cat,)
-                    ).fetchone()
-                market_mins[cat] = int(row_min[0]) if (row_min and row_min[0]) else 1000
-
+            # High-speed cached market minimum entry prices queried from catalog.db
+            market_mins = get_cached_market_mins(conn, used_decision, user_ssd_cap)
             total_market_mins = sum(market_mins.values())
 
             supporting_cats = ['motherboard', 'cooler', 'ram', 'ssd', 'psu', 'case']
@@ -1767,8 +1809,6 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
         )
         if component.get('price'):
             catalog_text += f"Медианная рыночная цена: {component['price']} руб. "
-        if component.get("minprice"):
-            catalog_text += f"(Минимальная цена: {component['minprice']} руб). "
         catalog_text += f"Ссылка на поиск Авито: {avito_url}."
         catalog_text += "\n"
 
@@ -1967,16 +2007,21 @@ async def call_llm(message: str, history: list) -> str:
                     user_budget = b
                     break
 
-    dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision, history=history)
-    system_instruction = build_system_instruction(
-        dynamic_context=dynamic_context,
-        user_message=message,
-        history=history,
-        used_decision=used_decision
+    dynamic_context = await asyncio.to_thread(
+        get_parsed_catalog_context, message, used_decision, history
+    )
+    system_instruction = await asyncio.to_thread(
+        build_system_instruction,
+        dynamic_context,
+        message,
+        history,
+        used_decision
     )
     llm_proxy = get_active_proxy(provider)
 
-    async with aiohttp.ClientSession(trust_env=True) as session:
+    session = get_shared_client_session()
+    semaphore = get_llm_semaphore()
+    async with semaphore:
         try:
             if provider == "gemini":
                 contents = []
@@ -2123,16 +2168,21 @@ async def stream_llm(message: str, history: list):
                     user_budget = b
                     break
 
-    dynamic_context = get_parsed_catalog_context(message, used_decision=used_decision, history=history)
-    system_instruction = build_system_instruction(
-        dynamic_context=dynamic_context,
-        user_message=message,
-        history=history,
-        used_decision=used_decision
+    dynamic_context = await asyncio.to_thread(
+        get_parsed_catalog_context, message, used_decision, history
+    )
+    system_instruction = await asyncio.to_thread(
+        build_system_instruction,
+        dynamic_context,
+        message,
+        history,
+        used_decision
     )
     llm_proxy = get_active_proxy(provider)
 
-    async with aiohttp.ClientSession(trust_env=True) as session:
+    session = get_shared_client_session()
+    semaphore = get_llm_semaphore()
+    async with semaphore:
         try:
             if provider == "gemini":
                 contents = []
@@ -2266,7 +2316,9 @@ async def handle_search_price(request):
         max_price = int(max_price_raw) if max_price_raw.isdigit() else None
         limit = min(max(int(request.query.get("limit", 10)), 1), 50)
         
-        results = search_price(query=query, category=category, shop=shop, max_price=max_price, limit=limit)
+        results = await asyncio.to_thread(
+            search_price, query=query, category=category, shop=shop, max_price=max_price, limit=limit
+        )
         return web.json_response({
             "query": query,
             "count": len(results),
@@ -2378,7 +2430,7 @@ async def handle_auth_register(request):
         if len(password) > 128:
             return web.json_response({"success": False, "error": "Пароль не должен превышать 128 символов."}, status=400)
 
-        result = register_user(username, password)
+        result = await asyncio.to_thread(register_user, username, password)
         status = 200 if result.get("success") else 400
         return web.json_response(result, status=status)
     except Exception as e:
@@ -2405,7 +2457,7 @@ async def handle_auth_login(request):
         if len(username) > 32 or len(password) > 128:
             return web.json_response({"success": False, "error": "Неверный логин или пароль."}, status=401)
 
-        result = login_user(username, password)
+        result = await asyncio.to_thread(login_user, username, password)
         status = 200 if result.get("success") else 401
         return web.json_response(result, status=status)
     except Exception as e:
@@ -2416,7 +2468,7 @@ async def handle_auth_login(request):
 async def handle_auth_me(request):
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
-    user = get_user_by_token(token)
+    user = await asyncio.to_thread(get_user_by_token, token) if token else None
     if not user:
         return web.json_response({"authenticated": False}, status=401)
     return web.json_response({"authenticated": True, "user": user})
@@ -2424,7 +2476,8 @@ async def handle_auth_me(request):
 async def handle_auth_logout(request):
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
-    logout_token(token)
+    if token:
+        await asyncio.to_thread(logout_token, token)
     return web.json_response({"success": True})
 
 async def handle_chat(request):
@@ -2440,7 +2493,7 @@ async def handle_chat(request):
         # Check authorization token (optional during free beta)
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
-        current_user = get_user_by_token(token) if token else None
+        current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
 
         try:
             data = await request.json()
@@ -2521,10 +2574,12 @@ async def handle_chat(request):
         return web.json_response({"response": err_msg}, status=500)
 
 async def handle_index(request):
-    return web.FileResponse(os.path.join(PROJECT_ROOT, 'index.html'))
+    resp = web.FileResponse(os.path.join(PROJECT_ROOT, 'index.html'))
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 async def handle_safe_static(request):
-    """Serves strictly whitelisted client-side scripts and stylesheets."""
+    """Serves strictly whitelisted client-side scripts and stylesheets with high-performance caching headers."""
     filename = request.match_info.get('filename')
     allowed_files = {
         'style.css': 'style.css',
@@ -2535,7 +2590,10 @@ async def handle_safe_static(request):
     }
     if filename not in allowed_files:
         return web.Response(text="404 Not Found", status=404)
-    return web.FileResponse(os.path.join(PROJECT_ROOT, allowed_files[filename]))
+    file_path = os.path.join(PROJECT_ROOT, allowed_files[filename])
+    resp = web.FileResponse(file_path)
+    resp.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    return resp
 
 # 5. Initialize application
 async def init_app():
@@ -2551,15 +2609,15 @@ async def init_app():
     app.router.add_get('/api/auth/me', handle_auth_me)
     app.router.add_post('/api/auth/logout', handle_auth_logout)
     
-    # Public API for expert catalog & rules
+    # Public API for expert catalog & rules (non-blocking)
     async def handle_expert_components(request):
         from db.database import get_expert_components
-        components = get_expert_components(limit=200)
+        components = await asyncio.to_thread(get_expert_components, 200)
         return web.json_response({"components": components})
 
     async def handle_ai_rules(request):
         from db.database import get_ai_rules
-        rules = get_ai_rules(active_only=True)
+        rules = await asyncio.to_thread(get_ai_rules, True)
         return web.json_response({"rules": rules})
 
     app.router.add_get('/api/expert-components', handle_expert_components)
@@ -2575,9 +2633,20 @@ async def init_app():
     if os.path.exists(assets_dir):
         app.router.add_static('/assets/', path=assets_dir)
 
-    # Background Telegram Admin Bot
+    # Cleanup shared HTTP client session on server shutdown
+    async def cleanup_shared_session(app_instance):
+        global _SHARED_CLIENT_SESSION
+        if _SHARED_CLIENT_SESSION and not _SHARED_CLIENT_SESSION.closed:
+            await _SHARED_CLIENT_SESSION.close()
+            _SHARED_CLIENT_SESSION = None
+            logger.info("Shared LLM client session closed cleanly.")
+
+    app.on_cleanup.append(cleanup_shared_session)
+
+    # Background Telegram Admin Bot (can be disabled via RUN_TG_BOT_IN_SERVER=false for multi-worker setups)
+    run_tg = os.getenv("RUN_TG_BOT_IN_SERVER", "true").lower() in ("true", "1", "yes")
     tg_token = os.getenv("TG_BOT_TOKEN", "").strip()
-    if tg_token:
+    if tg_token and run_tg:
         tg_bot = TelegramAdminBot(token=tg_token)
         async def start_tg(app_instance):
             app_instance['tg_bot_task'] = asyncio.create_task(tg_bot.start())
@@ -2597,6 +2666,10 @@ async def init_app():
         app.on_cleanup.append(stop_tg)
         
     return app
+
+def app_factory():
+    """Universal factory entrypoint for Gunicorn or WSGI/ASGI runners."""
+    return asyncio.run(init_app())
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))

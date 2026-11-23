@@ -1,0 +1,17 @@
+[Unit]
+Description=Skyrex Telegram Admin Bot Service
+After=network.target skyrex.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/skyrex
+Environment="PATH=/var/www/skyrex/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/var/www/skyrex/.env
+ExecStart=/var/www/skyrex/venv/bin/python run_tg_bot.py
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

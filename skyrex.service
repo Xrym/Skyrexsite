@@ -1,0 +1,18 @@
+[Unit]
+Description=Skyrex AI Web Application (Gunicorn Multi-Worker)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/skyrex
+Environment="PATH=/var/www/skyrex/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/var/www/skyrex/.env
+Environment="RUN_TG_BOT_IN_SERVER=false"
+ExecStart=/var/www/skyrex/venv/bin/gunicorn --bind 0.0.0.0:5000 --worker-class aiohttp.GunicornWebWorker --workers 4 --timeout 120 --keep-alive 65 server:init_app
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

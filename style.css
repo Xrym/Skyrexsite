@@ -1633,9 +1633,152 @@ footer {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    position: relative;
 }
 
-/* Reply Keyboard Panel (Modern Quick Suggestion Chips) */
+/* Autocomplete Suggestions Popup (Dynamic prompt suggestions while typing) */
+.chat-autocomplete {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(20, 17, 32, 0.96);
+    border: 1px solid rgba(139, 92, 246, 0.28);
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.55), 0 0 20px rgba(139, 92, 246, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    max-height: 240px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+    animation: acSlideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 30;
+}
+
+@keyframes acSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chat-autocomplete::-webkit-scrollbar {
+    width: 5px;
+}
+
+.chat-autocomplete::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.3);
+    border-radius: 4px;
+}
+
+.chat-autocomplete-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13.5px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    user-select: none;
+}
+
+.chat-autocomplete-item:hover,
+.chat-autocomplete-item.active {
+    background: rgba(139, 92, 246, 0.16);
+    color: #ffffff;
+}
+
+.chat-autocomplete-item .ac-main {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.chat-autocomplete-item .ac-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+
+.chat-autocomplete-item .ac-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-sans);
+}
+
+.chat-autocomplete-item .ac-match {
+    color: #c4b5fd;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: rgba(139, 92, 246, 0.6);
+}
+
+.chat-autocomplete-item .ac-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.chat-autocomplete-item .ac-hint {
+    font-size: 11px;
+    color: var(--text-muted, #71717a);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono, monospace);
+    opacity: 0.7;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.chat-autocomplete-item:hover .ac-hint,
+.chat-autocomplete-item.active .ac-hint {
+    opacity: 1;
+    color: #a78bfa;
+    border-color: rgba(139, 92, 246, 0.35);
+}
+
+.chat-autocomplete-item .ac-send-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: rgba(139, 92, 246, 0.2);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: #c4b5fd;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, transform 0.15s;
+    cursor: pointer;
+}
+
+.chat-autocomplete-item:hover .ac-send-btn,
+.chat-autocomplete-item.active .ac-send-btn {
+    opacity: 1;
+}
+
+.chat-autocomplete-item .ac-send-btn:hover {
+    background: var(--accent-purple);
+    color: #ffffff;
+    transform: scale(1.08);
+}
+
+/* Fallback chips if used dynamically */
 .chat-reply-keyboard {
     display: flex;
     gap: 8px;

@@ -2,6 +2,7 @@ import sqlite3
 import os
 import re
 import json
+import time
 import logging
 from typing import List, Dict, Any, Optional
 
@@ -9,6 +10,21 @@ logger = logging.getLogger("skyrex_db")
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(PROJECT_ROOT, "catalog.db")
+
+_DB_INITIALIZED = False
+_EXPERT_TABLES_INITIALIZED = False
+
+# High-concurrency in-memory caches (cleared automatically on writes or TTL expiry)
+_EXPERT_COMPONENTS_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
+_AI_RULES_CACHE: Dict[bool, Dict[str, Any]] = {}
+_PROMPT_TEMPLATE_CACHE: Dict[str, str] = {}
+
+def invalidate_db_cache():
+    """Clears in-memory caches for expert components, AI rules, and prompt templates."""
+    global _EXPERT_COMPONENTS_CACHE, _AI_RULES_CACHE, _PROMPT_TEMPLATE_CACHE
+    _EXPERT_COMPONENTS_CACHE = {"data": None, "ts": 0.0}
+    _AI_RULES_CACHE.clear()
+    _PROMPT_TEMPLATE_CACHE.clear()
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=20.0)
@@ -18,8 +34,11 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
 
-def init_db():
+def init_db(force: bool = False):
     """Initializes tables and FTS5 full-text search indexes."""
+    global _DB_INITIALIZED
+    if _DB_INITIALIZED and not force:
+        return
     with get_connection() as conn:
         cursor = conn.cursor()
         
@@ -224,6 +243,7 @@ def upsert_products(products: List[Dict[str, Any]]):
             
         conn.commit()
     cleanup_stale_products(max_age_days=15)
+    _DB_INITIALIZED = True
 
 def cleanup_static_dns():
     """Removes previously seeded static DNS catalog items (43 components)."""
@@ -239,8 +259,11 @@ def seed_from_bot_db():
     cleanup_static_dns()
     init_expert_tables()
 
-def init_expert_tables():
+def init_expert_tables(force: bool = False):
     """Initializes expert components, AI rules, and prompt templates."""
+    global _EXPERT_TABLES_INITIALIZED
+    if _EXPERT_TABLES_INITIALIZED and not force:
+        return
     with get_connection() as conn:
         cursor = conn.cursor()
 
@@ -251,7 +274,6 @@ def init_expert_tables():
                 componentname TEXT NOT NULL,
                 mark INTEGER DEFAULT 8,
                 price INTEGER NOT NULL,
-                minprice INTEGER,
                 comment TEXT,
                 analogue TEXT,
                 created_by TEXT,
@@ -261,6 +283,15 @@ def init_expert_tables():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_expert_type ON expert_components(type);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_expert_price ON expert_components(price);")
+
+        # Migrate schema: drop obsolete minprice column if present
+        cols = [r[1].lower() for r in cursor.execute("PRAGMA table_info(expert_components)").fetchall()]
+        if "minprice" in cols:
+            try:
+                cursor.execute("ALTER TABLE expert_components DROP COLUMN minprice;")
+                logger.info("Migrated expert_components: dropped obsolete minprice column.")
+            except Exception as e:
+                logger.warning(f"Could not drop minprice column: {e}")
 
         # AI learning rules / prompt directives
         cursor.execute("""
@@ -615,6 +646,7 @@ def init_expert_tables():
             logger.info("Applied migration: migrate_to_avito_medians_and_autonomous_evaluation_v1")
 
         conn.commit()
+    _EXPERT_TABLES_INITIALIZED = True
 
 def _normalized_expert_component_name(component_type: str, component_name: str) -> str:
     """Normalizes equivalent GPU names for matching expert catalog entries."""
@@ -639,13 +671,12 @@ def add_expert_component(data: Dict[str, Any]) -> int:
     """Adds or replaces an expert component identified by type and name."""
     init_expert_tables()
     component_type = data.get("type", "other")
-    component_name = data.get("componentname", "Без названия")
+    component_name = data.get("name") or data.get("componentname", "Без названия")
     values = (
         component_type,
         component_name,
         data.get("mark", 8),
         int(data.get("price", 0)),
-        int(data.get("minprice")) if data.get("minprice") else None,
         data.get("comment", ""),
         data.get("analogue", ""),
         data.get("created_by", ""),
@@ -671,7 +702,7 @@ def add_expert_component(data: Dict[str, Any]) -> int:
             component_id = existing_ids[0]
             cursor.execute("""
                 UPDATE expert_components
-                SET type = ?, componentname = ?, mark = ?, price = ?, minprice = ?,
+                SET type = ?, componentname = ?, mark = ?, price = ?,
                     comment = ?, analogue = ?, created_by = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             """, (*values, component_id))
@@ -685,24 +716,30 @@ def add_expert_component(data: Dict[str, Any]) -> int:
         else:
             cursor.execute("""
                 INSERT INTO expert_components (
-                    type, componentname, mark, price, minprice, comment, analogue, created_by, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    type, componentname, mark, price, comment, analogue, created_by, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, values)
             component_id = cursor.lastrowid
 
         conn.commit()
+        invalidate_db_cache()
         return component_id
 
 def get_expert_components(limit: int = 100) -> List[Dict[str, Any]]:
-    """Retrieves the latest entry for each expert component."""
+    """Retrieves the latest entry for each expert component (cached in memory)."""
     if limit <= 0:
         return []
+
+    global _EXPERT_COMPONENTS_CACHE
+    now = time.time()
+    if _EXPERT_COMPONENTS_CACHE["data"] is not None and (now - _EXPERT_COMPONENTS_CACHE["ts"] < 300.0):
+        return [dict(c) for c in _EXPERT_COMPONENTS_CACHE["data"][:limit]]
 
     init_expert_tables()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, type, componentname, mark, price, minprice, comment,
+            SELECT id, type, componentname, mark, price, comment,
                    analogue, created_by, created_at, updated_at
             FROM expert_components
             ORDER BY updated_at DESC, id DESC
@@ -725,9 +762,9 @@ def get_expert_components(limit: int = 100) -> List[Dict[str, Any]]:
         seen.add(key)
         component.pop("updated_at")
         components.append(component)
-        if len(components) >= limit:
-            break
-    return components
+
+    _EXPERT_COMPONENTS_CACHE = {"data": components, "ts": now}
+    return [dict(c) for c in components[:limit]]
 
 def delete_expert_component(comp_id: int) -> bool:
     """Deletes an expert component by ID."""
@@ -735,6 +772,7 @@ def delete_expert_component(comp_id: int) -> bool:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM expert_components WHERE id = ?", (comp_id,))
         conn.commit()
+        invalidate_db_cache()
         return cursor.rowcount > 0
 
 def add_ai_rule(rule_text: str, title: str = "", created_by: str = "") -> int:
@@ -747,10 +785,14 @@ def add_ai_rule(rule_text: str, title: str = "", created_by: str = "") -> int:
             VALUES (?, ?, ?)
         """, (title or rule_text[:40], rule_text, created_by))
         conn.commit()
+        invalidate_db_cache()
         return cursor.lastrowid
 
 def get_prompt_template(name: str) -> str:
-    """Returns a stored prompt template, seeding defaults when needed."""
+    """Returns a stored prompt template, seeding defaults when needed (cached in memory)."""
+    if name in _PROMPT_TEMPLATE_CACHE:
+        return _PROMPT_TEMPLATE_CACHE[name]
+
     init_expert_tables()
     with get_connection() as conn:
         row = conn.execute(
@@ -759,6 +801,7 @@ def get_prompt_template(name: str) -> str:
         ).fetchone()
     if row is None:
         raise KeyError(f"Unknown prompt template: {name}")
+    _PROMPT_TEMPLATE_CACHE[name] = row["prompt_text"]
     return row["prompt_text"]
 
 def update_prompt_template(name: str, prompt_text: str) -> None:
@@ -778,6 +821,7 @@ def update_prompt_template(name: str, prompt_text: str) -> None:
         if cursor.rowcount == 0:
             raise KeyError(f"Unknown prompt template: {name}")
         conn.commit()
+        invalidate_db_cache()
 
 def reset_prompt_template(name: str) -> None:
     """Restores a prompt template to its original default text."""
@@ -788,7 +832,13 @@ def reset_prompt_template(name: str) -> None:
     update_prompt_template(name, DEFAULT_PROMPTS[name])
 
 def get_ai_rules(active_only: bool = True) -> List[Dict[str, Any]]:
-    """Retrieves AI learning rules."""
+    """Retrieves AI learning rules (cached in memory)."""
+    global _AI_RULES_CACHE
+    now = time.time()
+    cached = _AI_RULES_CACHE.get(active_only)
+    if cached and (now - cached["ts"] < 300.0):
+        return [dict(r) for r in cached["data"]]
+
     init_expert_tables()
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -798,7 +848,10 @@ def get_ai_rules(active_only: bool = True) -> List[Dict[str, Any]]:
         query += " ORDER BY id ASC"
         cursor.execute(query)
         rows = cursor.fetchall()
-        return [dict(r) for r in rows]
+        rules = [dict(r) for r in rows]
+
+    _AI_RULES_CACHE[active_only] = {"data": rules, "ts": now}
+    return [dict(r) for r in rules]
 
 def delete_ai_rule(rule_id: int) -> bool:
     """Deletes an AI rule by ID."""
@@ -806,6 +859,7 @@ def delete_ai_rule(rule_id: int) -> bool:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM ai_rules WHERE id = ?", (rule_id,))
         conn.commit()
+        invalidate_db_cache()
         return cursor.rowcount > 0
 
 def reset_ai_rules() -> int:
@@ -826,6 +880,7 @@ def reset_ai_rules() -> int:
                 (rule["title"], rule["rule_text"], 1, "system"),
             )
         conn.commit()
+        invalidate_db_cache()
         return len(DEFAULT_AI_RULES)
 
 def get_stats() -> Dict[str, Any]:

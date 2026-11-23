@@ -62,8 +62,8 @@ def purge_cpu_bundles():
     cur.execute("SELECT id FROM expert_components WHERE type = 'cpu' AND componentname LIKE '%7500%'")
     if not cur.fetchall():
         cur.execute("""
-            INSERT INTO expert_components (type, componentname, mark, price, minprice, comment, created_by)
-            VALUES ('cpu', 'AMD Ryzen 5 7500F', 9, 11350, 10000, 'Бестселлер на сокете AM5 под DDR5 оперативную память.', 'system')
+            INSERT INTO expert_components (type, componentname, mark, price, comment, created_by)
+            VALUES ('cpu', 'AMD Ryzen 5 7500F', 9, 11350, 'Бестселлер на сокете AM5 под DDR5 оперативную память.', 'system')
         """)
         print("Added AMD Ryzen 5 7500F to expert_components.")
 

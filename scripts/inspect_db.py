@@ -13,8 +13,8 @@ for r in cur.execute("PRAGMA table_info(expert_components)"):
 
 print("\n=== EXPERT_COMPONENTS ROWS ===")
 print("Total rows:", cur.execute("SELECT COUNT(*) FROM expert_components").fetchone()[0])
-for r in cur.execute("SELECT id, type, componentname, price, minprice, mark, comment FROM expert_components"):
-    print(f"ID={r[0]} | Type={r[1]} | Name={r[2]} | Price={r[3]} | MinPrice={r[4]} | Mark={r[5]} | Comment={r[6]}")
+for r in cur.execute("SELECT id, type, componentname, price, mark, comment FROM expert_components"):
+    print(f"ID={r[0]} | Type={r[1]} | Name={r[2]} | Price={r[3]} | Mark={r[4]} | Comment={r[5]}")
 
 print("\n=== AI_RULES ===")
 for r in cur.execute("SELECT id, rule_text FROM ai_rules"):

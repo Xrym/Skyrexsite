@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import re
+import time
 import hashlib
 import secrets
 import datetime
@@ -12,15 +13,23 @@ logger = logging.getLogger("skyrex_auth_db")
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 USERS_DB_PATH = os.path.join(PROJECT_ROOT, "users.db")
 
+_AUTH_DB_INITIALIZED = False
+# In-memory session cache: token -> {"user": dict, "expires_ts": float}
+_TOKEN_CACHE: Dict[str, Dict[str, Any]] = {}
+
 def get_auth_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(USERS_DB_PATH, timeout=15.0)
+    conn = sqlite3.connect(USERS_DB_PATH, timeout=20.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA busy_timeout = 20000;")
     return conn
 
-def init_auth_db():
+def init_auth_db(force: bool = False):
     """Initializes tables for real server-side users, sessions, and subscriptions."""
+    global _AUTH_DB_INITIALIZED
+    if _AUTH_DB_INITIALIZED and not force:
+        return
     with get_auth_connection() as conn:
         cursor = conn.cursor()
         
@@ -76,6 +85,8 @@ def init_auth_db():
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
         """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);")
         
         # 3. Clean up obsolete verification_codes table
         cursor.execute("DROP TABLE IF EXISTS verification_codes;")
@@ -104,6 +115,7 @@ def init_auth_db():
             logger.info(f"Configured admin account for {admin_login}")
             
         conn.commit()
+    _AUTH_DB_INITIALIZED = True
 
 def hash_password(password: str, salt: str) -> str:
     """Secure PBKDF2-HMAC-SHA256 password hashing."""
@@ -130,7 +142,6 @@ def register_user(username: str, password: str) -> Dict[str, Any]:
     if len(password) > 128:
         return {"success": False, "error": "Пароль не должен превышать 128 символов."}
 
-    init_auth_db()
     with get_auth_connection() as conn:
         cursor = conn.cursor()
         existing = cursor.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (username,)).fetchone()
@@ -172,7 +183,6 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
     if len(password) > 128:
         return {"success": False, "error": "Пароль слишком длинный (максимум 128 символов)."}
 
-    init_auth_db()
     with get_auth_connection() as conn:
         cursor = conn.cursor()
         user = cursor.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,)).fetchone()
@@ -197,16 +207,18 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
             except Exception:
                 pass
 
+        user_dict = {
+            "id": user["id"],
+            "username": user["username"],
+            "role": user["role"],
+            "subscribed": is_sub,
+            "subscriptionExpires": sub_exp
+        }
+        _TOKEN_CACHE[token] = {"user": user_dict, "expires_ts": time.time() + 30.0}
         return {
             "success": True,
             "token": token,
-            "user": {
-                "id": user["id"],
-                "username": user["username"],
-                "role": user["role"],
-                "subscribed": is_sub,
-                "subscriptionExpires": sub_exp
-            }
+            "user": user_dict
         }
 
 def create_session(user_id: int) -> str:
@@ -221,11 +233,15 @@ def create_session(user_id: int) -> str:
     return token
 
 def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
-    """Validates session token and returns active user profile."""
+    """Validates session token and returns active user profile with in-memory caching."""
     if not token:
         return None
 
-    init_auth_db()
+    # Ultra-fast in-memory cache lookup
+    cached = _TOKEN_CACHE.get(token)
+    if cached and time.time() < cached["expires_ts"]:
+        return cached["user"]
+
     with get_auth_connection() as conn:
         cursor = conn.cursor()
         row = cursor.execute("""
@@ -236,16 +252,17 @@ def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
         """, (token,)).fetchone()
 
         if not row:
+            _TOKEN_CACHE.pop(token, None)
             return None
 
         # Check session expiry
         try:
             exp_dt = datetime.datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
             if datetime.datetime.now(datetime.timezone.utc) > exp_dt:
-                cursor.execute("DELETE FROM sessions WHERE token = ?", (token,))
-                conn.commit()
+                _TOKEN_CACHE.pop(token, None)
                 return None
         except Exception:
+            _TOKEN_CACHE.pop(token, None)
             return None
 
         is_sub = bool(row["subscribed"])
@@ -255,23 +272,25 @@ def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
                 sub_dt = datetime.datetime.fromisoformat(sub_exp.replace("Z", "+00:00"))
                 if datetime.datetime.now(datetime.timezone.utc) > sub_dt:
                     is_sub = False
-                    cursor.execute("UPDATE users SET subscribed = 0 WHERE id = ?", (row["id"],))
-                    conn.commit()
             except Exception:
                 pass
 
-        return {
+        user_dict = {
             "id": row["id"],
             "username": row["username"],
             "role": row["role"],
             "subscribed": is_sub,
             "subscriptionExpires": sub_exp
         }
+        # Cache profile for 30 seconds to avoid repeating SQLite queries on hot endpoints
+        _TOKEN_CACHE[token] = {"user": user_dict, "expires_ts": time.time() + 30.0}
+        return user_dict
 
 def logout_token(token: str):
-    """Deletes active session token."""
+    """Deletes active session token and clears cache."""
     if not token:
         return
+    _TOKEN_CACHE.pop(token, None)
     with get_auth_connection() as conn:
         conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
         conn.commit()

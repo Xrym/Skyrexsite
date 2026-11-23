@@ -6,7 +6,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const chatBody = document.getElementById("chat-body");
     const chatInput = document.getElementById("chat-input");
     const chatSendBtn = document.getElementById("chat-send-btn");
-    const chatReplyKeyboard = document.getElementById("chat-reply-keyboard");
+    const chatAutocomplete = document.getElementById("chat-autocomplete");
+    const chatReplyKeyboard = document.getElementById("chat-reply-keyboard") || chatAutocomplete;
     const chatClearBtn = document.getElementById("chat-clear-btn");
     const typingIndicator = document.getElementById("typing-indicator");
     const scrollBottomBtn = document.getElementById("chat-scroll-bottom-btn");
@@ -24,14 +25,30 @@ document.addEventListener("DOMContentLoaded", () => {
         lastUserQuery: ""
     };
 
-    // Quick suggestion chips
-    const SUGGESTIONS = [
-        { label: "🎮 Сборка за 80 000 ₽", prompt: "Собери сбалансированный игровой ПК за 80 000 рублей с актуальными ценами" },
-        { label: "🚀 Топ ПК за 150 000 ₽", prompt: "Собери мощный ПК за 150 000 рублей для 2K-гейминга и работы" },
-        { label: "🔍 Цены на RTX 4060", prompt: "Сколько сейчас стоит видеокарта GeForce RTX 4060 и какие варианты в наличии?" },
-        { label: "⚡ Ryzen 5 7500F vs Core i5", prompt: "Что лучше выбрать для игр: AMD Ryzen 5 7500F или Intel Core i5 13400?" },
-        { label: "🛠️ Апгрейд моего ПК", prompt: "Помоги спланировать апгрейд старого ПК. На что обратить внимание в первую очередь?" },
-        { label: "💻 Б/У сборки SkyRex", prompt: "Покажи проверенные сборки ПК и комплектующие со вторичного рынка из каталога SkyRex" }
+    // Autocomplete dictionary for interactive typing suggestions
+    const AUTOCOMPLETE_ITEMS = [
+        { title: "Сборка за 50 000 ₽", prompt: "Собери бюджетный игровой ПК за 50 000 рублей с актуальными ценами", icon: "🎮", tags: ["сборка", "бюджет", "50000", "50к", "пк", "дешевый"] },
+        { title: "Сборка за 70 000 ₽", prompt: "Собери сбалансированный игровой ПК за 70 000 рублей с актуальными ценами", icon: "🎮", tags: ["сборка", "70000", "70к", "пк", "базовый"] },
+        { title: "Сборка за 80 000 ₽", prompt: "Собери сбалансированный игровой ПК за 80 000 рублей с актуальными ценами", icon: "🎮", tags: ["сборка", "80000", "80к", "пк", "оптимальный"] },
+        { title: "Сборка за 100 000 ₽", prompt: "Собери оптимальный игровой ПК за 100 000 рублей с актуальными ценами", icon: "🎮", tags: ["сборка", "100000", "100к", "пк"] },
+        { title: "Сборка за 120 000 ₽", prompt: "Собери мощный игровой ПК за 120 000 рублей с актуальными ценами", icon: "🚀", tags: ["сборка", "120000", "120к", "пк"] },
+        { title: "Сборка за 150 000 ₽", prompt: "Собери мощный ПК за 150 000 рублей для 2K-гейминга и работы", icon: "🚀", tags: ["сборка", "150000", "150к", "2к", "пк"] },
+        { title: "Сборка за 200 000 ₽", prompt: "Собери топовый ПК за 200 000 рублей для 4K гейминга и тяжелых задач", icon: "👑", tags: ["сборка", "200000", "200к", "4к", "топ", "пк"] },
+        { title: "Сборка для CS2 и Dota 2", prompt: "Подбери недорогой и надежный ПК специально для CS2, Dota 2 и онлайн-игр", icon: "🎯", tags: ["сборка", "cs", "cs2", "кс", "дота", "dota", "онлайн", "киберспорт"] },
+        { title: "Сборка для 2K гейминга", prompt: "Собери ПК для стабильного ультра-гейминга в разрешении 1440p (2K)", icon: "🖥️", tags: ["сборка", "2k", "2к", "1440p", "гейминг", "ультра"] },
+        { title: "Сборка для стриминга и монтажа", prompt: "Подбери рабочую станцию для стримов и видеомонтажа в Premiere и DaVinci", icon: "🎬", tags: ["сборка", "стрим", "монтаж", "работа", "видео", "контент"] },
+        { title: "Сборка со встроенной графикой", prompt: "Собери недорогой ПК со встроенной графикой (APU) с возможностью будущего апгрейда видеокарты", icon: "📦", tags: ["сборка", "встройка", "apu", "без видеокарты", "бюджет"] },
+        { title: "Цены на RTX 4060", prompt: "Сколько сейчас стоит видеокарта GeForce RTX 4060 и какие варианты в наличии?", icon: "🔍", tags: ["цена", "цены", "rtx", "4060", "видеокарта", "nvidia"] },
+        { title: "Цены на RTX 4070 Super", prompt: "Сколько стоит GeForce RTX 4070 Super и какой блок питания под неё нужен?", icon: "🔍", tags: ["цена", "цены", "rtx", "4070", "super", "видеокарта", "nvidia"] },
+        { title: "Цены на Radeon RX 7700 XT", prompt: "Сколько сейчас стоит Radeon RX 7700 XT и как она в играх по сравнению с RTX 4060 Ti?", icon: "🔍", tags: ["цена", "цены", "rx", "7700", "radeon", "amd", "видеокарта"] },
+        { title: "Ryzen 5 7500F vs Core i5 13400", prompt: "Что лучше выбрать для игр: AMD Ryzen 5 7500F или Intel Core i5 13400?", icon: "⚡", tags: ["ryzen", "райзен", "i5", "интел", "intel", "сравнение", "процессор", "7500f", "13400"] },
+        { title: "Ryzen 7 7800X3D vs Core i7 14700K", prompt: "Сравни топовые игровые процессоры Ryzen 7 7800X3D и Core i7 14700K", icon: "⚡", tags: ["ryzen", "райзен", "7800x3d", "i7", "14700k", "процессор", "топ"] },
+        { title: "Апгрейд старого ПК", prompt: "Помоги спланировать апгрейд старого ПК. На что обратить внимание в первую очередь?", icon: "🛠️", tags: ["апгрейд", "обновление", "модернизация", "старый", "пк"] },
+        { title: "Апгрейд видеокарты", prompt: "Какую видеокарту выбрать на замену старой GTX 1060 / 1660 Super?", icon: "🛠️", tags: ["апгрейд", "видеокарта", "замена", "gtx", "1060", "1660"] },
+        { title: "Б/У сборки SkyRex", prompt: "Покажи проверенные сборки ПК и комплектующие со вторичного рынка из каталога SkyRex", icon: "💻", tags: ["бу", "б/у", "каталог", "вторичка", "skyrex", "скайрекс"] },
+        { title: "Проверка совместимости комплектующих", prompt: "Проверь совместимость выбранных комплектующих и рассчитай мощность БП", icon: "⚖️", tags: ["совместимость", "проверка", "сокет", "память", "блок питания"] },
+        { title: "Какой блок питания выбрать", prompt: "Как правильно подобрать мощность и сертификат блока питания для игровой системы?", icon: "🔌", tags: ["блок питания", "бп", "ватт", "питание", "power"] },
+        { title: "DDR4 vs DDR5: что выбрать?", prompt: "Стоит ли сейчас переплачивать за память DDR5 или остаться на DDR4?", icon: "💾", tags: ["ddr4", "ddr5", "память", "озу", "ram"] }
     ];
 
     // Icons for send/stop button
@@ -422,7 +439,6 @@ document.addEventListener("DOMContentLoaded", () => {
                         renderMessage(msg, false);
                     });
                     scrollChatToBottom();
-                    renderSuggestionChips();
                     if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
                         for (let i = state.messages.length - 1; i >= 0; i--) {
                             const m = state.messages[i];
@@ -457,42 +473,155 @@ document.addEventListener("DOMContentLoaded", () => {
                 "• 🛠️ <b>Индивидуальная сборка:</b> соберу идеальный сбалансированный ПК под ваш бюджет и задачи (игры, 3D, стриминг, работа)\n" +
                 "• ⚖️ <b>Сравнение и аналитика:</b> оценю совместимость сокетов (AM4/AM5/LGA 1700), тип памяти и мощность блока питания\n" +
                 "• 💻 <b>Вторичный рынок:</b> подберу надежные позиции со вторички из каталога SkyRex\n\n" +
-                "<i>Выберите готовый запрос ниже или напишите свой своими словами!</i>";
+                "<i>Начните вводить ваш вопрос или бюджет (например, «сборка за 80000»), чтобы увидеть умные подсказки!</i>";
 
             appendMessage("bot", welcomeText);
-            renderSuggestionChips();
         }, 400);
     }
 
-    // 8. Suggestion Chips (Reply Keyboard)
-    function renderSuggestionChips(customItems = null) {
-        if (!chatReplyKeyboard) return;
-        chatReplyKeyboard.innerHTML = "";
+    // 8. Autocomplete Suggestions Engine
+    let activeSuggestionIndex = -1;
+    let currentMatches = [];
 
-        const items = customItems || SUGGESTIONS;
-        if (!items || items.length === 0) {
-            chatReplyKeyboard.style.display = "none";
+    function getAutocompleteMatches(rawQuery) {
+        const query = (rawQuery || "").trim().toLowerCase();
+        if (!query || query.length < 1) return [];
+
+        const tokens = query.split(/\s+/).filter(t => t.length > 0);
+
+        return AUTOCOMPLETE_ITEMS.filter(item => {
+            const titleLower = item.title.toLowerCase();
+            const promptLower = (item.prompt || "").toLowerCase();
+            const tags = item.tags || [];
+
+            return tokens.every(token => {
+                return titleLower.includes(token) ||
+                       tags.some(tag => tag.toLowerCase().includes(token)) ||
+                       promptLower.includes(token);
+            });
+        }).slice(0, 6);
+    }
+
+    function highlightMatch(text, query) {
+        if (!query || !query.trim()) return escapeHtml(text);
+        const tokens = query.trim().split(/\s+/).filter(t => t.length > 0);
+        if (tokens.length === 0) return escapeHtml(text);
+
+        const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+        const regex = new RegExp(`(${escaped})`, 'gi');
+
+        const parts = text.split(regex);
+        return parts.map(part => {
+            if (regex.test(part)) {
+                return `<span class="ac-match">${escapeHtml(part)}</span>`;
+            }
+            return escapeHtml(part);
+        }).join('');
+    }
+
+    function showAutocomplete(matches, query) {
+        if (!chatAutocomplete) return;
+        currentMatches = matches;
+        activeSuggestionIndex = -1;
+
+        if (matches.length === 0) {
+            hideAutocomplete();
             return;
         }
 
-        chatReplyKeyboard.style.display = "flex";
+        chatAutocomplete.innerHTML = "";
+        matches.forEach((item, idx) => {
+            const itemEl = document.createElement("div");
+            itemEl.className = "chat-autocomplete-item";
+            itemEl.setAttribute("role", "option");
+            itemEl.dataset.index = idx;
 
-        items.forEach(item => {
-            const chip = document.createElement("button");
-            chip.type = "button";
-            chip.className = "chat-chip";
-            chip.textContent = item.label;
-            chip.title = item.prompt;
-            chip.addEventListener("click", () => {
-                if (state.isGenerating) return;
-                chatReplyKeyboard.innerHTML = "";
-                chatReplyKeyboard.style.display = "none";
-                handleUserText(item.prompt);
+            const highlightedTitle = highlightMatch(item.title, query);
+
+            itemEl.innerHTML = `
+                <div class="ac-main">
+                    <span class="ac-icon">${item.icon || "💡"}</span>
+                    <span class="ac-text">${highlightedTitle}</span>
+                </div>
+                <div class="ac-actions">
+                    <span class="ac-hint">Tab ⇥</span>
+                    <button type="button" class="ac-send-btn" title="Отправить сразу" aria-label="Отправить">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            `;
+
+            const sendBtn = itemEl.querySelector(".ac-send-btn");
+            if (sendBtn) {
+                sendBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    selectAutocompleteItem(item, true);
+                });
+            }
+
+            itemEl.addEventListener("click", () => {
+                selectAutocompleteItem(item, false);
             });
-            chatReplyKeyboard.appendChild(chip);
+
+            itemEl.addEventListener("mouseenter", () => {
+                setActiveAutocompleteIndex(idx);
+            });
+
+            chatAutocomplete.appendChild(itemEl);
         });
+
+        chatAutocomplete.style.display = "flex";
     }
 
+    function hideAutocomplete() {
+        if (!chatAutocomplete) return;
+        chatAutocomplete.style.display = "none";
+        chatAutocomplete.innerHTML = "";
+        currentMatches = [];
+        activeSuggestionIndex = -1;
+    }
+
+    function setActiveAutocompleteIndex(index) {
+        if (!chatAutocomplete) return;
+        const items = chatAutocomplete.querySelectorAll(".chat-autocomplete-item");
+        items.forEach(el => el.classList.remove("active"));
+
+        if (index >= 0 && index < items.length) {
+            activeSuggestionIndex = index;
+            items[index].classList.add("active");
+            items[index].scrollIntoView({ block: "nearest", behavior: "smooth" });
+        } else {
+            activeSuggestionIndex = -1;
+        }
+    }
+
+    function selectAutocompleteItem(item, sendImmediately = false) {
+        if (!item) return;
+        if (sendImmediately) {
+            hideAutocomplete();
+            chatInput.value = "";
+            autoResizeInput();
+            handleUserText(item.prompt || item.title);
+        } else {
+            chatInput.value = item.title;
+            autoResizeInput();
+            hideAutocomplete();
+            chatInput.focus();
+            chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
+        }
+    }
+
+    // Dismiss autocomplete when clicking outside
+    document.addEventListener("click", (e) => {
+        if (chatAutocomplete && chatAutocomplete.style.display !== "none") {
+            if (!chatAutocomplete.contains(e.target) && e.target !== chatInput) {
+                hideAutocomplete();
+            }
+        }
+    });
 
     // 9. Input & Auto-resize textarea
     function autoResizeInput() {
@@ -502,11 +631,64 @@ document.addEventListener("DOMContentLoaded", () => {
         chatInput.style.height = (newHeight > 44 ? newHeight : 44) + "px";
     }
 
-    chatInput.addEventListener("input", autoResizeInput);
+    chatInput.addEventListener("input", () => {
+        autoResizeInput();
+        if (state.isGenerating) {
+            hideAutocomplete();
+            return;
+        }
+        const val = chatInput.value;
+        if (val.trim().length >= 1) {
+            const matches = getAutocompleteMatches(val);
+            showAutocomplete(matches, val);
+        } else {
+            hideAutocomplete();
+        }
+    });
 
     chatInput.addEventListener("keydown", (e) => {
+        const isAcVisible = chatAutocomplete && chatAutocomplete.style.display !== "none" && currentMatches.length > 0;
+
+        if (e.key === "ArrowDown" && isAcVisible) {
+            e.preventDefault();
+            const nextIdx = (activeSuggestionIndex + 1) % currentMatches.length;
+            setActiveAutocompleteIndex(nextIdx);
+            return;
+        }
+
+        if (e.key === "ArrowUp" && isAcVisible) {
+            e.preventDefault();
+            const prevIdx = activeSuggestionIndex <= 0 ? currentMatches.length - 1 : activeSuggestionIndex - 1;
+            setActiveAutocompleteIndex(prevIdx);
+            return;
+        }
+
+        if (e.key === "Tab" && isAcVisible) {
+            e.preventDefault();
+            const target = activeSuggestionIndex >= 0 ? currentMatches[activeSuggestionIndex] : currentMatches[0];
+            selectAutocompleteItem(target, false);
+            return;
+        }
+
+        if (e.key === "Escape" && isAcVisible) {
+            e.preventDefault();
+            hideAutocomplete();
+            return;
+        }
+
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
+            if (isAcVisible && activeSuggestionIndex >= 0) {
+                const item = currentMatches[activeSuggestionIndex];
+                if (chatInput.value.trim().toLowerCase() === item.title.toLowerCase()) {
+                    selectAutocompleteItem(item, true);
+                } else {
+                    selectAutocompleteItem(item, false);
+                }
+                return;
+            }
+
+            hideAutocomplete();
             if (!state.isGenerating) {
                 handleUserText(chatInput.value);
             }
@@ -552,10 +734,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Reset input
         chatInput.value = "";
         autoResizeInput();
-        if (chatReplyKeyboard) {
-            chatReplyKeyboard.innerHTML = "";
-            chatReplyKeyboard.style.display = "none";
-        }
+        hideAutocomplete();
 
         // 1. Prepare history for LLM (clean plain text without HTML)
         const historyForBackend = state.messages.slice(-15).map(m => ({
