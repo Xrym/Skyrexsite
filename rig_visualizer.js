@@ -436,6 +436,16 @@
             `;
         },
 
+        escapeHtml(str) {
+            if (str == null) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        },
+
         renderComponentCards(items) {
             const order = ['cpu', 'gpu', 'mb', 'ram', 'ssd', 'cooler', 'psu', 'case'];
             let html = '';
@@ -467,9 +477,16 @@
                     }
                 }
 
-                const displayName = isPlaceholder ? '?' : item.name;
-                const displayPrice = isPlaceholder ? '?' : item.price;
-                const displayTag = isPlaceholder ? 'Ожидание параметров' : (item.tag || '');
+                const rawName = isPlaceholder ? '?' : item.name;
+                const rawPrice = isPlaceholder ? '?' : item.price;
+                const rawTag = isPlaceholder ? 'Ожидание параметров' : (item.tag || '');
+
+                const safeName = this.escapeHtml(rawName);
+                const safeCategory = this.escapeHtml(item.category || '');
+                const safeShop = this.escapeHtml(shopText);
+                const safePrice = this.escapeHtml(rawPrice);
+                const safeTag = this.escapeHtml(rawTag);
+                const safeUrl = (item.url && /^https?:\/\//i.test(item.url)) ? item.url.replace(/"/g, '&quot;') : '';
 
                 html += `
                     <div class="pc-part-card ${isPlaceholder ? 'part-card-placeholder' : ''}" id="card-${key}" data-part="${key}">
@@ -477,17 +494,17 @@
                             <span class="part-card-icon">${item.icon || '⚡'}</span>
                             <div class="part-card-details">
                                 <div class="part-card-meta">
-                                    <span class="part-category-tag">${item.category}</span>
-                                    <span class="part-shop-badge ${shopBadgeClass}">${shopText}</span>
+                                    <span class="part-category-tag">${safeCategory}</span>
+                                    <span class="part-shop-badge ${shopBadgeClass}">${safeShop}</span>
                                 </div>
-                                <span class="part-card-name" title="${displayName}">${displayName}</span>
-                                ${displayTag ? `<span class="part-spec-tag">${displayTag}</span>` : ''}
+                                <span class="part-card-name" title="${safeName}">${safeName}</span>
+                                ${safeTag ? `<span class="part-spec-tag">${safeTag}</span>` : ''}
                             </div>
                         </div>
                         <div class="part-card-right">
-                            <span class="part-card-price">${displayPrice}</span>
-                            ${!isPlaceholder && item.url ? `
-                                <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="part-card-link-btn" title="Перейти к товару">
+                            <span class="part-card-price">${safePrice}</span>
+                            ${!isPlaceholder && safeUrl ? `
+                                <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="part-card-link-btn" title="Перейти к товару">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                         <line x1="7" y1="17" x2="17" y2="7"></line>
                                         <polyline points="7 7 17 7 17 17"></polyline>

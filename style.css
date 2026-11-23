@@ -1635,6 +1635,7 @@ footer {
     flex-direction: column;
     gap: 12px;
     position: relative;
+    z-index: 50;
 }
 
 /* Autocomplete Suggestions Popup (Dynamic prompt suggestions while typing) */
@@ -1645,6 +1646,7 @@ footer {
     bottom: calc(100% + 10px);
     left: 20px;
     right: 20px;
+    z-index: 100;
     gap: 4px;
     background: rgba(18, 15, 28, 0.98);
     border: 1px solid rgba(139, 92, 246, 0.35);
@@ -2755,8 +2757,9 @@ footer {
 /* PC Rig Main Card Container */
 .pc-rig-card {
     position: relative;
-    display: flex;
-    flex-direction: column;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100%;
     height: 100%;
     min-height: 640px;
     max-height: 750px;
@@ -2817,7 +2820,9 @@ footer {
     padding: 14px 20px;
     background: rgba(20, 23, 36, 0.6);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    flex-shrink: 0;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box;
 }
 
 .pc-rig-header-left {
@@ -2886,9 +2891,12 @@ footer {
 
 /* Stage Wrapper: Chassis Stage + Component List */
 .pc-rig-stage-wrapper {
-    display: flex;
-    flex: 1;
-    min-height: 0;
+    display: flex !important;
+    flex-direction: row !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box;
     gap: 16px;
     padding: 16px;
     overflow: hidden;
@@ -2896,7 +2904,11 @@ footer {
 
 /* Left: PC Chassis Blueprint */
 .pc-chassis-stage {
-    flex: 0 0 280px;
+    flex: 0 0 280px !important;
+    width: 280px !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3117,12 +3129,14 @@ footer {
 
 /* Right: Components List */
 .pc-components-list {
-    flex: 1;
-    min-width: 0;
+    flex: 1 1 auto !important;
+    min-width: 260px !important;
+    width: auto !important;
+    box-sizing: border-box;
     overflow-y: auto;
     padding-right: 4px;
-    display: flex;
-    flex-direction: column;
+    display: flex !important;
+    flex-direction: column !important;
     gap: 7px;
 }
 
@@ -3315,13 +3329,15 @@ footer {
 
 /* Rig Footer */
 .pc-rig-footer {
-    display: flex;
+    display: flex !important;
     justify-content: center;
     align-items: center;
     padding: 11px 18px;
     background: rgba(20, 23, 36, 0.6);
     border-top: 1px solid rgba(255, 255, 255, 0.06);
-    flex-shrink: 0;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box;
 }
 
 .pc-rig-footer-info {
@@ -3336,7 +3352,6 @@ footer {
 
 .rig-info-icon {
     font-size: 13px;
-}
 }
 
 /* Floating Tooltip */
@@ -3446,13 +3461,20 @@ footer {
 
 @media (max-width: 768px) {
     .pc-rig-stage-wrapper {
-        flex-direction: column;
+        flex-direction: column !important;
         height: auto;
     }
 
     .pc-chassis-stage {
-        flex: 0 0 240px;
-        width: 100%;
+        flex: 0 0 240px !important;
+        width: 100% !important;
+        max-width: none !important;
+        min-width: 0 !important;
+    }
+
+    .pc-components-list {
+        width: 100% !important;
+        min-width: 0 !important;
     }
 
     .pc-chassis-svg {
@@ -3460,12 +3482,9 @@ footer {
     }
 
     .pc-rig-footer {
-        flex-direction: column;
+        flex-direction: column !important;
         align-items: stretch;
         text-align: center;
-    }
-
-    .rig-copy-spec-btn {
-        justify-content: center;
+        width: 100% !important;
     }
 }
