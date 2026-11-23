@@ -1955,6 +1955,105 @@ def get_active_proxy(provider: str) -> Optional[str]:
     return llm_proxy
 
 
+def get_fallback_config():
+    """Returns fallback provider configuration if configured in .env."""
+    fb_key = os.getenv("FALLBACK_LLM_API_KEY", "").strip()
+    if not fb_key:
+        return None
+    fb_provider = os.getenv("FALLBACK_LLM_PROVIDER", "openrouter").strip().lower()
+    fb_model = os.getenv("FALLBACK_LLM_MODEL", "").strip() or "openrouter/free"
+    fb_base_url = os.getenv("FALLBACK_LLM_BASE_URL", "").strip()
+    if not fb_base_url:
+        if fb_provider == "openrouter":
+            fb_base_url = "https://openrouter.ai/api/v1"
+        elif fb_provider == "groq":
+            fb_base_url = "https://api.groq.com/openai/v1"
+        else:
+            fb_base_url = "https://openrouter.ai/api/v1"
+    fb_url = f"{fb_base_url.rstrip('/')}/chat/completions"
+    return {
+        "provider": fb_provider,
+        "api_key": fb_key,
+        "model": fb_model,
+        "url": fb_url
+    }
+
+
+async def _execute_openai_chat(session, config: dict, messages: list, proxy: str | None, user_budget: int | None = None) -> str | None:
+    """Executes a non-streaming chat completion with an OpenAI-compatible provider (e.g. OpenRouter)."""
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "HTTP-Referer": "https://skyrex.ai",
+        "X-Title": "Skyrex Computers AI",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": config["model"],
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 4096
+    }
+    try:
+        logger.info(f"Sending fallback request to {config['provider']} ({config['model']}, Proxy: {proxy or 'direct'})...")
+        async with session.post(config["url"], json=payload, headers=headers, proxy=proxy, timeout=75) as resp:
+            if resp.status == 200:
+                result = await resp.json()
+                raw_text = result["choices"][0]["message"]["content"]
+                return clean_marketplace_links(raw_text, budget=user_budget)
+            else:
+                err_text = await resp.text()
+                logger.error(f"Fallback {config['provider']} API returned status {resp.status}: {err_text}")
+    except Exception as e:
+        logger.error(f"Fallback {config['provider']} execution failed: {e}")
+    return None
+
+
+async def _stream_openai_chat(session, config: dict, messages: list, proxy: str | None):
+    """Streams chat completion tokens from an OpenAI-compatible provider (e.g. OpenRouter)."""
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "HTTP-Referer": "https://skyrex.ai",
+        "X-Title": "Skyrex Computers AI",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": config["model"],
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 4096,
+        "stream": True
+    }
+    try:
+        logger.info(f"Streaming fallback request to {config['provider']} ({config['model']}, Proxy: {proxy or 'direct'})...")
+        async with session.post(config["url"], json=payload, headers=headers, proxy=proxy, timeout=75) as resp:
+            if resp.status != 200:
+                err_text = await resp.text()
+                logger.error(f"Fallback {config['provider']} streaming error ({resp.status}): {err_text}")
+                yield f"⚠️ Ошибка резервного провайдера ({resp.status})."
+                return
+
+            async for line_bytes in resp.content:
+                line = line_bytes.decode('utf-8', errors='ignore').strip()
+                if not line or not line.startswith("data:"):
+                    continue
+                data_str = line[5:].strip()
+                if data_str == "[DONE]":
+                    break
+                try:
+                    parsed = json.loads(data_str)
+                    choices = parsed.get("choices", [])
+                    if choices:
+                        delta = choices[0].get("delta", {})
+                        t = delta.get("content", "")
+                        if t:
+                            yield t
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.error(f"Fallback {config['provider']} stream connection error: {e}")
+        yield f"⚠️ Ошибка соединения с резервным сервисом ({type(e).__name__})."
+
+
 # 3. Call LLM provider with retry & timeout protection
 async def call_llm(message: str, history: list) -> str:
     provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
@@ -2076,6 +2175,19 @@ async def call_llm(message: str, history: list) -> str:
                             last_error = str(req_err)
                             await asyncio.sleep(1.0)
 
+                fb_config = get_fallback_config()
+                if fb_config:
+                    logger.warning(f"Primary Gemini failed ({last_error}). Triggering automatic fallback to {fb_config['provider']} ({fb_config['model']})...")
+                    messages = [{"role": "system", "content": system_instruction}]
+                    for msg in history:
+                        role = "user" if msg.get("sender") == "user" else "assistant"
+                        messages.append({"role": role, "content": strip_html_for_history(msg.get("text", ""))})
+                    messages.append({"role": "user", "content": message})
+                    fb_proxy = get_active_proxy(fb_config["provider"])
+                    fb_res = await _execute_openai_chat(session, fb_config, messages, fb_proxy, user_budget)
+                    if fb_res:
+                        return fb_res
+
                 return f"⚠️ Сервер Gemini временно перегружен ({last_error}). Пожалуйста, попробуйте отправить запрос еще раз."
             else:
                 messages = [{"role": "system", "content": system_instruction}]
@@ -2104,6 +2216,13 @@ async def call_llm(message: str, history: list) -> str:
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"{provider.upper()} API returned status {resp.status}: {err_text}")
+                        fb_config = get_fallback_config()
+                        if fb_config and fb_config["provider"] != provider:
+                            logger.warning(f"Primary {provider} returned status {resp.status}. Triggering fallback...")
+                            fb_proxy = get_active_proxy(fb_config["provider"])
+                            fb_res = await _execute_openai_chat(session, fb_config, messages, fb_proxy, user_budget)
+                            if fb_res:
+                                return fb_res
                         return f"⚠️ Ошибка {provider.upper()} API ({resp.status}). Убедитесь, что лимиты и ключ в порядке."
                     
                     result = await resp.json()
@@ -2116,6 +2235,21 @@ async def call_llm(message: str, history: list) -> str:
                         
         except Exception as e:
             logger.error(f"Connection error to {provider}: {e}")
+            fb_config = get_fallback_config()
+            if fb_config:
+                logger.warning(f"Primary connection error ({e}). Triggering fallback to {fb_config['provider']} ({fb_config['model']})...")
+                try:
+                    messages = [{"role": "system", "content": system_instruction}]
+                    for msg in history:
+                        role = "user" if msg.get("sender") == "user" else "assistant"
+                        messages.append({"role": role, "content": strip_html_for_history(msg.get("text", ""))})
+                    messages.append({"role": "user", "content": message})
+                    fb_proxy = get_active_proxy(fb_config["provider"])
+                    fb_res = await _execute_openai_chat(session, fb_config, messages, fb_proxy, user_budget)
+                    if fb_res:
+                        return fb_res
+                except Exception as fb_err:
+                    logger.error(f"Fallback call error: {fb_err}")
             return f"⚠️ Не удалось подключиться к серверу нейросети ({type(e).__name__}). Проверьте соединение с интернетом."
 
 
@@ -2182,6 +2316,7 @@ async def stream_llm(message: str, history: list):
 
     session = get_shared_client_session()
     semaphore = get_llm_semaphore()
+    connected = False
     async with semaphore:
         try:
             if provider == "gemini":
@@ -2208,7 +2343,6 @@ async def stream_llm(message: str, history: list):
                     if fb not in models_to_try:
                         models_to_try.append(fb)
 
-                connected = False
                 for try_model in models_to_try:
                     try_url = f"https://generativelanguage.googleapis.com/v1beta/models/{try_model}:streamGenerateContent?key={api_key}&alt=sse"
                     for attempt in range(2):
@@ -2216,7 +2350,6 @@ async def stream_llm(message: str, history: list):
                         try:
                             async with session.post(try_url, json=payload, proxy=llm_proxy, timeout=75) as resp:
                                 if resp.status == 200:
-                                    connected = True
                                     async for line_bytes in resp.content:
                                         line = line_bytes.decode('utf-8', errors='ignore').strip()
                                         if not line or not line.startswith("data:"):
@@ -2234,10 +2367,12 @@ async def stream_llm(message: str, history: list):
                                                 for part in parts:
                                                     t = part.get("text", "")
                                                     if t:
+                                                        connected = True
                                                         yield t
                                         except Exception:
                                             pass
-                                    return
+                                    if connected:
+                                        return
                                 elif resp.status in (429, 503, 500):
                                     await asyncio.sleep(1.5)
                                     continue
@@ -2246,6 +2381,20 @@ async def stream_llm(message: str, history: list):
                             logger.warning(f"Stream connect attempt failed: {stream_err}")
                             await asyncio.sleep(1.0)
                     if connected:
+                        return
+
+                if not connected:
+                    fb_config = get_fallback_config()
+                    if fb_config:
+                        logger.warning(f"Primary Gemini stream failed. Triggering automatic fallback to {fb_config['provider']} ({fb_config['model']})...")
+                        messages = [{"role": "system", "content": system_instruction}]
+                        for msg in history:
+                            role = "user" if msg.get("sender") == "user" else "assistant"
+                            messages.append({"role": role, "content": strip_html_for_history(msg.get("text", ""))})
+                        messages.append({"role": "user", "content": message})
+                        fb_proxy = get_active_proxy(fb_config["provider"])
+                        async for chunk in _stream_openai_chat(session, fb_config, messages, fb_proxy):
+                            yield chunk
                         return
 
                 yield "⚠️ Сервис нейросети временно испытывает пиковую нагрузку. Пожалуйста, повторите запрос через несколько секунд."
@@ -2274,6 +2423,13 @@ async def stream_llm(message: str, history: list):
                     if resp.status != 200:
                         err_text = await resp.text()
                         logger.error(f"{provider.upper()} API streaming error ({resp.status}): {err_text}")
+                        fb_config = get_fallback_config()
+                        if fb_config and fb_config["provider"] != provider:
+                            logger.warning(f"Primary {provider} streaming returned {resp.status}. Triggering fallback...")
+                            fb_proxy = get_active_proxy(fb_config["provider"])
+                            async for chunk in _stream_openai_chat(session, fb_config, messages, fb_proxy):
+                                yield chunk
+                            return
                         yield f"⚠️ Ошибка {provider.upper()} API ({resp.status})."
                         return
 
@@ -2291,11 +2447,27 @@ async def stream_llm(message: str, history: list):
                                 delta = choices[0].get("delta", {})
                                 t = delta.get("content", "")
                                 if t:
+                                    connected = True
                                     yield t
                         except Exception:
                             pass
         except Exception as e:
             logger.error(f"Stream connection error to {provider}: {e}")
+            fb_config = get_fallback_config()
+            if fb_config and not connected:
+                logger.warning(f"Primary stream error ({e}). Triggering fallback to {fb_config['provider']} ({fb_config['model']})...")
+                try:
+                    messages = [{"role": "system", "content": system_instruction}]
+                    for msg in history:
+                        role = "user" if msg.get("sender") == "user" else "assistant"
+                        messages.append({"role": role, "content": strip_html_for_history(msg.get("text", ""))})
+                    messages.append({"role": "user", "content": message})
+                    fb_proxy = get_active_proxy(fb_config["provider"])
+                    async for chunk in _stream_openai_chat(session, fb_config, messages, fb_proxy):
+                        yield chunk
+                    return
+                except Exception as fb_err:
+                    logger.error(f"Fallback stream error: {fb_err}")
             yield f"⚠️ Ошибка соединения с нейросетью ({type(e).__name__})."
 
 # Optional background price auto-updater (can be enabled via .env)
