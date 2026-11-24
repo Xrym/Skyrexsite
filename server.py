@@ -1789,14 +1789,14 @@ def build_system_instruction(dynamic_context="", user_message="", history=None, 
     rules_text = ""
     if ai_rules:
         rules_text = (
-            "=== СВОД ПРАВИЛ И ТЕХНИЧЕСКИХ СТАНДАРТОВ СБОРКИ SKYREX ===\n"
-            "Неукоснительно следуй всем правилам ниже при консультации и подборе комплектующих:\n\n"
+            "=== ДОПОЛНИТЕЛЬНЫЕ ОПЕРАТИВНЫЕ ПРАВИЛА И ОГРАНИЧЕНИЯ (ОТ АДМИНИСТРАТОРА) ===\n"
+            "Администратор установил следующие дополнительные правила и ограничения. Они имеют высший приоритет над базовыми рекомендациями:\n\n"
         )
         for r in ai_rules:
             rule_id = r.get("id", "")
-            title = r.get("title") or "Инструкция"
+            title = r.get("title") or "Оперативное правило"
             rule_text = r.get("rule_text", "").strip()
-            rules_text += f"Правило #{rule_id} [{title}]:\n{rule_text}\n\n"
+            rules_text += f"• [Правило #{rule_id} — {title}]: {rule_text}\n\n"
 
     catalog_text = "=== МЕДИАННЫЕ РЫНОЧНЫЕ ЦЕНЫ КОМПЛЕКТУЮЩИХ (АВИТО Б/У) ===\n\n"
     for component in components:

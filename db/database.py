@@ -645,6 +645,27 @@ def init_expert_tables(force: bool = False):
             )
             logger.info("Applied migration: migrate_to_avito_medians_and_autonomous_evaluation_v1")
 
+        master_prompt_migration = "migrate_system_rules_to_core_master_prompt_v1"
+        if not cursor.execute(
+            "SELECT 1 FROM app_migrations WHERE name = ?",
+            (master_prompt_migration,),
+        ).fetchone():
+            cursor.execute(
+                """
+                UPDATE prompt_templates
+                SET prompt_text = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = 'assistant_system'
+                """,
+                (DEFAULT_PROMPTS["assistant_system"],),
+            )
+            cursor.execute("DELETE FROM ai_rules WHERE created_by = 'system'")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'ai_rules'")
+            cursor.execute(
+                "INSERT INTO app_migrations (name) VALUES (?)",
+                (master_prompt_migration,),
+            )
+            logger.info("Applied migration: migrate_system_rules_to_core_master_prompt_v1")
+
         conn.commit()
     _EXPERT_TABLES_INITIALIZED = True
 
@@ -863,25 +884,16 @@ def delete_ai_rule(rule_id: int) -> bool:
         return cursor.rowcount > 0
 
 def reset_ai_rules() -> int:
-    """Restores ai_rules table to default factory rules."""
-    from db.prompt_defaults import DEFAULT_AI_RULES
-
+    """Clears custom operational rules added by the administrator."""
     init_expert_tables()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM ai_rules")
+        deleted_count = cursor.rowcount
         cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'ai_rules'")
-        for rule in DEFAULT_AI_RULES:
-            cursor.execute(
-                """
-                INSERT INTO ai_rules (title, rule_text, is_active, created_by)
-                VALUES (?, ?, ?, ?)
-                """,
-                (rule["title"], rule["rule_text"], 1, "system"),
-            )
         conn.commit()
         invalidate_db_cache()
-        return len(DEFAULT_AI_RULES)
+        return deleted_count
 
 def get_stats() -> Dict[str, Any]:
     """Returns database size and breakdown by shops/categories."""
