@@ -12,8 +12,19 @@ const SkyrexAuth = {
 
     // Init function
     init() {
+        const storedToken = localStorage.getItem(this.TOKEN_KEY);
+        const storedSession = localStorage.getItem(this.SESSION_KEY);
+        if (storedToken) {
+            this.token = storedToken;
+            if (storedSession) {
+                try {
+                    this.currentUser = JSON.parse(storedSession);
+                } catch (_) {}
+            }
+        }
         this.setupDOM();
         this.bindEvents();
+        this.updateUI();
         this.checkSession();
     },
 
@@ -62,6 +73,10 @@ const SkyrexAuth = {
 
     getToken() {
         return this.token || localStorage.getItem(this.TOKEN_KEY) || "";
+    },
+
+    isAuthenticated() {
+        return !!(this.getToken() && this.currentUser);
     },
 
     // Login logic via server (login & password)

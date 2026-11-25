@@ -2662,10 +2662,19 @@ async def handle_chat(request):
                 status=429
             )
 
-        # Check authorization token (optional during free beta)
+        # Check authorization token (mandatory for chat access)
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
         current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
+
+        if not current_user:
+            return web.json_response(
+                {
+                    "response": "🔒 Для общения с ИИ-консультантом необходимо войти или зарегистрироваться.",
+                    "error": "unauthorized"
+                },
+                status=401
+            )
 
         try:
             data = await request.json()

@@ -467,6 +467,11 @@ document.addEventListener("DOMContentLoaded", () => {
         showTyping(true);
         setTimeout(() => {
             showTyping(false);
+            const token = (typeof SkyrexAuth !== "undefined" && SkyrexAuth.getToken) ? SkyrexAuth.getToken() : "";
+            const authPrompt = token
+                ? "<i>Начните вводить ваш вопрос или бюджет (например, «сборка за 80000»), чтобы увидеть умные подсказки!</i>"
+                : "🔒 <i>Для общения с ИИ-консультантом и отправки запросов, пожалуйста, <a href='javascript:void(0)' onclick='window.SkyrexAuth && window.SkyrexAuth.openAuthModal()' style='color: var(--neon-accent, #8b5cf6); text-decoration: underline; font-weight: 600;'>войдите в аккаунт</a> или <a href='javascript:void(0)' onclick='window.SkyrexAuth && (window.SkyrexAuth.openAuthModal(), window.SkyrexAuth.switchAuthTab(\"register\"))' style='color: var(--neon-cyan, #06b6d4); text-decoration: underline; font-weight: 600;'>зарегистрируйтесь</a>.</i>";
+
             const welcomeText =
                 "👋 <b>Добро пожаловать в SkyRex AI Assistant!</b>\n\n" +
                 "Я интеллектуальный ИИ-консультант по компьютерному железу, сборке ПК и подбору комплектующих.\n\n" +
@@ -475,7 +480,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 "• 🛠️ <b>Индивидуальная сборка:</b> соберу идеальный сбалансированный ПК под ваш бюджет и задачи (игры, 3D, стриминг, работа)\n" +
                 "• ⚖️ <b>Сравнение и аналитика:</b> оценю совместимость сокетов (AM4/AM5/LGA 1700), тип памяти и мощность блока питания\n" +
                 "• 💻 <b>Вторичный рынок:</b> подберу надежные позиции со вторички из каталога SkyRex\n\n" +
-                "<i>Начните вводить ваш вопрос или бюджет (например, «сборка за 80000»), чтобы увидеть умные подсказки!</i>";
+                authPrompt;
 
             appendMessage("bot", welcomeText);
         }, 400);
@@ -748,6 +753,18 @@ document.addEventListener("DOMContentLoaded", () => {
     async function handleUserText(text) {
         if (!text || !text.trim() || state.isGenerating) return;
         const query = text.trim();
+
+        // 0. Enforce authentication: strictly require logged-in user
+        const token = (typeof SkyrexAuth !== "undefined" && SkyrexAuth.getToken) ? SkyrexAuth.getToken() : "";
+        if (!token) {
+            hideAutocomplete();
+            appendMessage("bot", "🔒 <b>Требуется авторизация</b><br>Для общения с ИИ-консультантом и подбора сборок необходимо <a href='javascript:void(0)' onclick='window.SkyrexAuth && window.SkyrexAuth.openAuthModal()' style='color: var(--neon-accent, #8b5cf6); text-decoration: underline; font-weight: 600;'>войти в аккаунт</a> или <a href='javascript:void(0)' onclick='window.SkyrexAuth && (window.SkyrexAuth.openAuthModal(), window.SkyrexAuth.switchAuthTab(\"register\"))' style='color: var(--neon-cyan, #06b6d4); text-decoration: underline; font-weight: 600;'>зарегистрироваться</a>.");
+            if (typeof SkyrexAuth !== "undefined" && SkyrexAuth.openAuthModal) {
+                SkyrexAuth.openAuthModal();
+            }
+            return;
+        }
+
         state.lastUserQuery = query;
 
         // Reset input
@@ -771,8 +788,6 @@ document.addEventListener("DOMContentLoaded", () => {
         state.abortController = new AbortController();
         const signal = state.abortController.signal;
 
-        const token = (typeof SkyrexAuth !== "undefined" && SkyrexAuth.getToken) ? SkyrexAuth.getToken() : "";
-
         // Placeholder for the incoming bot response
         let botMsgDiv = null;
         let botContentDiv = null;
@@ -784,7 +799,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": token ? `Bearer ${token}` : ""
+                    "Authorization": `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     message: query,
@@ -798,8 +813,11 @@ document.addEventListener("DOMContentLoaded", () => {
             if (response.status === 401) {
                 showTyping(false);
                 setGeneratingState(false);
+                if (typeof SkyrexAuth !== "undefined" && SkyrexAuth.logout) {
+                    SkyrexAuth.logout();
+                }
                 const data = await response.json().catch(() => ({}));
-                appendMessage("bot", data.response || "🔒 <b>Требуется авторизация</b><br>Пожалуйста, войдите в аккаунт.");
+                appendMessage("bot", data.response || "🔒 <b>Сессия истекла или требуется авторизация</b><br>Пожалуйста, войдите в аккаунт снова.");
                 if (typeof SkyrexAuth !== "undefined" && SkyrexAuth.openAuthModal) {
                     SkyrexAuth.openAuthModal();
                 }
@@ -1003,4 +1021,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 14. Initialize UI & Chat
     loadChatHistory();
+
+    // 15. Listen for authentication state changes
+    document.addEventListener("skyrex-auth-changed", (e) => {
+        const user = e.detail;
+        if (user && chatInput) {
+            chatInput.focus();
+        }
+    });
 });
