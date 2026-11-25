@@ -1530,6 +1530,112 @@ footer {
     margin-right: 8px;
 }
 
+.user .msg-action-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.user .msg-action-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #ffffff;
+}
+
+@media (hover: none) {
+    .chat-msg-actions {
+        opacity: 0.85;
+    }
+}
+
+/* Modern Chat Toast Notifications */
+.chat-toast-container {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    width: 90%;
+    max-width: 440px;
+}
+
+.chat-toast {
+    pointer-events: auto;
+    background: rgba(18, 22, 38, 0.95);
+    border: 1px solid rgba(139, 92, 246, 0.45);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(139, 92, 246, 0.2);
+    backdrop-filter: blur(12px);
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transition: opacity 0.25s, transform 0.25s;
+}
+
+.chat-toast-warning {
+    border-color: rgba(245, 158, 11, 0.6);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(245, 158, 11, 0.2);
+}
+
+.chat-toast-success {
+    border-color: rgba(16, 185, 129, 0.6);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(16, 185, 129, 0.2);
+}
+
+.chat-toast-hiding {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+}
+
+.chat-toast-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.chat-toast-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.chat-toast-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+    transition: color 0.15s;
+    border-radius: 4px;
+}
+
+.chat-toast-close:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-12px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
 /* Inline Keyboard inside Chat */
 .inline-keyboard {
     display: flex;

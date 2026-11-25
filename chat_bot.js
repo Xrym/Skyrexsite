@@ -75,6 +75,47 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/'/g, "&#039;");
     }
 
+    // Modern Chat Toast Notification System
+    function showToast(text, type = "info", duration = 4000) {
+        let container = document.getElementById("chat-toast-container");
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "chat-toast-container";
+            container.className = "chat-toast-container";
+            const parent = document.querySelector(".hero-chat-container") || chatBody || document.body;
+            parent.appendChild(container);
+        }
+
+        const toast = document.createElement("div");
+        toast.className = `chat-toast chat-toast-${type}`;
+        const iconHtml = type === "warning" ? "⚠️" : (type === "success" ? "✅" : "💡");
+
+        toast.innerHTML = `
+            <div class="chat-toast-content">
+                <span class="chat-toast-icon">${iconHtml}</span>
+                <span class="chat-toast-text">${text}</span>
+            </div>
+            <button class="chat-toast-close" title="Закрыть" aria-label="Закрыть">&times;</button>
+        `;
+
+        const closeBtn = toast.querySelector(".chat-toast-close");
+        if (closeBtn) {
+            closeBtn.addEventListener("click", () => {
+                toast.classList.add("chat-toast-hiding");
+                setTimeout(() => toast.remove(), 250);
+            });
+        }
+
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.classList.add("chat-toast-hiding");
+                setTimeout(() => toast.remove(), 250);
+            }
+        }, duration);
+    }
+
     function formatTime(date = new Date()) {
         const d = (date instanceof Date) ? date : new Date(date);
         if (isNaN(d.getTime())) return "ранее";
@@ -353,11 +394,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const footerDiv = document.createElement("div");
         footerDiv.className = "chat-message-footer";
 
-        // Action buttons for bot messages (e.g. Copy)
-        if (msgObj.sender === "bot") {
-            const actionsDiv = document.createElement("div");
-            actionsDiv.className = "chat-msg-actions";
+        // Action buttons container (Gemini-style actions)
+        const actionsDiv = document.createElement("div");
+        actionsDiv.className = "chat-msg-actions" + (msgObj.sender === "user" ? " user-msg-actions" : "");
 
+        if (msgObj.sender === "bot") {
+            // 1. Copy Bot Response
             const copyBtn = document.createElement("button");
             copyBtn.className = "msg-action-btn";
             copyBtn.title = "Копировать ответ";
@@ -369,7 +411,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 <span>Копировать</span>
             `;
             copyBtn.addEventListener("click", () => {
-                // Strip HTML tags for clean clipboard text
                 const plainText = contentDiv.innerText || contentDiv.textContent || msgObj.text;
                 navigator.clipboard.writeText(plainText.trim()).then(() => {
                     copyBtn.classList.add("copied");
@@ -378,16 +419,91 @@ document.addEventListener("DOMContentLoaded", () => {
                         copyBtn.classList.remove("copied");
                         copyBtn.querySelector("span").textContent = "Копировать";
                     }, 2000);
+                    showToast("Ответ скопирован в буфер", "success", 2000);
                 }).catch(err => {
                     console.warn("Clipboard copy failed:", err);
                 });
             });
-
             actionsDiv.appendChild(copyBtn);
+
+            // 2. Regenerate Response Button (🔄)
+            const regenBtn = document.createElement("button");
+            regenBtn.className = "msg-action-btn";
+            regenBtn.title = "Сгенерировать ответ заново";
+            regenBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                <span>Повторить</span>
+            `;
+            regenBtn.addEventListener("click", () => {
+                if (state.isGenerating) return;
+                let targetQuery = "";
+                const msgIdx = state.messages.findIndex(m => m.id === msgObj.id);
+                if (msgIdx > 0) {
+                    for (let j = msgIdx - 1; j >= 0; j--) {
+                        if (state.messages[j].sender === "user") {
+                            targetQuery = state.messages[j].text;
+                            break;
+                        }
+                    }
+                }
+                if (!targetQuery) targetQuery = state.lastUserQuery;
+                if (targetQuery) {
+                    handleUserText(targetQuery);
+                }
+            });
+            actionsDiv.appendChild(regenBtn);
+
             footerDiv.appendChild(actionsDiv);
         } else {
-            // Spacer for user alignment
-            footerDiv.appendChild(document.createElement("div"));
+            // User message actions: Edit Prompt (✏️) and Copy (📋)
+            const editBtn = document.createElement("button");
+            editBtn.className = "msg-action-btn";
+            editBtn.title = "Редактировать запрос";
+            editBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                <span>Редактировать</span>
+            `;
+            editBtn.addEventListener("click", () => {
+                chatInput.value = msgObj.text;
+                autoResizeInput();
+                chatInput.focus();
+                chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
+                chatInput.scrollIntoView({ behavior: "smooth", block: "center" });
+                showToast("Текст запроса загружен в поле ввода", "info", 2000);
+            });
+            actionsDiv.appendChild(editBtn);
+
+            const copyUserBtn = document.createElement("button");
+            copyUserBtn.className = "msg-action-btn";
+            copyUserBtn.title = "Копировать текст запроса";
+            copyUserBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Копировать</span>
+            `;
+            copyUserBtn.addEventListener("click", () => {
+                navigator.clipboard.writeText(msgObj.text).then(() => {
+                    copyUserBtn.classList.add("copied");
+                    copyUserBtn.querySelector("span").textContent = "Скопировано!";
+                    setTimeout(() => {
+                        copyUserBtn.classList.remove("copied");
+                        copyUserBtn.querySelector("span").textContent = "Копировать";
+                    }, 2000);
+                    showToast("Запрос скопирован в буфер", "success", 2000);
+                });
+            });
+            actionsDiv.appendChild(copyUserBtn);
+
+            footerDiv.appendChild(actionsDiv);
         }
 
         const timeSpan = document.createElement("span");
@@ -415,7 +531,8 @@ document.addEventListener("DOMContentLoaded", () => {
         };
         state.messages.push(msgObj);
         saveChatHistory();
-        return renderMessage(msgObj, true);
+        const rendered = renderMessage(msgObj, true);
+        return { ...rendered, msgObj };
     }
 
     // 6. History Storage in LocalStorage
@@ -646,7 +763,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     autoResizeInput();
 
+    // User Prompt History Stack (Gemini/Terminal style ↑ / ↓ prompt recall)
+    let inputHistoryIndex = -1;
+    let savedDraftText = "";
+
     chatInput.addEventListener("input", () => {
+        inputHistoryIndex = -1;
+        savedDraftText = "";
         autoResizeInput();
         if (state.isGenerating) {
             hideAutocomplete();
@@ -673,30 +796,74 @@ document.addEventListener("DOMContentLoaded", () => {
     chatInput.addEventListener("keydown", (e) => {
         const isAcVisible = chatAutocomplete && chatAutocomplete.style.display !== "none" && currentMatches.length > 0;
 
-        if (e.key === "ArrowDown" && isAcVisible) {
-            e.preventDefault();
-            const nextIdx = (activeSuggestionIndex + 1) % currentMatches.length;
-            setActiveAutocompleteIndex(nextIdx);
-            return;
+        if (e.key === "ArrowDown") {
+            if (isAcVisible) {
+                e.preventDefault();
+                const nextIdx = (activeSuggestionIndex + 1) % currentMatches.length;
+                setActiveAutocompleteIndex(nextIdx);
+                return;
+            }
+            // Navigate forward in user prompt history
+            const userHistory = state.messages.filter(m => m.sender === "user").map(m => m.text);
+            if (inputHistoryIndex !== -1 && userHistory.length > 0) {
+                e.preventDefault();
+                if (inputHistoryIndex < userHistory.length - 1) {
+                    inputHistoryIndex++;
+                    chatInput.value = userHistory[inputHistoryIndex];
+                } else {
+                    inputHistoryIndex = -1;
+                    chatInput.value = savedDraftText;
+                }
+                autoResizeInput();
+                chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
+                return;
+            }
         }
 
-        if (e.key === "ArrowUp" && isAcVisible) {
-            e.preventDefault();
-            const prevIdx = activeSuggestionIndex <= 0 ? currentMatches.length - 1 : activeSuggestionIndex - 1;
-            setActiveAutocompleteIndex(prevIdx);
-            return;
+        if (e.key === "ArrowUp") {
+            if (isAcVisible) {
+                e.preventDefault();
+                const prevIdx = activeSuggestionIndex <= 0 ? currentMatches.length - 1 : activeSuggestionIndex - 1;
+                setActiveAutocompleteIndex(prevIdx);
+                return;
+            }
+            // Recall previous user prompt from history (Gemini style)
+            const userHistory = state.messages.filter(m => m.sender === "user").map(m => m.text);
+            if (userHistory.length > 0 && (chatInput.selectionStart === 0 || chatInput.value.trim() === "" || inputHistoryIndex !== -1)) {
+                e.preventDefault();
+                if (inputHistoryIndex === -1) {
+                    savedDraftText = chatInput.value;
+                    inputHistoryIndex = userHistory.length - 1;
+                } else if (inputHistoryIndex > 0) {
+                    inputHistoryIndex--;
+                }
+                chatInput.value = userHistory[inputHistoryIndex];
+                autoResizeInput();
+                chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
+                return;
+            }
+        }
+
+        if (e.key === "Escape") {
+            if (isAcVisible) {
+                e.preventDefault();
+                hideAutocomplete();
+                return;
+            }
+            if (chatInput.value.length > 0) {
+                e.preventDefault();
+                chatInput.value = "";
+                inputHistoryIndex = -1;
+                savedDraftText = "";
+                autoResizeInput();
+                return;
+            }
         }
 
         if (e.key === "Tab" && isAcVisible) {
             e.preventDefault();
             const target = activeSuggestionIndex >= 0 ? currentMatches[activeSuggestionIndex] : currentMatches[0];
             selectAutocompleteItem(target, false);
-            return;
-        }
-
-        if (e.key === "Escape" && isAcVisible) {
-            e.preventDefault();
-            hideAutocomplete();
             return;
         }
 
@@ -749,16 +916,23 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // 11. Core Message Handler with Streaming Support
+    // 11. Core Message Handler with Streaming Support and Automatic Error Rollback
     async function handleUserText(text) {
         if (!text || !text.trim() || state.isGenerating) return;
         const query = text.trim();
+
+        // Reset history stack
+        inputHistoryIndex = -1;
+        savedDraftText = "";
 
         // 0. Enforce authentication: strictly require logged-in user
         const token = (typeof SkyrexAuth !== "undefined" && SkyrexAuth.getToken) ? SkyrexAuth.getToken() : "";
         if (!token) {
             hideAutocomplete();
-            appendMessage("bot", "🔒 <b>Требуется авторизация</b><br>Для общения с ИИ-консультантом и подбора сборок необходимо <a href='javascript:void(0)' onclick='window.SkyrexAuth && window.SkyrexAuth.openAuthModal()' style='color: var(--neon-accent, #8b5cf6); text-decoration: underline; font-weight: 600;'>войти в аккаунт</a> или <a href='javascript:void(0)' onclick='window.SkyrexAuth && (window.SkyrexAuth.openAuthModal(), window.SkyrexAuth.switchAuthTab(\"register\"))' style='color: var(--neon-cyan, #06b6d4); text-decoration: underline; font-weight: 600;'>зарегистрироваться</a>.");
+            chatInput.value = query;
+            autoResizeInput();
+            chatInput.focus();
+            showToast("🔒 Для общения с ИИ-консультантом необходимо войти или зарегистрироваться.", "warning", 5000);
             if (typeof SkyrexAuth !== "undefined" && SkyrexAuth.openAuthModal) {
                 SkyrexAuth.openAuthModal();
             }
@@ -779,7 +953,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }));
 
         // 2. Append User Message
-        appendMessage("user", query);
+        const userRendered = appendMessage("user", query);
+        const userMsgDiv = userRendered ? userRendered.msgDiv : null;
+        const userMsgObj = userRendered ? userRendered.msgObj : null;
 
         // 3. Setup Generation State
         setGeneratingState(true);
@@ -793,6 +969,37 @@ document.addEventListener("DOMContentLoaded", () => {
         let botContentDiv = null;
         let accumulatedText = "";
         let isFirstToken = true;
+
+        // Rollback helper: removes user message from DOM & state, restores query back into chatInput
+        function rollbackUserMessage(errorMessage) {
+            if (userMsgDiv && userMsgDiv.parentNode) {
+                userMsgDiv.remove();
+            }
+            if (userMsgObj) {
+                const idx = state.messages.findIndex(m => m.id === userMsgObj.id);
+                if (idx !== -1) {
+                    state.messages.splice(idx, 1);
+                    saveChatHistory();
+                }
+            }
+            if (botMsgDiv && botMsgDiv.parentNode) {
+                botMsgDiv.remove();
+                if (state.messages.length > 0 && state.messages[state.messages.length - 1].sender === "bot") {
+                    state.messages.pop();
+                    saveChatHistory();
+                }
+            }
+
+            showTyping(false);
+            setGeneratingState(false);
+
+            chatInput.value = query;
+            autoResizeInput();
+            chatInput.focus();
+            chatInput.selectionStart = chatInput.selectionEnd = query.length;
+
+            showToast(errorMessage || "⚠️ Не удалось получить ответ. Текст сообщения возвращен в поле ввода — нажмите Enter для повтора.", "warning", 6000);
+        }
 
         try {
             const response = await fetch("/api/chat", {
@@ -811,13 +1018,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // Handle unauthorized (401)
             if (response.status === 401) {
-                showTyping(false);
-                setGeneratingState(false);
                 if (typeof SkyrexAuth !== "undefined" && SkyrexAuth.logout) {
                     SkyrexAuth.logout();
                 }
-                const data = await response.json().catch(() => ({}));
-                appendMessage("bot", data.response || "🔒 <b>Сессия истекла или требуется авторизация</b><br>Пожалуйста, войдите в аккаунт снова.");
+                rollbackUserMessage("🔒 Сессия истекла или требуется авторизация. Текст сохранен — войдите и нажмите Enter.");
                 if (typeof SkyrexAuth !== "undefined" && SkyrexAuth.openAuthModal) {
                     SkyrexAuth.openAuthModal();
                 }
@@ -826,10 +1030,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // Handle rate limit (429)
             if (response.status === 429) {
-                showTyping(false);
-                setGeneratingState(false);
-                const data = await response.json().catch(() => ({}));
-                appendMessage("bot", data.response || "⏳ Слишком много запросов. Пожалуйста, подождите минуту перед следующим сообщением.");
+                rollbackUserMessage("⏳ Слишком много запросов. Текст возвращен в поле ввода — подождите немного и нажмите Enter.");
                 return;
             }
 
@@ -901,18 +1102,17 @@ document.addEventListener("DOMContentLoaded", () => {
                                 }
                             }
                         } catch (pe) {
-                            // Non-json or raw chunk
+                            if (pe.message && !pe.message.includes("JSON")) {
+                                throw pe;
+                            }
                         }
                     }
                 }
 
                 // Finalize streamed message
-                if (isFirstToken) {
-                    showTyping(false);
-                    appendMessage("bot", accumulatedText || "⚠️ Ассистент не сформировал ответ.");
-                    if (accumulatedText && window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
-                        window.SkyrexRig.updateFromAiResponse(accumulatedText);
-                    }
+                if (isFirstToken || !accumulatedText.trim()) {
+                    rollbackUserMessage("⚠️ Ассистент не сформировал ответ. Текст возвращен в поле ввода — нажмите Enter для повтора.");
+                    return;
                 } else {
                     // Update state with final text
                     const lastBotMsg = state.messages[state.messages.length - 1];
@@ -929,7 +1129,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             } else {
                 // B. STANDARD JSON RESPONSE FALLBACK
-                const data = await response.json();
+                const data = await response.json().catch(() => null);
                 showTyping(false);
                 if (data && data.response) {
                     if (window.SkyrexRig && typeof window.SkyrexRig.updateFromAiResponse === "function") {
@@ -937,7 +1137,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                     appendMessage("bot", data.response);
                 } else {
-                    appendMessage("bot", "⚠️ К сожалению, не удалось получить ответ от ассистента.");
+                    rollbackUserMessage("⚠️ Не удалось получить ответ от ассистента. Текст возвращен в поле ввода — нажмите Enter для повтора.");
+                    return;
                 }
             }
         } catch (err) {
@@ -957,27 +1158,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             } else {
                 console.error("Chat API Error:", err);
-                const errMsg = "⚠️ Не удалось связаться с сервером AI-ассистента. Убедитесь, что сервер запущен.";
-                const rendered = appendMessage("bot", errMsg);
-                // Attach Retry button
-                if (rendered && rendered.contentDiv) {
-                    const retryBtn = document.createElement("button");
-                    retryBtn.className = "chat-retry-btn";
-                    retryBtn.innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="1 4 1 10 7 10"></polyline>
-                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-                        </svg>
-                        <span>Повторить запрос</span>
-                    `;
-                    retryBtn.addEventListener("click", () => {
-                        retryBtn.remove();
-                        if (state.lastUserQuery) {
-                            handleUserText(state.lastUserQuery);
-                        }
-                    });
-                    rendered.contentDiv.appendChild(retryBtn);
-                }
+                rollbackUserMessage("⚠️ Ошибка связи с сервером AI. Текст сообщения возвращен в поле ввода — нажмите Enter для повтора.");
             }
         } finally {
             setGeneratingState(false);
