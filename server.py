@@ -1575,8 +1575,8 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
 
     # 2. Преобразование Markdown-ссылок [текст](url) в чистый HTML
     def md_link_replacer(match):
-        title = match.group(1)
-        url = match.group(2)
+        title = match.group(1).strip()
+        url = match.group(2).strip()
         shop = "Авито"
         if "wildberries.ru" in url:
             shop = "Wildberries"
@@ -1588,6 +1588,12 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
                 return f"<a href='{url}' target='_blank'>{title}</a>"
         elif "dns-shop.ru" in url:
             shop = "DNS"
+
+        # Защита от галлюцинаций модели, оборачивающей целые абзацы в квадратные скобки
+        if len(title) > 80 or '\n' in title or title.count('.') >= 2:
+            search_url = make_marketplace_search_url(shop, shop)
+            return f"{title} <a href='{search_url}' target='_blank'>{shop}</a>"
+
         search_url = make_marketplace_search_url(shop, title)
         return f"<a href='{search_url}' target='_blank'>{title}</a>"
 
@@ -1598,7 +1604,7 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
     def html_link_replacer(match):
         full_tag = match.group(0)
         href = match.group(1)
-        inner_text = match.group(2)
+        inner_text = match.group(2).strip()
 
         shop = "Авито"
         if "wildberries.ru" in href:
@@ -1615,6 +1621,11 @@ def clean_marketplace_links(text: str, budget: Optional[int] = None) -> str:
             shop = "Авито"
         else:
             return full_tag
+
+        # Защита от случайно обернутых абзацев
+        if len(inner_text) > 80 or '\n' in inner_text or inner_text.count('.') >= 2:
+            search_url = make_marketplace_search_url(shop, shop)
+            return f"{inner_text} <a href='{search_url}' target='_blank'>{shop}</a>"
 
         search_url = make_marketplace_search_url(shop, inner_text)
         return f"<a href='{search_url}' target='_blank'>{inner_text}</a>"

@@ -249,15 +249,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // 6. Markdown links: [Title](URL) -> <a href='URL' target='_blank'>Title</a>
         text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, (match, title, url) => {
-            const cleanUrl = sanitizeMarketplaceUrl(url, title);
-            return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${title}</a>`;
+            const cleanTitle = title.trim();
+            const shopName = url.includes("wildberries") ? "Wildberries" : (url.includes("onlinetrade") ? "ОнлайнТрейд" : (url.includes("dns-shop") ? "DNS" : "Авито"));
+            const cleanUrl = sanitizeMarketplaceUrl(url, cleanTitle);
+
+            // Guard against hallucinated link brackets wrapping entire paragraphs / comparison blocks
+            if (cleanTitle.length > 80 || cleanTitle.includes("\n") || (cleanTitle.match(/\./g) || []).length >= 2) {
+                return `${cleanTitle} <a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${shopName}</a>`;
+            }
+
+            return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanTitle}</a>`;
         });
 
         // 6.1. Sanitize any existing HTML <a> tags pointing to marketplaces
         text = text.replace(/<a\s+([^>]*?)href=(['"])(https?:\/\/[^'"]+)\2([^>]*)>(.*?)<\/a>/gi, (match, before, quote, url, after, innerText) => {
-            const cleanUrl = sanitizeMarketplaceUrl(url, innerText);
+            const cleanInner = innerText.trim();
+            const cleanUrl = sanitizeMarketplaceUrl(url, cleanInner);
             const targetAttr = (before + after).includes("target=") ? "" : ' target="_blank" rel="noopener noreferrer"';
-            return `<a ${before}href="${cleanUrl}"${after}${targetAttr}>${innerText}</a>`;
+            const shopName = url.includes("wildberries") ? "Wildberries" : (url.includes("onlinetrade") ? "ОнлайнТрейд" : (url.includes("dns-shop") ? "DNS" : "Авито"));
+
+            // Guard against accidentally wrapped entire paragraphs
+            if (cleanInner.length > 80 || cleanInner.includes("\n") || (cleanInner.match(/\./g) || []).length >= 2) {
+                return `${cleanInner} <a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${shopName}</a>`;
+            }
+
+            return `<a ${before}href="${cleanUrl}"${after}${targetAttr}>${cleanInner}</a>`;
         });
 
         // 7. Auto-link bare URLs not inside tags
