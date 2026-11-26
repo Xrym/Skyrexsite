@@ -6,7 +6,11 @@ import hashlib
 import secrets
 import datetime
 import logging
-from typing import Optional, Dict, Any
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from typing import Optional, Dict, Any, Tuple
 
 logger = logging.getLogger("skyrex_auth_db")
 
@@ -88,8 +92,18 @@ def init_auth_db(force: bool = False):
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);")
         
-        # 3. Clean up obsolete verification_codes table
-        cursor.execute("DROP TABLE IF EXISTS verification_codes;")
+        # 3. Email verification codes table for passwordless OTP authentication
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS verification_codes (
+                email TEXT PRIMARY KEY COLLATE NOCASE,
+                code TEXT NOT NULL,
+                attempts INTEGER DEFAULT 0,
+                last_sent_at TIMESTAMP NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_verif_email ON verification_codes(email);")
         
         # 4. Create or update admin user if configured via environment variables
         admin_login = (os.getenv("ADMIN_LOGIN") or os.getenv("ADMIN_USERNAME") or os.getenv("ADMIN_EMAIL") or "").strip()
@@ -304,3 +318,209 @@ def activate_subscription(user_id: int, days: int = 30) -> Dict[str, Any]:
         conn.commit()
         user = cursor.execute("SELECT id, username, role, subscribed, subscription_expires FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(user)
+
+def send_otp_email(to_email: str, code: str) -> Tuple[bool, Optional[str]]:
+    """Sends 6-digit OTP code to user via Mail.ru SMTP."""
+    smtp_host = os.getenv("SMTP_HOST", "smtp.mail.ru").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "465"))
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
+    smtp_from = os.getenv("SMTP_FROM", "").strip() or f"Skyrex Computers <{smtp_user}>"
+
+    if not smtp_user or not smtp_pass:
+        logger.error("SMTP credentials are not configured in environment.")
+        return False, "Почтовый шлюз сервера временно не настроен. Свяжитесь с поддержкой."
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"Код подтверждения Skyrex: {code}"
+    msg["From"] = smtp_from
+    msg["To"] = to_email
+
+    text_content = (
+        f"Код подтверждения для входа на Skyrex Computers: {code}\n\n"
+        f"Срок действия кода — 15 минут.\n"
+        f"Если вы не запрашивали авторизацию, просто проигнорируйте это письмо.\n\n"
+        f"---\nSkyrex Computers https://skyrex.pro"
+    )
+
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ margin: 0; padding: 0; background-color: #0c1017; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e2e8f0; }}
+    .container {{ max-width: 500px; margin: 30px auto; background: #131923; border: 1px solid #1f2937; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }}
+    .header {{ background: linear-gradient(135deg, #0a0f1d 0%, #1e1b4b 100%); padding: 28px 20px; text-align: center; border-bottom: 2px solid #00ffcc44; }}
+    .logo {{ font-size: 26px; font-weight: 800; letter-spacing: 4px; color: #00ffcc; text-transform: uppercase; margin: 0; }}
+    .sublogo {{ font-size: 11px; letter-spacing: 2px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; }}
+    .body {{ padding: 35px 30px; text-align: center; }}
+    .title {{ font-size: 20px; font-weight: 600; color: #ffffff; margin-bottom: 12px; }}
+    .desc {{ font-size: 14px; color: #94a3b8; line-height: 1.6; margin-bottom: 24px; }}
+    .code-box {{ background: #080d14; border: 1px solid #00ffcc88; border-radius: 10px; padding: 16px 24px; display: inline-block; margin-bottom: 24px; box-shadow: 0 0 20px rgba(0,255,204,0.18); }}
+    .code {{ font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 800; color: #00ffcc; letter-spacing: 8px; margin: 0; }}
+    .notice {{ font-size: 12px; color: #64748b; line-height: 1.5; }}
+    .footer {{ background: #080d14; padding: 18px; text-align: center; font-size: 11px; color: #475569; border-top: 1px solid #1e293b; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">SKYREX</div>
+      <div class="sublogo">Computers & AI Architect</div>
+    </div>
+    <div class="body">
+      <div class="title">Код подтверждения для входа</div>
+      <div class="desc">Используйте этот одноразовый код для авторизации в вашем аккаунте Skyrex Computers:</div>
+      <div class="code-box">
+        <div class="code">{code}</div>
+      </div>
+      <div class="notice">Срок действия кода — 15 минут.<br>Если вы не запрашивали авторизацию, просто проигнорируйте это письмо.</div>
+    </div>
+    <div class="footer">
+      &copy; 2026 Skyrex Computers. Все права защищены.<br>
+      Интерактивная платформа подбора компьютеров.
+    </div>
+  </div>
+</body>
+</html>"""
+
+    msg.attach(MIMEText(text_content, "plain", "utf-8"))
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    try:
+        if smtp_port == 465:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=15.0) as server:
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15.0) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        logger.info(f"Successfully sent OTP code to {to_email}")
+        return True, None
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error(f"SMTP Authentication error: {e}")
+        return False, "Ошибка аутентификации почтового сервера."
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {e}")
+        return False, f"Не удалось отправить письмо: {str(e)}"
+
+def create_verification_code(email: str) -> Tuple[bool, str, Optional[str]]:
+    """Creates a 6-digit verification code with 60-second cooldown per email."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False, "", "Введите адрес электронной почты."
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return False, "", "Некорректный адрес электронной почты."
+    if len(email) > 64:
+        return False, "", "Адрес электронной почты слишком длинный."
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        existing = cursor.execute("SELECT last_sent_at FROM verification_codes WHERE email = ?", (email,)).fetchone()
+        if existing and existing["last_sent_at"]:
+            try:
+                last_dt = datetime.datetime.fromisoformat(existing["last_sent_at"].replace("Z", "+00:00"))
+                elapsed = (now - last_dt).total_seconds()
+                if elapsed < 60:
+                    wait_sec = int(60 - elapsed)
+                    return False, "", f"Подождите {wait_sec} сек. перед повторной отправкой кода."
+            except Exception:
+                pass
+
+        code = f"{secrets.randbelow(900000) + 100000}"
+        expires_at = (now + datetime.timedelta(minutes=15)).isoformat()
+        last_sent_at = now.isoformat()
+
+        cursor.execute("""
+            INSERT INTO verification_codes (email, code, attempts, last_sent_at, expires_at)
+            VALUES (?, ?, 0, ?, ?)
+            ON CONFLICT(email) DO UPDATE SET
+                code = excluded.code,
+                attempts = 0,
+                last_sent_at = excluded.last_sent_at,
+                expires_at = excluded.expires_at;
+        """, (email, code, last_sent_at, expires_at))
+        conn.commit()
+
+    return True, code, None
+
+def verify_code_and_login(email: str, code: str) -> Dict[str, Any]:
+    """Verifies 6-digit OTP code, registers user if new, creates 30-day session token."""
+    email = (email or "").strip().lower()
+    code = (code or "").strip()
+
+    if not email or not code:
+        return {"success": False, "error": "Введите email и код подтверждения."}
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        row = cursor.execute("SELECT * FROM verification_codes WHERE email = ?", (email,)).fetchone()
+        if not row:
+            return {"success": False, "error": "Код не найден или срок его действия истек. Запросите код заново."}
+
+        try:
+            exp_dt = datetime.datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+            if now > exp_dt:
+                cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+                conn.commit()
+                return {"success": False, "error": "Срок действия кода истек (15 минут). Запросите новый код."}
+        except Exception:
+            pass
+
+        attempts = row["attempts"] or 0
+        if attempts >= 5:
+            cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+            conn.commit()
+            return {"success": False, "error": "Превышено максимальное число попыток ввода. Запросите новый код."}
+
+        if not secrets.compare_digest(str(row["code"]).strip(), code):
+            new_attempts = attempts + 1
+            cursor.execute("UPDATE verification_codes SET attempts = ? WHERE email = ?", (new_attempts, email))
+            conn.commit()
+            remaining = max(0, 5 - new_attempts)
+            return {"success": False, "error": f"Неверный код. Осталось попыток: {remaining}."}
+
+        # Code matched successfully! Clean up used code
+        cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+        
+        # Check or create user
+        user = cursor.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (email,)).fetchone()
+        if not user:
+            # Auto-register new user by email
+            salt = secrets.token_hex(16)
+            pwd_hash = hash_password(secrets.token_urlsafe(32), salt)
+            cursor.execute("""
+                INSERT INTO users (username, password_hash, salt, role, subscribed, subscription_expires)
+                VALUES (?, ?, ?, 'user', 0, NULL)
+            """, (email, pwd_hash, salt))
+            user_id = cursor.lastrowid
+            role = "user"
+            subscribed = False
+            sub_exp = None
+        else:
+            user_id = user["id"]
+            role = user["role"]
+            subscribed = bool(user["subscribed"])
+            sub_exp = user["subscription_expires"]
+
+        conn.commit()
+
+    token = create_session(user_id)
+    user_dict = {
+        "id": user_id,
+        "username": email,
+        "role": role,
+        "subscribed": subscribed,
+        "subscriptionExpires": sub_exp
+    }
+    _TOKEN_CACHE[token] = {"user": user_dict, "expires_ts": time.time() + 30.0}
+    return {
+        "success": True,
+        "token": token,
+        "user": user_dict
+    }

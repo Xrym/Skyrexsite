@@ -19,6 +19,8 @@ import dotenv
 CHAT_RATE_LIMITS = defaultdict(list)
 AUTH_LOGIN_LIMITS = defaultdict(list)
 AUTH_REGISTER_LIMITS = defaultdict(list)
+AUTH_CODE_LIMITS = defaultdict(list)
+AUTH_VERIFY_LIMITS = defaultdict(list)
 CHAT_MAX_REQUESTS_PER_MINUTE = 25
 
 def get_client_ip(request: web.Request) -> str:
@@ -130,7 +132,8 @@ from bot_tools.hardware_matcher import match_expert_assessment, enrich_and_rank_
 from db.database import seed_from_bot_db, get_stats, get_connection, get_expert_components
 from db.auth_db import (
     init_auth_db, login_user, register_user,
-    get_user_by_token, logout_token
+    get_user_by_token, logout_token,
+    create_verification_code, verify_code_and_login, send_otp_email
 )
 from scraper.scheduler import BackgroundPriceScheduler
 
@@ -2663,6 +2666,61 @@ async def handle_auth_logout(request):
         await asyncio.to_thread(logout_token, token)
     return web.json_response({"success": True})
 
+async def handle_auth_send_code(request):
+    """Generates a 6-digit OTP code and sends it via Mail.ru SMTP."""
+    client_ip = get_client_ip(request)
+    if not check_ip_rate_limit(AUTH_CODE_LIMITS, client_ip, max_requests=5, window_seconds=60):
+        return web.json_response(
+            {"success": False, "error": "⏳ Слишком много запросов кода с вашего IP. Пожалуйста, подождите минуту."},
+            status=429
+        )
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    email = str(data.get("email") or "").strip().lower()
+    if not email:
+        return web.json_response({"success": False, "error": "Укажите адрес электронной почты."}, status=400)
+
+    ok, code, err = await asyncio.to_thread(create_verification_code, email)
+    if not ok:
+        return web.json_response({"success": False, "error": err or "Не удалось создать код."}, status=400)
+
+    # Send email in worker thread
+    mail_ok, mail_err = await asyncio.to_thread(send_otp_email, email, code)
+    if not mail_ok:
+        logger.error(f"Failed to send OTP code to {email}: {mail_err}")
+        return web.json_response({"success": False, "error": mail_err or "Ошибка отправки письма. Попробуйте снова."}, status=500)
+
+    return web.json_response({
+        "success": True,
+        "message": f"Код подтверждения успешно отправлен на почту {email}."
+    })
+
+async def handle_auth_verify_code(request):
+    """Verifies OTP code and authenticates user."""
+    client_ip = get_client_ip(request)
+    if not check_ip_rate_limit(AUTH_VERIFY_LIMITS, client_ip, max_requests=10, window_seconds=60):
+        return web.json_response(
+            {"success": False, "error": "⏳ Слишком много попыток ввода кода. Пожалуйста, подождите минуту."},
+            status=429
+        )
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    email = str(data.get("email") or "").strip().lower()
+    code = str(data.get("code") or "").strip()
+
+    if not email or not code:
+        return web.json_response({"success": False, "error": "Укажите email и код подтверждения."}, status=400)
+
+    result = await asyncio.to_thread(verify_code_and_login, email, code)
+    status = 200 if result.get("success") else 400
+    return web.json_response(result, status=status)
+
 async def handle_chat(request):
     try:
         # Rate limit per IP address
@@ -2795,7 +2853,9 @@ async def init_app():
     app.router.add_post('/api/chat', handle_chat)
     app.router.add_get('/api/search_price', handle_search_price)
     
-    # Real Authentication API
+    # Real Authentication API (Passwordless Email OTP & Legacy/Admin)
+    app.router.add_post('/api/auth/send-code', handle_auth_send_code)
+    app.router.add_post('/api/auth/verify-code', handle_auth_verify_code)
     app.router.add_post('/api/auth/register', handle_auth_register)
     app.router.add_post('/api/auth/login', handle_auth_login)
     app.router.add_get('/api/auth/me', handle_auth_me)

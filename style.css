@@ -2334,7 +2334,120 @@ footer {
     box-shadow: 0 0 8px var(--success);
 }
 
-/* Auth Modal Tabs */
+/* Auth Modal (Passwordless Email OTP Flow) */
+.auth-badge {
+    display: inline-block;
+    background: rgba(0, 255, 204, 0.08);
+    color: #00ffcc;
+    border: 1px solid rgba(0, 255, 204, 0.25);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+}
+
+.auth-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 22px;
+}
+
+.auth-highlight-email {
+    color: #00ffcc;
+    word-break: break-all;
+}
+
+.auth-email-step {
+    display: none;
+    animation: authFadeIn 0.25s ease-out;
+}
+
+.auth-email-step.active {
+    display: block;
+}
+
+@keyframes authFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.auth-otp-input {
+    text-align: center !important;
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    letter-spacing: 12px !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    color: #00ffcc !important;
+    background: rgba(0, 255, 204, 0.03) !important;
+    border: 1px solid rgba(0, 255, 204, 0.3) !important;
+    box-shadow: 0 0 15px rgba(0, 255, 204, 0.08) !important;
+    border-radius: 12px !important;
+    padding: 14px 16px !important;
+    max-width: 280px;
+    margin: 0 auto;
+}
+
+.auth-otp-input:focus {
+    border-color: #00ffcc !important;
+    box-shadow: 0 0 20px rgba(0, 255, 204, 0.25) !important;
+}
+
+.auth-back-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    margin-bottom: 12px;
+    transition: color 0.2s;
+}
+
+.auth-back-btn:hover {
+    color: #00ffcc;
+}
+
+.auth-resend-box {
+    margin-top: 16px;
+    text-align: center;
+}
+
+.auth-resend-btn {
+    background: none;
+    border: none;
+    color: var(--accent-purple);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.auth-resend-btn:hover:not(:disabled) {
+    color: #00ffcc;
+    text-decoration: underline;
+}
+
+.auth-resend-btn:disabled {
+    color: var(--text-secondary);
+    cursor: not-allowed;
+    opacity: 0.65;
+    text-decoration: none;
+}
+
+/* Auth Modal Tabs (Legacy fallback) */
 .auth-tabs {
     display: flex;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
