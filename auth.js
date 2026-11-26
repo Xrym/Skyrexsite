@@ -138,6 +138,39 @@ const SkyrexAuth = {
         }
     },
 
+    // Update user display nickname
+    async updateNickname(nickname) {
+        nickname = (nickname || "").trim();
+        if (!this.token) {
+            return { success: false, message: "Необходима авторизация." };
+        }
+        try {
+            const res = await fetch("/api/auth/nickname", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.token}`
+                },
+                body: JSON.stringify({ nickname })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                if (data.user) {
+                    this.currentUser = data.user;
+                } else if (this.currentUser) {
+                    this.currentUser.nickname = data.nickname;
+                }
+                this.saveSession();
+                this.updateProfileUI();
+                return { success: true };
+            }
+            return { success: false, message: data.error || "Не удалось обновить никнейм." };
+        } catch (err) {
+            console.error("updateNickname error:", err);
+            return { success: false, message: `Ошибка связи с сервером: ${err.message}` };
+        }
+    },
+
     // Logout logic
     async logout() {
         if (this.token) {
@@ -187,8 +220,16 @@ const SkyrexAuth = {
             // Profile Modal
             profileModal: document.getElementById("profile-modal"),
             profileCloseBtn: document.getElementById("profile-modal-close-btn"),
-            profileUsernameDisplay: document.getElementById("profile-username-display"),
+            profileAvatarDisplay: document.getElementById("profile-avatar-display"),
+            profileNicknameDisplay: document.getElementById("profile-nickname-display"),
+            profileEmailDisplay: document.getElementById("profile-email-display"),
             profileRoleDisplay: document.getElementById("profile-role-display"),
+            profileEditNickBtn: document.getElementById("profile-edit-nick-btn"),
+            profileNickForm: document.getElementById("profile-nick-form"),
+            profileNickInput: document.getElementById("profile-nick-input"),
+            profileNickError: document.getElementById("profile-nick-error"),
+            profileSaveNickBtn: document.getElementById("profile-save-nick-btn"),
+            profileCancelNickBtn: document.getElementById("profile-cancel-nick-btn"),
             profileSubStatus: document.getElementById("profile-sub-status"),
             profileSubExpiry: document.getElementById("profile-sub-expiry"),
             profileLogoutBtn: document.getElementById("profile-logout-btn"),
@@ -316,6 +357,68 @@ const SkyrexAuth = {
             });
         }
 
+        // Profile Modal: Edit Nickname toggle
+        if (this.dom.profileEditNickBtn) {
+            this.dom.profileEditNickBtn.addEventListener("click", () => {
+                if (!this.dom.profileNickForm) return;
+                const isHidden = this.dom.profileNickForm.style.display === "none";
+                if (isHidden) {
+                    this.dom.profileNickForm.style.display = "block";
+                    if (this.dom.profileNickInput) {
+                        const currentNick = (this.currentUser && this.currentUser.nickname) || "";
+                        this.dom.profileNickInput.value = currentNick;
+                        setTimeout(() => this.dom.profileNickInput.focus(), 50);
+                    }
+                    if (this.dom.profileNickError) this.dom.profileNickError.textContent = "";
+                } else {
+                    this.dom.profileNickForm.style.display = "none";
+                }
+            });
+        }
+
+        // Profile Modal: Cancel Nickname edit
+        if (this.dom.profileCancelNickBtn) {
+            this.dom.profileCancelNickBtn.addEventListener("click", () => {
+                if (this.dom.profileNickForm) this.dom.profileNickForm.style.display = "none";
+                if (this.dom.profileNickError) this.dom.profileNickError.textContent = "";
+            });
+        }
+
+        // Profile Modal: Save Nickname
+        if (this.dom.profileNickForm) {
+            this.dom.profileNickForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                if (this.dom.profileNickError) this.dom.profileNickError.textContent = "";
+
+                const newNick = this.dom.profileNickInput ? this.dom.profileNickInput.value.trim() : "";
+                if (!newNick) {
+                    if (this.dom.profileNickError) this.dom.profileNickError.textContent = "Введите никнейм.";
+                    return;
+                }
+
+                if (this.dom.profileSaveNickBtn) {
+                    this.dom.profileSaveNickBtn.disabled = true;
+                    this.dom.profileSaveNickBtn.innerHTML = `<span>Сохранение...</span>`;
+                }
+
+                const res = await this.updateNickname(newNick);
+
+                if (this.dom.profileSaveNickBtn) {
+                    this.dom.profileSaveNickBtn.disabled = false;
+                    this.dom.profileSaveNickBtn.innerHTML = `<span>Сохранить</span>`;
+                }
+
+                if (res.success) {
+                    if (this.dom.profileNickForm) this.dom.profileNickForm.style.display = "none";
+                    if (typeof showToast === "function") {
+                        showToast("Никнейм успешно изменен!", "success");
+                    }
+                } else if (this.dom.profileNickError) {
+                    this.dom.profileNickError.textContent = res.message;
+                }
+            });
+        }
+
         // Profile Modal Logout
         if (this.dom.profileLogoutBtn) {
             this.dom.profileLogoutBtn.addEventListener("click", () => {
@@ -350,6 +453,9 @@ const SkyrexAuth = {
             if (this.dom.emailInput) this.dom.emailInput.value = "";
             this.pendingEmail = "";
             this.stopCountdown();
+            if (typeof showToast === "function") {
+                showToast("Успешный вход в аккаунт!", "success");
+            }
         } else if (this.dom.codeError) {
             this.dom.codeError.textContent = res.message;
         }
@@ -462,12 +568,26 @@ const SkyrexAuth = {
 
     updateProfileUI() {
         if (!this.currentUser) return;
-        const displayName = this.currentUser.username || this.currentUser.login || "Пользователь";
-        if (this.dom.profileUsernameDisplay) {
-            this.dom.profileUsernameDisplay.textContent = displayName;
+        const nick = this.currentUser.nickname || (this.currentUser.username ? this.currentUser.username.split("@")[0] : "Пользователь");
+        const email = this.currentUser.username || "";
+
+        if (this.dom.profileNicknameDisplay) {
+            this.dom.profileNicknameDisplay.textContent = nick;
+        }
+        if (this.dom.profileEmailDisplay) {
+            this.dom.profileEmailDisplay.textContent = email;
+        }
+        if (this.dom.profileAvatarDisplay) {
+            const firstLetter = nick.charAt(0).toUpperCase();
+            this.dom.profileAvatarDisplay.textContent = firstLetter || "👤";
         }
         if (this.dom.profileRoleDisplay) {
             this.dom.profileRoleDisplay.textContent = this.currentUser.role === "admin" ? "Администратор" : "Пользователь";
+        }
+
+        // Hide inline edit form on fresh modal open
+        if (this.dom.profileNickForm) {
+            this.dom.profileNickForm.style.display = "none";
         }
 
         // Subscription status display

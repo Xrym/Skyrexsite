@@ -7,7 +7,7 @@
     <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
     <meta name="description"
         content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
-    <link rel="stylesheet" href="style.css?v=20261126-01">
+    <link rel="stylesheet" href="style.css?v=20261126-02">
 </head>
 
 <body>
@@ -257,12 +257,29 @@
             <h3 class="modal-title">Личный кабинет</h3>
 
             <div class="profile-user-info">
-                <div class="profile-avatar">👤</div>
-                <div class="profile-details">
-                    <span class="profile-email profile-username" id="profile-username-display">user@mail.ru</span>
-                    <span class="profile-role" id="profile-role-display">Пользователь</span>
+                <div class="profile-avatar" id="profile-avatar-display">👤</div>
+                <div class="profile-details" style="flex: 1; min-width: 0;">
+                    <div class="profile-nickname-row" style="display: flex; align-items: center; gap: 8px;">
+                        <span class="profile-nickname" id="profile-nickname-display" style="font-size: 18px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Пользователь</span>
+                        <button type="button" class="profile-edit-btn" id="profile-edit-nick-btn" title="Изменить никнейм" aria-label="Изменить никнейм">✏️</button>
+                    </div>
+                    <span class="profile-email" id="profile-email-display" style="font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">user@mail.ru</span>
+                    <span class="profile-role" id="profile-role-display" style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; display: block;">Пользователь</span>
                 </div>
             </div>
+
+            <!-- Inline Nickname Edit Form -->
+            <form id="profile-nick-form" style="display: none; margin-bottom: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 14px; padding: 14px;">
+                <label for="profile-nick-input" style="font-size: 11px; color: #00ffcc; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; display: block; margin-bottom: 8px;">Изменить никнейм</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="profile-nick-input" class="form-input" style="padding: 10px 14px; font-size: 14px; flex: 1;" maxlength="24" placeholder="Введите никнейм" required>
+                    <button type="submit" class="btn btn-primary" id="profile-save-nick-btn" style="padding: 8px 16px; font-size: 13px; white-space: nowrap;">
+                        <span>Сохранить</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="profile-cancel-nick-btn" style="padding: 8px 12px; font-size: 13px;" title="Отмена">✕</button>
+                </div>
+                <div class="auth-error" id="profile-nick-error" style="margin-top: 6px; font-size: 12px;"></div>
+            </form>
 
             <div class="profile-status-box" id="profile-sub-box" style="margin-bottom: 20px; padding: 14px; background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 12px; font-size: 13px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -279,10 +296,10 @@
     </div>
 
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=20261126-01"></script>
-    <script src="rig_visualizer.js?v=20261126-01"></script>
-    <script src="chat_bot.js?v=20261126-01"></script>
-    <script src="app.js?v=20261126-01"></script>
+    <script src="auth.js?v=20261126-02"></script>
+    <script src="rig_visualizer.js?v=20261126-02"></script>
+    <script src="chat_bot.js?v=20261126-02"></script>
+    <script src="app.js?v=20261126-02"></script>
 </body>
 
 

@@ -133,7 +133,8 @@ from db.database import seed_from_bot_db, get_stats, get_connection, get_expert_
 from db.auth_db import (
     init_auth_db, login_user, register_user,
     get_user_by_token, logout_token,
-    create_verification_code, verify_code_and_login, send_otp_email
+    create_verification_code, verify_code_and_login, send_otp_email,
+    update_user_nickname
 )
 from scraper.scheduler import BackgroundPriceScheduler
 
@@ -2721,6 +2722,25 @@ async def handle_auth_verify_code(request):
     status = 200 if result.get("success") else 400
     return web.json_response(result, status=status)
 
+async def handle_auth_update_nickname(request):
+    """Updates active user display nickname."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
+    current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
+
+    if not current_user:
+        return web.json_response({"success": False, "error": "Необходима авторизация."}, status=401)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    new_nickname = str(data.get("nickname") or "").strip()
+    result = await asyncio.to_thread(update_user_nickname, current_user["id"], new_nickname)
+    status = 200 if result.get("success") else 400
+    return web.json_response(result, status=status)
+
 async def handle_chat(request):
     try:
         # Rate limit per IP address
@@ -2856,6 +2876,7 @@ async def init_app():
     # Real Authentication API (Passwordless Email OTP & Legacy/Admin)
     app.router.add_post('/api/auth/send-code', handle_auth_send_code)
     app.router.add_post('/api/auth/verify-code', handle_auth_verify_code)
+    app.router.add_post('/api/auth/nickname', handle_auth_update_nickname)
     app.router.add_post('/api/auth/register', handle_auth_register)
     app.router.add_post('/api/auth/login', handle_auth_login)
     app.router.add_get('/api/auth/me', handle_auth_me)

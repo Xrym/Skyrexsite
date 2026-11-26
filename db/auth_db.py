@@ -46,6 +46,7 @@ def init_auth_db(force: bool = False):
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                    nickname TEXT,
                     password_hash TEXT NOT NULL,
                     salt TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'user',
@@ -62,6 +63,7 @@ def init_auth_db(force: bool = False):
                     CREATE TABLE IF NOT EXISTS users_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                        nickname TEXT,
                         password_hash TEXT NOT NULL,
                         salt TEXT NOT NULL,
                         role TEXT NOT NULL DEFAULT 'user',
@@ -78,6 +80,12 @@ def init_auth_db(force: bool = False):
                 cursor.execute("DROP TABLE users;")
                 cursor.execute("ALTER TABLE users_new RENAME TO users;")
                 logger.info("Migrated users table to username schema.")
+
+        # Ensure nickname column exists in users table
+        cols = [col[1].lower() for col in cursor.execute("PRAGMA table_info(users);").fetchall()]
+        if "nickname" not in cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN nickname TEXT;")
+            logger.info("Migrated users table: added nickname column.")
         
         # 2. Sessions table
         cursor.execute("""
@@ -221,9 +229,11 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
             except Exception:
                 pass
 
+        nick = user["nickname"] if "nickname" in user.keys() and user["nickname"] else (user["username"].split("@")[0] if "@" in user["username"] else user["username"])
         user_dict = {
             "id": user["id"],
             "username": user["username"],
+            "nickname": nick,
             "role": user["role"],
             "subscribed": is_sub,
             "subscriptionExpires": sub_exp
@@ -259,7 +269,7 @@ def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
     with get_auth_connection() as conn:
         cursor = conn.cursor()
         row = cursor.execute("""
-            SELECT s.expires_at, u.id, u.username, u.role, u.subscribed, u.subscription_expires
+            SELECT s.expires_at, u.id, u.username, u.nickname, u.role, u.subscribed, u.subscription_expires
             FROM sessions s
             JOIN users u ON s.user_id = u.id
             WHERE s.token = ?
@@ -289,9 +299,12 @@ def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
             except Exception:
                 pass
 
+        row_keys = row.keys()
+        nick = row["nickname"] if "nickname" in row_keys and row["nickname"] else (row["username"].split("@")[0] if "@" in row["username"] else row["username"])
         user_dict = {
             "id": row["id"],
             "username": row["username"],
+            "nickname": nick,
             "role": row["role"],
             "subscribed": is_sub,
             "subscriptionExpires": sub_exp
@@ -490,20 +503,24 @@ def verify_code_and_login(email: str, code: str) -> Dict[str, Any]:
         
         # Check or create user
         user = cursor.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (email,)).fetchone()
+        default_nick = email.split("@")[0][:24]
         if not user:
-            # Auto-register new user by email
+            # Auto-register new user by email with default nickname
             salt = secrets.token_hex(16)
             pwd_hash = hash_password(secrets.token_urlsafe(32), salt)
             cursor.execute("""
-                INSERT INTO users (username, password_hash, salt, role, subscribed, subscription_expires)
-                VALUES (?, ?, ?, 'user', 0, NULL)
-            """, (email, pwd_hash, salt))
+                INSERT INTO users (username, nickname, password_hash, salt, role, subscribed, subscription_expires)
+                VALUES (?, ?, ?, ?, 'user', 0, NULL)
+            """, (email, default_nick, pwd_hash, salt))
             user_id = cursor.lastrowid
+            nick = default_nick
             role = "user"
             subscribed = False
             sub_exp = None
         else:
             user_id = user["id"]
+            user_keys = user.keys()
+            nick = user["nickname"] if "nickname" in user_keys and user["nickname"] else default_nick
             role = user["role"]
             subscribed = bool(user["subscribed"])
             sub_exp = user["subscription_expires"]
@@ -514,6 +531,7 @@ def verify_code_and_login(email: str, code: str) -> Dict[str, Any]:
     user_dict = {
         "id": user_id,
         "username": email,
+        "nickname": nick,
         "role": role,
         "subscribed": subscribed,
         "subscriptionExpires": sub_exp
@@ -524,3 +542,42 @@ def verify_code_and_login(email: str, code: str) -> Dict[str, Any]:
         "token": token,
         "user": user_dict
     }
+
+def update_user_nickname(user_id: int, new_nickname: str) -> Dict[str, Any]:
+    """Updates user display nickname with strict validation and sanitization."""
+    nick = (new_nickname or "").strip()
+    if not nick:
+        return {"success": False, "error": "Никнейм не может быть пустым."}
+    if len(nick) < 2:
+        return {"success": False, "error": "Никнейм должен содержать минимум 2 символа."}
+    if len(nick) > 24:
+        return {"success": False, "error": "Никнейм не должен превышать 24 символа."}
+    if not re.match(r"^[a-zA-Z0-9а-яА-ЯёЁ\s_\-\.]+$", nick):
+        return {"success": False, "error": "Никнейм может содержать только буквы, цифры, пробелы, дефис и подчеркивание."}
+
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET nickname = ? WHERE id = ?", (nick, user_id))
+        conn.commit()
+
+        # Update cached profiles in-memory
+        for t, val in list(_TOKEN_CACHE.items()):
+            if val.get("user", {}).get("id") == user_id:
+                val["user"]["nickname"] = nick
+
+        user = cursor.execute("SELECT id, username, nickname, role, subscribed, subscription_expires FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            return {"success": False, "error": "Пользователь не найден."}
+
+        return {
+            "success": True,
+            "nickname": nick,
+            "user": {
+                "id": user["id"],
+                "username": user["username"],
+                "nickname": nick,
+                "role": user["role"],
+                "subscribed": bool(user["subscribed"]),
+                "subscriptionExpires": user["subscription_expires"]
+            }
+        }
