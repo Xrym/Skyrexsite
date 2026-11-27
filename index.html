@@ -7,7 +7,7 @@
     <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
     <meta name="description"
         content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
-    <link rel="stylesheet" href="style.css?v=20261127-06">
+    <link rel="stylesheet" href="style.css?v=20261127-07">
 </head>
 
 <body>
@@ -22,7 +22,7 @@
             <nav id="main-nav">
                 <a href="#hero">AI Консультант</a>
                 <a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openSupportModal();">Техподдержка</a>
-                <a href="javascript:void(0)" id="nav-admin-link" style="display: none; color: #ff3366; font-weight: 700;" onclick="if(window.SkyrexAuth) SkyrexAuth.openAdminPanel();">🛠️ Панель админа</a>
+                <a href="javascript:void(0)" id="nav-admin-link" style="color: #ff3366; font-weight: 700;" onclick="if(window.SkyrexAuth) SkyrexAuth.openAdminPanel();">🛠️ Панель админа</a>
                 <a href="#about">О нас</a>
                 <a href="#contacts">Контакты</a>
             </nav>
@@ -662,80 +662,6 @@
         </div>
     </div>
 
-    <!-- Floating Support Button -->
-    <button id="support-floating-btn" class="support-floating-btn" onclick="if(window.SkyrexAuth) SkyrexAuth.openSupportModal();" aria-label="Техподдержка">
-        <span class="support-btn-icon">💬</span>
-        <span class="support-btn-text">Поддержка</span>
-        <span class="support-badge" id="support-unread-badge" style="display: none;">0</span>
-    </button>
-
-    <!-- Support & Helpdesk Modal -->
-    <div class="modal-overlay" id="support-modal">
-        <div class="modal support-modal-content" style="max-width: 680px; height: 580px; max-height: 85vh; display: flex; flex-direction: column; padding: 24px;">
-            <button class="modal-close-btn" id="support-modal-close-btn" aria-label="Закрыть окно" onclick="if(window.SkyrexAuth) SkyrexAuth.closeSupportModal();">&times;</button>
-            
-            <!-- Modal Header -->
-            <div class="support-modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px; margin-bottom: 14px; flex-shrink: 0;">
-                <div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <h3 class="modal-title" style="margin: 0; font-size: 20px;">Служба поддержки Skyrex</h3>
-                        <span style="font-size: 11px; background: rgba(0, 255, 204, 0.15); color: #00ffcc; border: 1px solid rgba(0, 255, 204, 0.3); padding: 2px 8px; border-radius: 12px; font-weight: 600;">Онлайн 🟢</span>
-                    </div>
-                    <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);" id="support-header-sub">Задайте вопрос по сборке, оплате или гарантии — администратор ответит вам здесь.</p>
-                </div>
-            </div>
-
-            <!-- Client Mode View (Single dialogue between client and support) -->
-            <div id="support-client-view" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
-                <!-- If client not logged in, ask for contact email -->
-                <div id="support-guest-email-box" style="margin-bottom: 10px; display: none;">
-                    <input type="email" id="support-guest-email" class="form-input" style="padding: 8px 12px; font-size: 13px;" placeholder="Ваш email для связи (куда придет ответ)" required>
-                </div>
-
-                <!-- Messages container -->
-                <div id="support-messages-container" class="support-messages-list" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 10px;">
-                    <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin: auto;">Загрузка сообщений...</div>
-                </div>
-
-                <!-- Input & Send -->
-                <form id="support-send-form" style="display: flex; gap: 8px; margin-top: 14px; flex-shrink: 0;">
-                    <input type="text" id="support-input" class="form-input" style="flex: 1; padding: 10px 14px; font-size: 13px;" placeholder="Напишите ваш вопрос..." autocomplete="off" required>
-                    <button type="submit" class="btn btn-primary" id="support-send-btn" style="padding: 10px 20px; font-size: 13px; white-space: nowrap;">
-                        <span>Отправить</span>
-                    </button>
-                </form>
-            </div>
-
-            <!-- Admin Mode View (Two-panel: Dialogues list on left, active chat on right) -->
-            <div id="support-admin-view" style="display: none; flex: 1; min-height: 0; gap: 14px;">
-                <!-- Left panel: Dialogues list -->
-                <div class="support-admin-sidebar" style="width: 220px; border-right: 1px solid rgba(255, 255, 255, 0.08); padding-right: 12px; display: flex; flex-direction: column; min-height: 0;">
-                    <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 8px;">Диалоги с клиентами</div>
-                    <div id="support-admin-dialogs-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
-                        <!-- Injected via JS -->
-                    </div>
-                </div>
-
-                <!-- Right panel: Active chat with selected user -->
-                <div class="support-admin-chat" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
-                    <div id="support-admin-target-bar" style="font-size: 12px; color: #00ffcc; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between;">
-                        <span>Диалог: <span id="support-admin-target-email">Выберите клиента</span></span>
-                    </div>
-                    <div id="support-admin-messages-container" class="support-messages-list" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 10px;">
-                        <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin: auto;">Выберите диалог слева для ответа клиенту</div>
-                    </div>
-                    <form id="support-admin-send-form" style="display: flex; gap: 8px; margin-top: 14px; flex-shrink: 0;">
-                        <input type="text" id="support-admin-input" class="form-input" style="flex: 1; padding: 10px 14px; font-size: 13px;" placeholder="Ответить клиенту (ответ также придет ему на почту)..." autocomplete="off" required disabled>
-                        <button type="submit" class="btn btn-primary" id="support-admin-send-btn" style="padding: 10px 20px; font-size: 13px; white-space: nowrap;" disabled>
-                            <span>Ответить</span>
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
     <!-- Complete Web Admin Panel Modal (100% On-Site Administration) -->
     <div class="modal-overlay" id="admin-panel-modal">
         <div class="modal admin-panel-modal-content" style="max-width: 960px; width: 95%; height: 750px; max-height: 90vh; display: flex; flex-direction: column; padding: 24px;">
@@ -920,10 +846,10 @@
     </div>
 
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=20261127-06"></script>
-    <script src="rig_visualizer.js?v=20261127-06"></script>
-    <script src="chat_bot.js?v=20261127-06"></script>
-    <script src="app.js?v=20261127-06"></script>
+    <script src="auth.js?v=20261127-07"></script>
+    <script src="rig_visualizer.js?v=20261127-07"></script>
+    <script src="chat_bot.js?v=20261127-07"></script>
+    <script src="app.js?v=20261127-07"></script>
 </body>
 
 

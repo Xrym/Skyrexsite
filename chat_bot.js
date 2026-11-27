@@ -115,6 +115,8 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }, duration);
     }
+    window.showToast = showToast;
+    window.showChatToast = showToast;
 
     function formatTime(date = new Date()) {
         const d = (date instanceof Date) ? date : new Date(date);

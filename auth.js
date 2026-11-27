@@ -1535,7 +1535,13 @@ const SkyrexAuth = {
     // On-site Web Admin Panel
     // ==========================================
     openAdminPanel(tab = "support") {
-        if (!this.currentUser || this.currentUser.role !== "admin") {
+        if (!this.currentUser) {
+            this.openAuthModal("login");
+            const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+            if (toastFn) toastFn("Для доступа к панели управления войдите под аккаунтом администратора.", "info", 5000);
+            return;
+        }
+        if (this.currentUser.role !== "admin") {
             const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
             if (toastFn) toastFn("Доступ разрешен только администраторам.", "error");
             else alert("Доступ разрешен только администраторам.");
@@ -2021,7 +2027,8 @@ const SkyrexAuth = {
         const isAdmin = this.currentUser && this.currentUser.role === "admin";
         const navAdminLink = document.getElementById("nav-admin-link");
         if (navAdminLink) {
-            navAdminLink.style.display = isAdmin ? "inline-block" : "none";
+            navAdminLink.style.display = "inline-block";
+            navAdminLink.innerHTML = isAdmin ? "👑 Панель админа" : "🛠️ Панель админа";
         }
         const profileAdminBtn = document.getElementById("profile-admin-btn");
         if (profileAdminBtn) {
@@ -2033,6 +2040,9 @@ const SkyrexAuth = {
         this.goToStep(step);
     }
 };
+
+// Global export for inline event handlers and external scripts
+window.SkyrexAuth = SkyrexAuth;
 
 // Global backward-compatible switchAuthTab helper
 function switchAuthTab(tab) {
