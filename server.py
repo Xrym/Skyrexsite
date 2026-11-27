@@ -2576,7 +2576,7 @@ async def security_middleware(request, handler):
     blocked_patterns = [
         '..', '.env', '.db', '.sqlite', '.py', '.bat', '.sh', '.git',
         '.key', '.pem', '.log', '.jsonl', '.yml', '.yaml', '.sql',
-        'bot_db.js', 'catalog', 'users.db', 'requirements.txt', '__pycache__',
+        'bot_db.js', 'catalog.db', 'users.db', 'requirements.txt', '__pycache__',
         'id_rsa', 'shadow', 'passwd'
     ]
     if any(b in decoded_path for b in blocked_patterns):
@@ -3498,6 +3498,7 @@ async def init_app():
     app.router.add_post('/api/admin/components/add', handle_admin_components_add)
     app.router.add_post('/api/admin/components/delete', handle_admin_components_delete)
     app.router.add_get('/api/admin/catalog', handle_admin_catalog_list)
+    app.router.add_get('/api/admin/products', handle_admin_catalog_list)
     app.router.add_get('/api/admin/payments', handle_admin_payments_list)
     app.router.add_get('/api/admin/users', handle_admin_users_list)
     app.router.add_post('/api/admin/subscriptions/activate', handle_admin_subscription_activate)

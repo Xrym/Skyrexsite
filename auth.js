@@ -1770,7 +1770,7 @@ const SkyrexAuth = {
             const params = new URLSearchParams({ limit: 300 });
             if (catFilter) params.set("category", catFilter);
             if (shopFilter) params.set("shop", shopFilter);
-            const res = await fetch(`/api/admin/catalog?${params}`, {
+            const res = await fetch(`/api/admin/products?${params}`, {
                 headers: { "Authorization": `Bearer ${this.getToken()}` }
             });
             const data = await res.json();
