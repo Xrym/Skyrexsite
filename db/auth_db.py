@@ -100,7 +100,7 @@ def init_auth_db(force: bool = False):
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);")
         
-        # 3. Email verification codes table for passwordless OTP authentication
+        # 3. Email verification codes table for registration and password reset
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS verification_codes (
                 email TEXT PRIMARY KEY COLLATE NOCASE,
@@ -108,10 +108,24 @@ def init_auth_db(force: bool = False):
                 attempts INTEGER DEFAULT 0,
                 last_sent_at TIMESTAMP NOT NULL,
                 expires_at TIMESTAMP NOT NULL,
+                password_hash TEXT,
+                salt TEXT,
+                nickname TEXT,
+                purpose TEXT DEFAULT 'register',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_verif_email ON verification_codes(email);")
+
+        cols_vc = [col[1].lower() for col in cursor.execute("PRAGMA table_info(verification_codes);").fetchall()]
+        if "password_hash" not in cols_vc:
+            cursor.execute("ALTER TABLE verification_codes ADD COLUMN password_hash TEXT;")
+        if "salt" not in cols_vc:
+            cursor.execute("ALTER TABLE verification_codes ADD COLUMN salt TEXT;")
+        if "nickname" not in cols_vc:
+            cursor.execute("ALTER TABLE verification_codes ADD COLUMN nickname TEXT;")
+        if "purpose" not in cols_vc:
+            cursor.execute("ALTER TABLE verification_codes ADD COLUMN purpose TEXT DEFAULT 'register';")
 
         # 4. Payments table for YooKassa transactions
         cursor.execute("""
@@ -234,17 +248,22 @@ def register_user(username: str, password: str) -> Dict[str, Any]:
     }
 
 def login_user(username: str, password: str) -> Dict[str, Any]:
-    """Authenticates user with username and password against users.db."""
+    """Authenticates user with username (email) or nickname and password against users.db."""
     username = (username or "").strip()
     if not username or not password:
-        return {"success": False, "error": "Введите логин и пароль."}
+        return {"success": False, "error": "Введите логин или email и пароль."}
 
     if len(password) > 128:
         return {"success": False, "error": "Пароль слишком длинный (максимум 128 символов)."}
 
     with get_auth_connection() as conn:
         cursor = conn.cursor()
-        user = cursor.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,)).fetchone()
+        user = cursor.execute("""
+            SELECT * FROM users 
+            WHERE username = ? COLLATE NOCASE OR nickname = ? COLLATE NOCASE
+            ORDER BY (username = ? COLLATE NOCASE) DESC
+            LIMIT 1
+        """, (username, username, username)).fetchone()
         if not user:
             return {"success": False, "error": "Неверный логин или пароль."}
 
@@ -443,8 +462,8 @@ def get_payment_record(payment_id: str) -> Optional[Dict[str, Any]]:
         logger.error(f"Error fetching payment record: {e}")
         return None
 
-def send_otp_email(to_email: str, code: str) -> Tuple[bool, Optional[str]]:
-    """Sends 6-digit OTP code to user via Mail.ru SMTP."""
+def send_otp_email(to_email: str, code: str, purpose: str = "register") -> Tuple[bool, Optional[str]]:
+    """Sends 6-digit OTP code to user via Mail.ru SMTP for registration confirmation or password reset."""
     smtp_host = os.getenv("SMTP_HOST", "smtp.mail.ru").strip()
     smtp_port = int(os.getenv("SMTP_PORT", "465"))
     smtp_user = os.getenv("SMTP_USER", "").strip()
@@ -455,15 +474,25 @@ def send_otp_email(to_email: str, code: str) -> Tuple[bool, Optional[str]]:
         logger.error("SMTP credentials are not configured in environment.")
         return False, "Почтовый шлюз сервера временно не настроен. Свяжитесь с поддержкой."
 
+    if purpose == "reset":
+        subject = f"Код сброса пароля Skyrex: {code}"
+        title = "Сброс пароля"
+        desc = "Используйте этот код для установки нового пароля в вашем аккаунте Skyrex Computers:"
+    else:
+        subject = f"Код подтверждения регистрации Skyrex: {code}"
+        title = "Подтверждение регистрации"
+        desc = "Используйте этот одноразовый код для подтверждения почты и завершения регистрации:"
+
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Код подтверждения Skyrex: {code}"
+    msg["Subject"] = subject
     msg["From"] = smtp_from
     msg["To"] = to_email
 
     text_content = (
-        f"Код подтверждения для входа на Skyrex Computers: {code}\n\n"
+        f"{title}\n\n"
+        f"{desc} {code}\n\n"
         f"Срок действия кода — 15 минут.\n"
-        f"Если вы не запрашивали авторизацию, просто проигнорируйте это письмо.\n\n"
+        f"Если вы не запрашивали это действие, просто проигнорируйте письмо.\n\n"
         f"---\nSkyrex Computers https://skyrex.pro"
     )
 
@@ -493,12 +522,12 @@ def send_otp_email(to_email: str, code: str) -> Tuple[bool, Optional[str]]:
       <div class="sublogo">Computers & AI Architect</div>
     </div>
     <div class="body">
-      <div class="title">Код подтверждения для входа</div>
-      <div class="desc">Используйте этот одноразовый код для авторизации в вашем аккаунте Skyrex Computers:</div>
+      <div class="title">{title}</div>
+      <div class="desc">{desc}</div>
       <div class="code-box">
         <div class="code">{code}</div>
       </div>
-      <div class="notice">Срок действия кода — 15 минут.<br>Если вы не запрашивали авторизацию, просто проигнорируйте это письмо.</div>
+      <div class="notice">Срок действия кода — 15 минут.<br>Если вы не запрашивали это действие, просто проигнорируйте письмо.</div>
     </div>
     <div class="footer">
       &copy; 2026 Skyrex Computers. Все права защищены.<br>
@@ -657,6 +686,277 @@ def verify_code_and_login(email: str, code: str) -> Dict[str, Any]:
         "token": token,
         "user": user_dict
     }
+
+def create_registration_code(email: str, password: str, nickname: str = "") -> Tuple[bool, str, Optional[str]]:
+    """Creates a 6-digit confirmation code for registering a new user with password."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False, "", "Введите адрес электронной почты."
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return False, "", "Некорректный адрес электронной почты."
+    if len(email) > 64:
+        return False, "", "Адрес электронной почты слишком длинный."
+
+    if not password or len(password) < 6:
+        return False, "", "Пароль должен содержать минимум 6 символов."
+    if len(password) > 128:
+        return False, "", "Пароль не должен превышать 128 символов."
+
+    nickname = (nickname or "").strip()
+    if nickname:
+        if len(nickname) < 2 or len(nickname) > 24:
+            return False, "", "Никнейм должен быть от 2 до 24 символов."
+    else:
+        nickname = email.split("@")[0][:24]
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        # Check if email is already taken
+        existing_user = cursor.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (email,)).fetchone()
+        if existing_user:
+            return False, "", "Пользователь с таким email уже зарегистрирован. Пожалуйста, выполните вход."
+
+        # Check if nickname is already taken
+        if nickname:
+            existing_nick = cursor.execute("SELECT id FROM users WHERE nickname = ? COLLATE NOCASE", (nickname,)).fetchone()
+            if existing_nick:
+                return False, "", "Пользователь с таким никнеймом уже зарегистрирован. Выберите другой никнейм."
+
+        # Check 60s cooldown
+        existing = cursor.execute("SELECT last_sent_at FROM verification_codes WHERE email = ?", (email,)).fetchone()
+        if existing and existing["last_sent_at"]:
+            try:
+                last_dt = datetime.datetime.fromisoformat(existing["last_sent_at"].replace("Z", "+00:00"))
+                elapsed = (now - last_dt).total_seconds()
+                if elapsed < 60:
+                    wait_sec = int(60 - elapsed)
+                    return False, "", f"Подождите {wait_sec} сек. перед повторной отправкой кода."
+            except Exception:
+                pass
+
+        salt = secrets.token_hex(16)
+        pwd_hash = hash_password(password, salt)
+        code = f"{secrets.randbelow(900000) + 100000}"
+        expires_at = (now + datetime.timedelta(minutes=15)).isoformat()
+        last_sent_at = now.isoformat()
+
+        cursor.execute("""
+            INSERT INTO verification_codes (email, code, attempts, last_sent_at, expires_at, password_hash, salt, nickname, purpose)
+            VALUES (?, ?, 0, ?, ?, ?, ?, ?, 'register')
+            ON CONFLICT(email) DO UPDATE SET
+                code = excluded.code,
+                attempts = 0,
+                last_sent_at = excluded.last_sent_at,
+                expires_at = excluded.expires_at,
+                password_hash = excluded.password_hash,
+                salt = excluded.salt,
+                nickname = excluded.nickname,
+                purpose = 'register';
+        """, (email, code, last_sent_at, expires_at, pwd_hash, salt, nickname))
+        conn.commit()
+
+    return True, code, None
+
+def confirm_registration_and_login(email: str, code: str) -> Dict[str, Any]:
+    """Verifies confirmation code and completes registration, creating active session."""
+    email = (email or "").strip().lower()
+    code = (code or "").strip()
+
+    if not email or not code:
+        return {"success": False, "error": "Введите email и код подтверждения."}
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        row = cursor.execute("SELECT * FROM verification_codes WHERE email = ?", (email,)).fetchone()
+        if not row:
+            return {"success": False, "error": "Код не найден или срок его действия истек. Запросите код заново."}
+
+        try:
+            exp_dt = datetime.datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+            if now > exp_dt:
+                cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+                conn.commit()
+                return {"success": False, "error": "Срок действия кода истек (15 минут). Запросите новый код."}
+        except Exception:
+            pass
+
+        attempts = row["attempts"] or 0
+        if attempts >= 5:
+            cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+            conn.commit()
+            return {"success": False, "error": "Превышено максимальное число попыток ввода. Запросите новый код."}
+
+        if not secrets.compare_digest(str(row["code"]).strip(), code):
+            new_attempts = attempts + 1
+            cursor.execute("UPDATE verification_codes SET attempts = ? WHERE email = ?", (new_attempts, email))
+            conn.commit()
+            remaining = max(0, 5 - new_attempts)
+            return {"success": False, "error": f"Неверный код. Осталось попыток: {remaining}."}
+
+        # Code matched!
+        pwd_hash = row["password_hash"]
+        salt = row["salt"]
+        nick = row["nickname"] or email.split("@")[0][:24]
+
+        cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+
+        # Check if user already exists
+        user = cursor.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (email,)).fetchone()
+        if not user:
+            if not pwd_hash or not salt:
+                salt = secrets.token_hex(16)
+                pwd_hash = hash_password(secrets.token_urlsafe(32), salt)
+            cursor.execute("""
+                INSERT INTO users (username, nickname, password_hash, salt, role, subscribed, subscription_expires)
+                VALUES (?, ?, ?, ?, 'user', 0, NULL)
+            """, (email, nick, pwd_hash, salt))
+            user_id = cursor.lastrowid
+            role = "user"
+            subscribed = False
+            sub_exp = None
+        else:
+            user_id = user["id"]
+            if pwd_hash and salt:
+                cursor.execute("UPDATE users SET password_hash = ?, salt = ?, nickname = ? WHERE id = ?", (pwd_hash, salt, nick, user_id))
+            role = user["role"]
+            subscribed = bool(user["subscribed"])
+            sub_exp = user["subscription_expires"]
+
+            if role == "admin" or email == "nicitachebotariow@yandex.ru":
+                role = "admin"
+                subscribed = True
+
+        conn.commit()
+
+    token = create_session(user_id)
+    user_dict = {
+        "id": user_id,
+        "username": email,
+        "nickname": nick,
+        "role": role,
+        "subscribed": subscribed,
+        "subscriptionExpires": sub_exp
+    }
+    _TOKEN_CACHE[token] = {"user": user_dict, "expires_ts": time.time() + 30.0}
+    return {
+        "success": True,
+        "token": token,
+        "user": user_dict
+    }
+
+def request_password_reset(email: str) -> Tuple[bool, str, Optional[str]]:
+    """Generates 6-digit code for password reset."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False, "", "Введите адрес электронной почты."
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        user = cursor.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (email,)).fetchone()
+        if not user:
+            return False, "", "Пользователь с таким email не найден."
+
+        existing = cursor.execute("SELECT last_sent_at FROM verification_codes WHERE email = ?", (email,)).fetchone()
+        if existing and existing["last_sent_at"]:
+            try:
+                last_dt = datetime.datetime.fromisoformat(existing["last_sent_at"].replace("Z", "+00:00"))
+                elapsed = (now - last_dt).total_seconds()
+                if elapsed < 60:
+                    wait_sec = int(60 - elapsed)
+                    return False, "", f"Подождите {wait_sec} сек. перед повторной отправкой кода."
+            except Exception:
+                pass
+
+        code = f"{secrets.randbelow(900000) + 100000}"
+        expires_at = (now + datetime.timedelta(minutes=15)).isoformat()
+        last_sent_at = now.isoformat()
+
+        cursor.execute("""
+            INSERT INTO verification_codes (email, code, attempts, last_sent_at, expires_at, purpose)
+            VALUES (?, ?, 0, ?, ?, 'reset')
+            ON CONFLICT(email) DO UPDATE SET
+                code = excluded.code,
+                attempts = 0,
+                last_sent_at = excluded.last_sent_at,
+                expires_at = excluded.expires_at,
+                purpose = 'reset';
+        """, (email, code, last_sent_at, expires_at))
+        conn.commit()
+
+    return True, code, None
+
+def confirm_password_reset(email: str, code: str, new_password: str) -> Dict[str, Any]:
+    """Verifies reset code, sets new password, and creates session."""
+    email = (email or "").strip().lower()
+    code = (code or "").strip()
+
+    if not email or not code:
+        return {"success": False, "error": "Введите email и код."}
+    if not new_password or len(new_password) < 6:
+        return {"success": False, "error": "Новый пароль должен содержать минимум 6 символов."}
+    if len(new_password) > 128:
+        return {"success": False, "error": "Пароль слишком длинный (максимум 128 символов)."}
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        row = cursor.execute("SELECT * FROM verification_codes WHERE email = ?", (email,)).fetchone()
+        if not row:
+            return {"success": False, "error": "Код не найден или срок его действия истек. Запросите код заново."}
+
+        try:
+            exp_dt = datetime.datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+            if now > exp_dt:
+                cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+                conn.commit()
+                return {"success": False, "error": "Срок действия кода истек. Запросите новый код."}
+        except Exception:
+            pass
+
+        attempts = row["attempts"] or 0
+        if attempts >= 5:
+            cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+            conn.commit()
+            return {"success": False, "error": "Превышено максимальное число попыток ввода."}
+
+        if not secrets.compare_digest(str(row["code"]).strip(), code):
+            new_attempts = attempts + 1
+            cursor.execute("UPDATE verification_codes SET attempts = ? WHERE email = ?", (new_attempts, email))
+            conn.commit()
+            remaining = max(0, 5 - new_attempts)
+            return {"success": False, "error": f"Неверный код. Осталось попыток: {remaining}."}
+
+        # Code matched!
+        user = cursor.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (email,)).fetchone()
+        if not user:
+            return {"success": False, "error": "Пользователь не найден."}
+
+        salt = secrets.token_hex(16)
+        pwd_hash = hash_password(new_password, salt)
+        cursor.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?", (pwd_hash, salt, user["id"]))
+        cursor.execute("DELETE FROM verification_codes WHERE email = ?", (email,))
+        conn.commit()
+
+        token = create_session(user["id"])
+        nick = user["nickname"] if "nickname" in user.keys() and user["nickname"] else email.split("@")[0][:24]
+        user_dict = {
+            "id": user["id"],
+            "username": user["username"],
+            "nickname": nick,
+            "role": user["role"],
+            "subscribed": bool(user["subscribed"]),
+            "subscriptionExpires": user["subscription_expires"]
+        }
+        _TOKEN_CACHE[token] = {"user": user_dict, "expires_ts": time.time() + 30.0}
+        return {
+            "success": True,
+            "token": token,
+            "user": user_dict,
+            "message": "Пароль успешно обновлен!"
+        }
 
 def update_user_nickname(user_id: int, new_nickname: str) -> Dict[str, Any]:
     """Updates user display nickname with strict validation and sanitization."""

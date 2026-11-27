@@ -10,6 +10,9 @@ const SkyrexAuth = {
     token: null,
     currentUser: null,
     pendingEmail: "",
+    pendingResetEmail: "",
+    pendingPassword: "",
+    pendingNickname: "",
     countdownTimer: null,
     countdownSeconds: 60,
 
@@ -97,42 +100,72 @@ const SkyrexAuth = {
         return !!(this.getToken() && this.currentUser);
     },
 
-    // Step 1: Request OTP code to email
-    async sendCode(email) {
-        email = (email || "").trim().toLowerCase();
-        if (!email) {
-            return { success: false, message: "Введите адрес электронной почты." };
+    // Password Login for all users & admin
+    async loginWithPassword(username, password) {
+        username = (username || "").trim();
+        password = password || "";
+        if (!username || !password) {
+            return { success: false, message: "Введите логин или email и пароль." };
         }
         try {
-            const res = await fetch("/api/auth/send-code", {
+            const res = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email })
+                body: JSON.stringify({ username, password })
             });
             const data = await res.json();
-            if (res.ok && data.success) {
-                this.pendingEmail = email;
-                return { success: true, message: data.message };
+            if (res.ok && data.success && data.token) {
+                this.token = data.token;
+                this.currentUser = data.user;
+                localStorage.setItem(this.TOKEN_KEY, this.token);
+                this.saveSession();
+                this.updateUI();
+                return { success: true };
             }
-            return { success: false, message: data.error || "Не удалось отправить код." };
+            return { success: false, message: data.error || "Неверный логин или пароль." };
         } catch (err) {
-            console.error("sendCode error:", err);
+            console.error("loginWithPassword error:", err);
             return { success: false, message: `Ошибка связи с сервером: ${err.message}` };
         }
     },
 
-    // Step 2: Verify OTP code
-    async verifyCode(code) {
-        code = (code || "").trim();
-        if (!this.pendingEmail) {
-            return { success: false, message: "Адрес почты не указан. Вернитесь назад." };
-        }
-        if (!code || code.length !== 6) {
-            return { success: false, message: "Введите полный 6-значный код." };
-        }
+    // Registration Step 1: Send confirmation OTP code to email
+    async registerRequest(email, password, nickname) {
+        email = (email || "").trim().toLowerCase();
+        password = password || "";
+        nickname = (nickname || "").trim();
+
+        if (!email) return { success: false, message: "Введите адрес электронной почты." };
+        if (!password || password.length < 6) return { success: false, message: "Пароль должен содержать минимум 6 символов." };
 
         try {
-            const res = await fetch("/api/auth/verify-code", {
+            const res = await fetch("/api/auth/register-request", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password, nickname })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.pendingEmail = email;
+                this.pendingPassword = password;
+                this.pendingNickname = nickname;
+                return { success: true, message: data.message };
+            }
+            return { success: false, message: data.error || "Не удалось отправить код подтверждения." };
+        } catch (err) {
+            console.error("registerRequest error:", err);
+            return { success: false, message: `Ошибка связи с сервером: ${err.message}` };
+        }
+    },
+
+    // Registration Step 2: Confirm OTP code & login
+    async registerConfirm(code) {
+        code = (code || "").trim();
+        if (!this.pendingEmail) return { success: false, message: "Email не указан. Вернитесь назад." };
+        if (!code || code.length !== 6) return { success: false, message: "Введите 6-значный код из письма." };
+
+        try {
+            const res = await fetch("/api/auth/register-confirm", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email: this.pendingEmail, code })
@@ -148,9 +181,70 @@ const SkyrexAuth = {
             }
             return { success: false, message: data.error || "Неверный код подтверждения." };
         } catch (err) {
-            console.error("verifyCode error:", err);
+            console.error("registerConfirm error:", err);
             return { success: false, message: `Ошибка связи с сервером: ${err.message}` };
         }
+    },
+
+    // Password Reset Step 1: Request code
+    async resetPasswordRequest(email) {
+        email = (email || "").trim().toLowerCase();
+        if (!email) return { success: false, message: "Введите адрес электронной почты." };
+
+        try {
+            const res = await fetch("/api/auth/reset-request", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.pendingResetEmail = email;
+                return { success: true, message: data.message };
+            }
+            return { success: false, message: data.error || "Не удалось запросить сброс пароля." };
+        } catch (err) {
+            console.error("resetPasswordRequest error:", err);
+            return { success: false, message: `Ошибка связи с сервером: ${err.message}` };
+        }
+    },
+
+    // Password Reset Step 2: Confirm code & set new password
+    async resetPasswordConfirm(code, password) {
+        code = (code || "").trim();
+        password = password || "";
+        if (!this.pendingResetEmail) return { success: false, message: "Email не указан." };
+        if (!code || code.length !== 6) return { success: false, message: "Введите 6-значный код из письма." };
+        if (!password || password.length < 6) return { success: false, message: "Новый пароль должен содержать минимум 6 символов." };
+
+        try {
+            const res = await fetch("/api/auth/reset-confirm", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: this.pendingResetEmail, code, password })
+            });
+            const data = await res.json();
+            if (res.ok && data.success && data.token) {
+                this.token = data.token;
+                this.currentUser = data.user;
+                localStorage.setItem(this.TOKEN_KEY, this.token);
+                this.saveSession();
+                this.updateUI();
+                return { success: true, message: data.message };
+            }
+            return { success: false, message: data.error || "Не удалось обновить пароль." };
+        } catch (err) {
+            console.error("resetPasswordConfirm error:", err);
+            return { success: false, message: `Ошибка связи с сервером: ${err.message}` };
+        }
+    },
+
+    // Legacy OTP support
+    async sendCode(email) {
+        return this.registerRequest(email, "default123", "");
+    },
+    async verifyCode(code) {
+        return this.registerConfirm(code);
     },
 
     // Update user display nickname
@@ -213,32 +307,49 @@ const SkyrexAuth = {
             // Auth Modal & Steps
             authModal: document.getElementById("auth-modal"),
             authCloseBtn: document.getElementById("auth-modal-close-btn"),
-            stepEmail: document.getElementById("auth-step-email"),
-            stepCode: document.getElementById("auth-step-code"),
-            stepPassword: document.getElementById("auth-step-password"),
-            switchPwdBtn: document.getElementById("auth-switch-pwd-btn"),
-            backToEmailBtn: document.getElementById("auth-back-to-email-btn"),
-            pwdForm: document.getElementById("auth-password-form"),
-            pwdEmailInput: document.getElementById("auth-pwd-email-input"),
-            pwdPasswordInput: document.getElementById("auth-pwd-password-input"),
-            pwdError: document.getElementById("auth-pwd-error"),
-            pwdSubmitBtn: document.getElementById("auth-pwd-submit-btn"),
 
-            // Email step
-            emailForm: document.getElementById("auth-email-form"),
-            emailInput: document.getElementById("auth-email-input"),
-            emailError: document.getElementById("auth-email-error"),
-            sendBtn: document.getElementById("auth-send-btn"),
+            // Step: Login
+            stepLogin: document.getElementById("auth-step-login"),
+            loginForm: document.getElementById("auth-login-form"),
+            loginUsernameInput: document.getElementById("auth-login-username"),
+            loginPasswordInput: document.getElementById("auth-login-password"),
+            loginError: document.getElementById("auth-login-error"),
+            loginSubmitBtn: document.getElementById("auth-login-submit-btn"),
 
-            // Code step
-            codeForm: document.getElementById("auth-code-form"),
-            codeInput: document.getElementById("auth-code-input"),
-            codeError: document.getElementById("auth-code-error"),
-            verifyBtn: document.getElementById("auth-verify-btn"),
-            targetEmailDisplay: document.getElementById("auth-target-email-display"),
-            backBtn: document.getElementById("auth-back-btn"),
-            resendBtn: document.getElementById("auth-resend-btn"),
-            countdownSpan: document.getElementById("auth-countdown"),
+            // Step: Register
+            stepRegister: document.getElementById("auth-step-register"),
+            regForm: document.getElementById("auth-reg-form"),
+            regEmailInput: document.getElementById("auth-reg-email"),
+            regNicknameInput: document.getElementById("auth-reg-nickname"),
+            regPasswordInput: document.getElementById("auth-reg-password"),
+            regError: document.getElementById("auth-reg-error"),
+            regSubmitBtn: document.getElementById("auth-reg-submit-btn"),
+
+            // Step: Confirm OTP
+            stepConfirm: document.getElementById("auth-step-confirm"),
+            confirmForm: document.getElementById("auth-confirm-form"),
+            confirmCodeInput: document.getElementById("auth-confirm-code-input"),
+            confirmError: document.getElementById("auth-confirm-error"),
+            confirmSubmitBtn: document.getElementById("auth-confirm-submit-btn"),
+            confirmEmailDisplay: document.getElementById("auth-confirm-email-display"),
+            confirmResendBtn: document.getElementById("auth-confirm-resend-btn"),
+            confirmCountdownSpan: document.getElementById("auth-confirm-countdown"),
+
+            // Step: Reset Request
+            stepResetRequest: document.getElementById("auth-step-reset-request"),
+            resetReqForm: document.getElementById("auth-reset-req-form"),
+            resetReqEmailInput: document.getElementById("auth-reset-req-email"),
+            resetReqError: document.getElementById("auth-reset-req-error"),
+            resetReqSubmitBtn: document.getElementById("auth-reset-req-submit-btn"),
+
+            // Step: Reset Confirm
+            stepResetConfirm: document.getElementById("auth-step-reset-confirm"),
+            resetConfirmForm: document.getElementById("auth-reset-confirm-form"),
+            resetCodeInput: document.getElementById("auth-reset-code-input"),
+            resetNewPasswordInput: document.getElementById("auth-reset-new-password"),
+            resetConfirmError: document.getElementById("auth-reset-confirm-error"),
+            resetConfirmSubmitBtn: document.getElementById("auth-reset-confirm-submit-btn"),
+            resetEmailDisplay: document.getElementById("auth-reset-email-display"),
 
             // Profile Modal
             profileModal: document.getElementById("profile-modal"),
@@ -372,49 +483,40 @@ const SkyrexAuth = {
             }
         });
 
-        // Switch to Password Login (Admin)
-        if (this.dom.switchPwdBtn) {
-            this.dom.switchPwdBtn.addEventListener("click", () => this.goToStep("password"));
-        }
-        if (this.dom.backToEmailBtn) {
-            this.dom.backToEmailBtn.addEventListener("click", () => this.goToStep("email"));
-        }
-
-        // Submit Password Form
-        if (this.dom.pwdForm) {
-            this.dom.pwdForm.addEventListener("submit", async (e) => {
+        // 1. Password Login Form (for all users & admin)
+        if (this.dom.loginForm) {
+            this.dom.loginForm.addEventListener("submit", async (e) => {
                 e.preventDefault();
-                if (this.dom.pwdError) this.dom.pwdError.textContent = "";
+                if (this.dom.loginError) this.dom.loginError.textContent = "";
 
-                const username = this.dom.pwdEmailInput ? this.dom.pwdEmailInput.value.trim() : "";
-                const password = this.dom.pwdPasswordInput ? this.dom.pwdPasswordInput.value : "";
+                const username = this.dom.loginUsernameInput ? this.dom.loginUsernameInput.value.trim() : "";
+                const password = this.dom.loginPasswordInput ? this.dom.loginPasswordInput.value : "";
 
                 if (!username || !password) {
-                    if (this.dom.pwdError) this.dom.pwdError.textContent = "Введите логин и пароль.";
+                    if (this.dom.loginError) this.dom.loginError.textContent = "Введите логин или email и пароль.";
                     return;
                 }
 
-                if (this.dom.pwdSubmitBtn) {
-                    this.dom.pwdSubmitBtn.disabled = true;
-                    this.dom.pwdSubmitBtn.innerHTML = `<span>Вход...</span>`;
+                if (this.dom.loginSubmitBtn) {
+                    this.dom.loginSubmitBtn.disabled = true;
+                    this.dom.loginSubmitBtn.innerHTML = `<span>Вход...</span>`;
                 }
 
                 const res = await this.loginWithPassword(username, password);
 
-                if (this.dom.pwdSubmitBtn) {
-                    this.dom.pwdSubmitBtn.disabled = false;
-                    this.dom.pwdSubmitBtn.innerHTML = `<span>Войти</span>`;
+                if (this.dom.loginSubmitBtn) {
+                    this.dom.loginSubmitBtn.disabled = false;
+                    this.dom.loginSubmitBtn.innerHTML = `<span>Войти</span>`;
                 }
 
                 if (res.success) {
                     this.closeAuthModal();
-                    if (this.dom.pwdPasswordInput) this.dom.pwdPasswordInput.value = "";
+                    if (this.dom.loginPasswordInput) this.dom.loginPasswordInput.value = "";
                     const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
-                    if (toastFn) {
-                        toastFn("Успешный вход в аккаунт администратора!", "success");
-                    }
-                } else if (this.dom.pwdError) {
-                    this.dom.pwdError.textContent = res.message;
+                    const name = (this.currentUser && (this.currentUser.nickname || this.currentUser.username)) || "";
+                    if (toastFn) toastFn(`Добро пожаловать, ${name}!`, "success");
+                } else if (this.dom.loginError) {
+                    this.dom.loginError.textContent = res.message;
                 }
             });
         }
@@ -488,83 +590,148 @@ const SkyrexAuth = {
             });
         }
 
-        // Step 1: Submit Email
-        if (this.dom.emailForm) {
-            this.dom.emailForm.addEventListener("submit", async (e) => {
+        // 2. Registration Form
+        if (this.dom.regForm) {
+            this.dom.regForm.addEventListener("submit", async (e) => {
                 e.preventDefault();
-                if (this.dom.emailError) this.dom.emailError.textContent = "";
+                if (this.dom.regError) this.dom.regError.textContent = "";
 
-                const email = this.dom.emailInput ? this.dom.emailInput.value.trim() : "";
-                if (!email) {
-                    if (this.dom.emailError) this.dom.emailError.textContent = "Введите адрес электронной почты.";
+                const email = this.dom.regEmailInput ? this.dom.regEmailInput.value.trim() : "";
+                const nickname = this.dom.regNicknameInput ? this.dom.regNicknameInput.value.trim() : "";
+                const password = this.dom.regPasswordInput ? this.dom.regPasswordInput.value : "";
+
+                if (!email || !password) {
+                    if (this.dom.regError) this.dom.regError.textContent = "Заполните все обязательные поля.";
+                    return;
+                }
+                if (password.length < 6) {
+                    if (this.dom.regError) this.dom.regError.textContent = "Пароль должен быть не менее 6 символов.";
                     return;
                 }
 
-                if (this.dom.sendBtn) {
-                    this.dom.sendBtn.disabled = true;
-                    this.dom.sendBtn.innerHTML = `<span>Отправка кода...</span>`;
+                if (this.dom.regSubmitBtn) {
+                    this.dom.regSubmitBtn.disabled = true;
+                    this.dom.regSubmitBtn.innerHTML = `<span>Отправка кода...</span>`;
                 }
 
-                const res = await this.sendCode(email);
+                const res = await this.registerRequest(email, password, nickname);
 
-                if (this.dom.sendBtn) {
-                    this.dom.sendBtn.disabled = false;
-                    this.dom.sendBtn.innerHTML = `<span>Получить код</span>`;
+                if (this.dom.regSubmitBtn) {
+                    this.dom.regSubmitBtn.disabled = false;
+                    this.dom.regSubmitBtn.innerHTML = `<span>Получить код подтверждения</span>`;
                 }
 
                 if (res.success) {
-                    this.goToStep("code");
+                    this.goToStep("confirm");
                     this.startCountdown(60);
-                } else if (this.dom.emailError) {
-                    this.dom.emailError.textContent = res.message;
+                } else if (this.dom.regError) {
+                    this.dom.regError.textContent = res.message;
                 }
             });
         }
 
-        // Step 2: Format & Auto-submit Code
-        if (this.dom.codeInput) {
-            this.dom.codeInput.addEventListener("input", (e) => {
-                // Keep only digits, max 6
+        // 3. Confirm Registration OTP Code
+        if (this.dom.confirmCodeInput) {
+            this.dom.confirmCodeInput.addEventListener("input", (e) => {
                 e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
-                if (this.dom.codeError) this.dom.codeError.textContent = "";
-
-                // If user entered 6 digits, auto-submit
+                if (this.dom.confirmError) this.dom.confirmError.textContent = "";
                 if (e.target.value.length === 6) {
-                    this.handleCodeSubmit();
+                    this.handleConfirmSubmit();
                 }
             });
         }
-
-        // Step 2: Submit Code Form
-        if (this.dom.codeForm) {
-            this.dom.codeForm.addEventListener("submit", (e) => {
+        if (this.dom.confirmForm) {
+            this.dom.confirmForm.addEventListener("submit", (e) => {
                 e.preventDefault();
-                this.handleCodeSubmit();
+                this.handleConfirmSubmit();
             });
         }
+        if (this.dom.confirmResendBtn) {
+            this.dom.confirmResendBtn.addEventListener("click", async () => {
+                if (this.dom.confirmResendBtn.disabled || !this.pendingEmail) return;
+                this.dom.confirmResendBtn.disabled = true;
+                this.dom.confirmResendBtn.textContent = "Отправка...";
+                if (this.dom.confirmError) this.dom.confirmError.textContent = "";
 
-        // Step 2: Back to Email button
-        if (this.dom.backBtn) {
-            this.dom.backBtn.addEventListener("click", () => {
-                this.goToStep("email");
-            });
-        }
-
-        // Step 2: Resend code button
-        if (this.dom.resendBtn) {
-            this.dom.resendBtn.addEventListener("click", async () => {
-                if (this.dom.resendBtn.disabled || !this.pendingEmail) return;
-                this.dom.resendBtn.disabled = true;
-                this.dom.resendBtn.textContent = "Отправка...";
-                if (this.dom.codeError) this.dom.codeError.textContent = "";
-
-                const res = await this.sendCode(this.pendingEmail);
+                const res = await this.registerRequest(this.pendingEmail, this.pendingPassword, this.pendingNickname);
                 if (res.success) {
                     this.startCountdown(60);
                 } else {
-                    if (this.dom.codeError) this.dom.codeError.textContent = res.message;
-                    this.dom.resendBtn.disabled = false;
-                    this.dom.resendBtn.textContent = "Отправить повторно";
+                    if (this.dom.confirmError) this.dom.confirmError.textContent = res.message;
+                    this.dom.confirmResendBtn.disabled = false;
+                    this.dom.confirmResendBtn.textContent = "Отправить повторно";
+                }
+            });
+        }
+
+        // 4. Password Reset Request Form
+        if (this.dom.resetReqForm) {
+            this.dom.resetReqForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                if (this.dom.resetReqError) this.dom.resetReqError.textContent = "";
+
+                const email = this.dom.resetReqEmailInput ? this.dom.resetReqEmailInput.value.trim() : "";
+                if (!email) {
+                    if (this.dom.resetReqError) this.dom.resetReqError.textContent = "Введите email.";
+                    return;
+                }
+
+                if (this.dom.resetReqSubmitBtn) {
+                    this.dom.resetReqSubmitBtn.disabled = true;
+                    this.dom.resetReqSubmitBtn.innerHTML = `<span>Отправка кода...</span>`;
+                }
+
+                const res = await this.resetPasswordRequest(email);
+
+                if (this.dom.resetReqSubmitBtn) {
+                    this.dom.resetReqSubmitBtn.disabled = false;
+                    this.dom.resetReqSubmitBtn.innerHTML = `<span>Получить код сброса</span>`;
+                }
+
+                if (res.success) {
+                    this.goToStep("reset-confirm");
+                } else if (this.dom.resetReqError) {
+                    this.dom.resetReqError.textContent = res.message;
+                }
+            });
+        }
+
+        // 5. Password Reset Confirm Form
+        if (this.dom.resetConfirmForm) {
+            this.dom.resetConfirmForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                if (this.dom.resetConfirmError) this.dom.resetConfirmError.textContent = "";
+
+                const code = this.dom.resetCodeInput ? this.dom.resetCodeInput.value.trim() : "";
+                const pwd = this.dom.resetNewPasswordInput ? this.dom.resetNewPasswordInput.value : "";
+
+                if (!code || code.length !== 6) {
+                    if (this.dom.resetConfirmError) this.dom.resetConfirmError.textContent = "Введите 6-значный код из письма.";
+                    return;
+                }
+                if (!pwd || pwd.length < 6) {
+                    if (this.dom.resetConfirmError) this.dom.resetConfirmError.textContent = "Пароль должен быть не менее 6 символов.";
+                    return;
+                }
+
+                if (this.dom.resetConfirmSubmitBtn) {
+                    this.dom.resetConfirmSubmitBtn.disabled = true;
+                    this.dom.resetConfirmSubmitBtn.innerHTML = `<span>Сохранение...</span>`;
+                }
+
+                const res = await this.resetPasswordConfirm(code, pwd);
+
+                if (this.dom.resetConfirmSubmitBtn) {
+                    this.dom.resetConfirmSubmitBtn.disabled = false;
+                    this.dom.resetConfirmSubmitBtn.innerHTML = `<span>Сохранить пароль и войти</span>`;
+                }
+
+                if (res.success) {
+                    this.closeAuthModal();
+                    const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                    if (toastFn) toastFn("Пароль успешно обновлен! Вход выполнен.", "success");
+                } else if (this.dom.resetConfirmError) {
+                    this.dom.resetConfirmError.textContent = res.message;
                 }
             });
         }
@@ -640,71 +807,109 @@ const SkyrexAuth = {
         }
     },
 
-    async handleCodeSubmit() {
-        const code = this.dom.codeInput ? this.dom.codeInput.value.trim() : "";
-        if (!code || code.length !== 6) {
-            if (this.dom.codeError) this.dom.codeError.textContent = "Введите 6 цифр кода.";
+    async handleConfirmSubmit() {
+        if (!this.dom.confirmCodeInput) return;
+        const code = this.dom.confirmCodeInput.value.trim();
+        if (code.length !== 6) {
+            if (this.dom.confirmError) this.dom.confirmError.textContent = "Введите полный 6-значный код.";
             return;
         }
 
-        if (this.dom.verifyBtn) {
-            this.dom.verifyBtn.disabled = true;
-            this.dom.verifyBtn.innerHTML = `<span>Проверка...</span>`;
+        if (this.dom.confirmSubmitBtn) {
+            this.dom.confirmSubmitBtn.disabled = true;
+            this.dom.confirmSubmitBtn.innerHTML = `<span>Проверка...</span>`;
         }
 
-        const res = await this.verifyCode(code);
+        const res = await this.registerConfirm(code);
 
-        if (this.dom.verifyBtn) {
-            this.dom.verifyBtn.disabled = false;
-            this.dom.verifyBtn.innerHTML = `<span>Подтвердить и войти</span>`;
+        if (this.dom.confirmSubmitBtn) {
+            this.dom.confirmSubmitBtn.disabled = false;
+            this.dom.confirmSubmitBtn.innerHTML = `<span>Подтвердить и войти</span>`;
         }
 
         if (res.success) {
             this.closeAuthModal();
-            if (this.dom.codeInput) this.dom.codeInput.value = "";
-            if (this.dom.emailInput) this.dom.emailInput.value = "";
+            if (this.dom.confirmCodeInput) this.dom.confirmCodeInput.value = "";
             this.pendingEmail = "";
+            this.pendingPassword = "";
+            this.pendingNickname = "";
             this.stopCountdown();
-            if (typeof showToast === "function") {
-                showToast("Успешный вход в аккаунт!", "success");
-            }
-        } else if (this.dom.codeError) {
-            this.dom.codeError.textContent = res.message;
+            const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+            const name = (this.currentUser && (this.currentUser.nickname || this.currentUser.username)) || "";
+            if (toastFn) toastFn(`🎉 Регистрация завершена! Добро пожаловать, ${name}!`, "success");
+        } else if (this.dom.confirmError) {
+            this.dom.confirmError.textContent = res.message;
         }
     },
 
     goToStep(step) {
-        if (!this.dom.stepEmail || !this.dom.stepCode) {
+        if (!this.dom || !this.dom.stepLogin) {
             this.setupDOM();
         }
-        if (this.dom.emailError) this.dom.emailError.textContent = "";
-        if (this.dom.codeError) this.dom.codeError.textContent = "";
-        if (this.dom.pwdError) this.dom.pwdError.textContent = "";
 
-        if (step === "code") {
-            if (this.dom.stepEmail) this.dom.stepEmail.classList.remove("active");
-            if (this.dom.stepPassword) this.dom.stepPassword.classList.remove("active");
-            if (this.dom.stepCode) this.dom.stepCode.classList.add("active");
-            if (this.dom.targetEmailDisplay) this.dom.targetEmailDisplay.textContent = this.pendingEmail;
-            if (this.dom.codeInput) {
-                this.dom.codeInput.value = "";
-                setTimeout(() => this.dom.codeInput.focus(), 100);
+        if (this.dom.loginError) this.dom.loginError.textContent = "";
+        if (this.dom.regError) this.dom.regError.textContent = "";
+        if (this.dom.confirmError) this.dom.confirmError.textContent = "";
+        if (this.dom.resetReqError) this.dom.resetReqError.textContent = "";
+        if (this.dom.resetConfirmError) this.dom.resetConfirmError.textContent = "";
+
+        const allSteps = [
+            this.dom.stepLogin,
+            this.dom.stepRegister,
+            this.dom.stepConfirm,
+            this.dom.stepResetRequest,
+            this.dom.stepResetConfirm
+        ];
+
+        allSteps.forEach(s => {
+            if (s) {
+                s.classList.remove("active");
+                s.style.display = "none";
             }
-        } else if (step === "password") {
-            if (this.dom.stepEmail) this.dom.stepEmail.classList.remove("active");
-            if (this.dom.stepCode) this.dom.stepCode.classList.remove("active");
-            if (this.dom.stepPassword) this.dom.stepPassword.classList.add("active");
-            if (this.dom.pwdEmailInput) {
-                setTimeout(() => this.dom.pwdEmailInput.focus(), 100);
+        });
+
+        if (step === "register") {
+            if (this.dom.stepRegister) {
+                this.dom.stepRegister.classList.add("active");
+                this.dom.stepRegister.style.display = "block";
+            }
+            if (this.dom.regEmailInput) setTimeout(() => this.dom.regEmailInput.focus(), 100);
+            this.stopCountdown();
+        } else if (step === "confirm") {
+            if (this.dom.stepConfirm) {
+                this.dom.stepConfirm.classList.add("active");
+                this.dom.stepConfirm.style.display = "block";
+            }
+            if (this.dom.confirmEmailDisplay) this.dom.confirmEmailDisplay.textContent = this.pendingEmail;
+            if (this.dom.confirmCodeInput) {
+                this.dom.confirmCodeInput.value = "";
+                setTimeout(() => this.dom.confirmCodeInput.focus(), 100);
+            }
+        } else if (step === "reset-request") {
+            if (this.dom.stepResetRequest) {
+                this.dom.stepResetRequest.classList.add("active");
+                this.dom.stepResetRequest.style.display = "block";
+            }
+            if (this.dom.resetReqEmailInput) setTimeout(() => this.dom.resetReqEmailInput.focus(), 100);
+            this.stopCountdown();
+        } else if (step === "reset-confirm") {
+            if (this.dom.stepResetConfirm) {
+                this.dom.stepResetConfirm.classList.add("active");
+                this.dom.stepResetConfirm.style.display = "block";
+            }
+            if (this.dom.resetEmailDisplay) this.dom.resetEmailDisplay.textContent = this.pendingResetEmail;
+            if (this.dom.resetCodeInput) {
+                this.dom.resetCodeInput.value = "";
+                setTimeout(() => this.dom.resetCodeInput.focus(), 100);
             }
             this.stopCountdown();
         } else {
-            if (this.dom.stepCode) this.dom.stepCode.classList.remove("active");
-            if (this.dom.stepPassword) this.dom.stepPassword.classList.remove("active");
-            if (this.dom.stepEmail) this.dom.stepEmail.classList.add("active");
-            if (this.dom.emailInput) {
-                setTimeout(() => this.dom.emailInput.focus(), 100);
+            // "login" (default for all users and admin)
+            if (this.dom.stepLogin) {
+                this.dom.stepLogin.classList.add("active");
+                this.dom.stepLogin.style.display = "block";
             }
+            if (this.dom.loginUsernameInput) setTimeout(() => this.dom.loginUsernameInput.focus(), 100);
             this.stopCountdown();
         }
     },
@@ -712,21 +917,22 @@ const SkyrexAuth = {
     startCountdown(seconds) {
         this.stopCountdown();
         this.countdownSeconds = seconds || 60;
-        if (!this.dom.resendBtn) return;
+        const btn = document.getElementById("auth-confirm-resend-btn");
+        if (!btn) return;
 
-        this.dom.resendBtn.disabled = true;
-        this.dom.resendBtn.innerHTML = `Отправить повторно через <span id="auth-countdown">${this.countdownSeconds}</span>с`;
+        btn.disabled = true;
+        btn.innerHTML = `Отправить повторно через <span id="auth-confirm-countdown">${this.countdownSeconds}</span>с`;
 
         this.countdownTimer = setInterval(() => {
             this.countdownSeconds--;
-            const span = document.getElementById("auth-countdown");
+            const span = document.getElementById("auth-confirm-countdown");
             if (span) span.textContent = this.countdownSeconds;
 
             if (this.countdownSeconds <= 0) {
                 this.stopCountdown();
-                if (this.dom.resendBtn) {
-                    this.dom.resendBtn.disabled = false;
-                    this.dom.resendBtn.textContent = "Отправить код повторно";
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = "Отправить код повторно";
                 }
             }
         }, 1000);
@@ -739,7 +945,7 @@ const SkyrexAuth = {
         }
     },
 
-    openAuthModal() {
+    openAuthModal(initialStep = "login") {
         if (!this.dom || !this.dom.authModal) {
             this.setupDOM();
         }
@@ -750,7 +956,7 @@ const SkyrexAuth = {
             modal.style.opacity = "1";
             modal.style.pointerEvents = "auto";
         }
-        this.goToStep("email");
+        this.goToStep(initialStep || "login");
     },
 
     closeAuthModal() {
@@ -1821,13 +2027,17 @@ const SkyrexAuth = {
         if (profileAdminBtn) {
             profileAdminBtn.style.display = isAdmin ? "block" : "none";
         }
+    },
+
+    switchAuthTab(step) {
+        this.goToStep(step);
     }
 };
 
 // Global backward-compatible switchAuthTab helper
 function switchAuthTab(tab) {
     if (window.SkyrexAuth) {
-        SkyrexAuth.goToStep("email");
+        SkyrexAuth.goToStep(tab || "login");
     }
 }
 

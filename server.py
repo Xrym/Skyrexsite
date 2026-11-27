@@ -147,6 +147,8 @@ from db.auth_db import (
     init_auth_db, login_user, register_user,
     get_user_by_token, logout_token,
     create_verification_code, verify_code_and_login, send_otp_email,
+    create_registration_code, confirm_registration_and_login,
+    request_password_reset, confirm_password_reset,
     update_user_nickname, activate_subscription,
     create_payment_record, update_payment_status, get_payment_record,
     add_support_message, get_support_messages, get_support_dialogs,
@@ -2658,7 +2660,7 @@ async def handle_auth_login(request):
     try:
         username = str(data.get("username") or data.get("login") or "").strip()
         password = str(data.get("password") or "")
-        if len(username) > 32 or len(password) > 128:
+        if len(username) > 64 or len(password) > 128:
             return web.json_response({"success": False, "error": "Неверный логин или пароль."}, status=401)
 
         result = await asyncio.to_thread(login_user, username, password)
@@ -2668,6 +2670,110 @@ async def handle_auth_login(request):
         logger.error(f"Error in handle_auth_login: {e}")
         err_msg = str(e) if DEBUG else "Ошибка авторизации. Пожалуйста, попробуйте снова."
         return web.json_response({"success": False, "error": err_msg}, status=500)
+
+async def handle_auth_register_request(request):
+    """Initiates registration by creating OTP code and sending confirmation email."""
+    client_ip = get_client_ip(request)
+    if not check_ip_rate_limit(AUTH_REGISTER_LIMITS, client_ip, max_requests=5, window_seconds=60):
+        return web.json_response(
+            {"success": False, "error": "⏳ Слишком много запросов регистрации. Пожалуйста, подождите минуту."},
+            status=429
+        )
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    email = str(data.get("email") or "").strip().lower()
+    password = str(data.get("password") or "")
+    nickname = str(data.get("nickname") or "").strip()
+
+    ok, code, err = await asyncio.to_thread(create_registration_code, email, password, nickname)
+    if not ok:
+        return web.json_response({"success": False, "error": err or "Не удалось начать регистрацию."}, status=400)
+
+    # Send confirmation email
+    mail_ok, mail_err = await asyncio.to_thread(send_otp_email, email, code, "register")
+    if not mail_ok:
+        logger.error(f"Failed to send registration confirmation to {email}: {mail_err}")
+        return web.json_response({"success": False, "error": mail_err or "Ошибка отправки письма с кодом."}, status=500)
+
+    return web.json_response({
+        "success": True,
+        "message": f"Код подтверждения регистрации отправлен на почту {email}."
+    })
+
+async def handle_auth_register_confirm(request):
+    """Verifies confirmation code and finalizes user registration with password."""
+    client_ip = get_client_ip(request)
+    if not check_ip_rate_limit(AUTH_VERIFY_LIMITS, client_ip, max_requests=10, window_seconds=60):
+        return web.json_response(
+            {"success": False, "error": "⏳ Слишком много попыток ввода кода. Подождите минуту."},
+            status=429
+        )
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    email = str(data.get("email") or "").strip().lower()
+    code = str(data.get("code") or "").strip()
+
+    if not email or not code:
+        return web.json_response({"success": False, "error": "Укажите email и код подтверждения."}, status=400)
+
+    result = await asyncio.to_thread(confirm_registration_and_login, email, code)
+    status = 200 if result.get("success") else 400
+    return web.json_response(result, status=status)
+
+async def handle_auth_reset_request(request):
+    """Generates password reset OTP code and sends it to user email."""
+    client_ip = get_client_ip(request)
+    if not check_ip_rate_limit(AUTH_CODE_LIMITS, client_ip, max_requests=5, window_seconds=60):
+        return web.json_response(
+            {"success": False, "error": "⏳ Слишком много запросов сброса пароля. Подождите минуту."},
+            status=429
+        )
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    email = str(data.get("email") or "").strip().lower()
+    ok, code, err = await asyncio.to_thread(request_password_reset, email)
+    if not ok:
+        return web.json_response({"success": False, "error": err or "Пользователь не найден."}, status=400)
+
+    mail_ok, mail_err = await asyncio.to_thread(send_otp_email, email, code, "reset")
+    if not mail_ok:
+        logger.error(f"Failed to send reset code to {email}: {mail_err}")
+        return web.json_response({"success": False, "error": mail_err or "Ошибка отправки письма."}, status=500)
+
+    return web.json_response({
+        "success": True,
+        "message": f"Код для сброса пароля отправлен на {email}."
+    })
+
+async def handle_auth_reset_confirm(request):
+    """Verifies reset code, sets new password, and logs user in."""
+    client_ip = get_client_ip(request)
+    if not check_ip_rate_limit(AUTH_VERIFY_LIMITS, client_ip, max_requests=10, window_seconds=60):
+        return web.json_response(
+            {"success": False, "error": "⏳ Слишком много попыток ввода кода. Подождите минуту."},
+            status=429
+        )
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    email = str(data.get("email") or "").strip().lower()
+    code = str(data.get("code") or "").strip()
+    password = str(data.get("password") or "")
+
+    result = await asyncio.to_thread(confirm_password_reset, email, code, password)
+    status = 200 if result.get("success") else 400
+    return web.json_response(result, status=status)
 
 async def handle_auth_me(request):
     auth_header = request.headers.get("Authorization", "")
@@ -3296,12 +3402,16 @@ async def init_app():
     app.router.add_post('/api/chat', handle_chat)
     app.router.add_get('/api/search_price', handle_search_price)
     
-    # Real Authentication API (Passwordless Email OTP & Legacy/Admin)
+    # Real Authentication API (Password Login, Registration with Email OTP, Password Reset)
+    app.router.add_post('/api/auth/login', handle_auth_login)
+    app.router.add_post('/api/auth/register-request', handle_auth_register_request)
+    app.router.add_post('/api/auth/register-confirm', handle_auth_register_confirm)
+    app.router.add_post('/api/auth/reset-request', handle_auth_reset_request)
+    app.router.add_post('/api/auth/reset-confirm', handle_auth_reset_confirm)
     app.router.add_post('/api/auth/send-code', handle_auth_send_code)
     app.router.add_post('/api/auth/verify-code', handle_auth_verify_code)
     app.router.add_post('/api/auth/nickname', handle_auth_update_nickname)
     app.router.add_post('/api/auth/register', handle_auth_register)
-    app.router.add_post('/api/auth/login', handle_auth_login)
     app.router.add_get('/api/auth/me', handle_auth_me)
     app.router.add_post('/api/auth/logout', handle_auth_logout)
 

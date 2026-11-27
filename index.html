@@ -7,7 +7,7 @@
     <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
     <meta name="description"
         content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
-    <link rel="stylesheet" href="style.css?v=20261127-05">
+    <link rel="stylesheet" href="style.css?v=20261127-06">
 </head>
 
 <body>
@@ -235,127 +235,145 @@
 
 
 
-    <!-- Auth Modal (Email OTP) -->
+    <!-- Auth Modal (Password Login, Registration with Email OTP, Password Reset) -->
     <div class="modal-overlay" id="auth-modal">
         <div class="modal auth-modal-content">
             <button class="modal-close-btn" id="auth-modal-close-btn" aria-label="Закрыть окно">&times;</button>
 
-            <!-- Step 1: Request Email -->
-            <div class="auth-email-step active" id="auth-step-email">
-                <div class="auth-badge">Вход / Регистрация</div>
-                <h3 class="modal-title" style="margin-bottom: 8px;">Вход по почте</h3>
-                <p class="auth-subtitle">Введите вашу электронную почту. Мы пришлем 6-значный код для моментального
-                    входа без пароля.</p>
-                <form id="auth-email-form">
+            <!-- STEP 1: Main Login by Password (Default for all users and admin) -->
+            <div class="auth-email-step active" id="auth-step-login">
+                <div class="auth-badge">Вход в аккаунт</div>
+                <h3 class="modal-title" style="margin-bottom: 8px;">Авторизация</h3>
+                <p class="auth-subtitle">Войдите в личный кабинет, используя логин или email и пароль.</p>
+                <form id="auth-login-form">
                     <div class="form-group">
-                        <label for="auth-email-input">Электронная почта</label>
-                        <input type="email" id="auth-email-input" class="form-input" required placeholder="name@mail.ru"
-                            autocomplete="email" autofocus>
+                        <label for="auth-login-username">Email или Никнейм</label>
+                        <input type="text" id="auth-login-username" class="form-input" required placeholder="name@mail.ru или Никнейм" autocomplete="username" autofocus>
                     </div>
-                    <div class="auth-error" id="auth-email-error"></div>
-                    <button type="submit" class="btn btn-primary" id="auth-send-btn"
-                        style="width: 100%; margin-top: 15px;">
-                        <span>Получить код</span>
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label for="auth-login-password" style="margin: 0;">Пароль</label>
+                            <a href="javascript:void(0)" onclick="SkyrexAuth.goToStep('reset-request')" style="font-size: 11px; color: #00ffcc; text-decoration: underline;">Забыли пароль?</a>
+                        </div>
+                        <input type="password" id="auth-login-password" class="form-input" required placeholder="••••••••" autocomplete="current-password">
+                    </div>
+                    <div class="auth-error" id="auth-login-error"></div>
+                    <button type="submit" class="btn btn-primary" id="auth-login-submit-btn" style="width: 100%; margin-top: 15px;">
+                        <span>Войти</span>
                     </button>
-                    <div style="text-align: center; margin-top: 14px;">
-                        <button type="button" id="auth-switch-pwd-btn"
-                            style="background: none; border: none; font-size: 12px; color: var(--text-muted); cursor: pointer; text-decoration: underline;">Вход
-                            по паролю (для администратора)</button>
-                    </div>
-                    <div style="text-align: center; margin-top: 14px;">
-                        <button type="button" id="auth-switch-pwd-btn" style="background: none; border: none; font-size: 12px; color: var(--text-muted); cursor: pointer; text-decoration: underline;">Вход по паролю (для администратора)</button>
+                    <div style="text-align: center; margin-top: 16px; font-size: 13px; color: var(--text-muted);">
+                        Нет аккаунта? <a href="javascript:void(0)" onclick="SkyrexAuth.goToStep('register')" style="color: #00ffcc; font-weight: 700; text-decoration: underline;">Зарегистрироваться</a>
                     </div>
                 </form>
             </div>
 
-            <!-- Step 2: Verify OTP Code -->
-            <div class="auth-email-step" id="auth-step-code">
-                <button type="button" class="auth-back-btn" id="auth-back-btn" title="Изменить адрес почты">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                        stroke-linecap="round" stroke-linejoin="round">
+            <!-- STEP 2: Registration Form -->
+            <div class="auth-email-step" id="auth-step-register" style="display: none;">
+                <button type="button" class="auth-back-btn" onclick="SkyrexAuth.goToStep('login')" title="Вернуться ко входу">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="15 18 9 12 15 6"></polyline>
                     </svg>
-                    <span>Изменить почту</span>
+                    <span>Вход</span>
                 </button>
-                <div class="auth-badge">Подтверждение</div>
-                <h3 class="modal-title" style="margin-bottom: 8px;">Введите код из письма</h3>
-                <p class="auth-subtitle">Мы отправили одноразовый код на <strong id="auth-target-email-display"
-                        class="auth-highlight-email"></strong></p>
-                <form id="auth-code-form">
-                    <div class="form-group" style="text-align: center;">
-                        <input type="text" id="auth-code-input" class="form-input auth-otp-input" required maxlength="6"
-                            inputmode="numeric" placeholder="••••••" autocomplete="one-time-code">
+                <div class="auth-badge">Новый пользователь</div>
+                <h3 class="modal-title" style="margin-bottom: 8px;">Регистрация</h3>
+                <p class="auth-subtitle">Придумайте пароль и подтвердите адрес электронной почты.</p>
+                <form id="auth-reg-form">
+                    <div class="form-group">
+                        <label for="auth-reg-email">Электронная почта</label>
+                        <input type="email" id="auth-reg-email" class="form-input" required placeholder="name@mail.ru" autocomplete="email">
                     </div>
-                    <div class="auth-error" id="auth-code-error"></div>
-                    <button type="submit" class="btn btn-primary" id="auth-verify-btn"
-                        style="width: 100%; margin-top: 15px;">
+                    <div class="form-group">
+                        <label for="auth-reg-nickname">Никнейм (отображаемое имя)</label>
+                        <input type="text" id="auth-reg-nickname" class="form-input" placeholder="Например: SkyGamer" maxlength="24" autocomplete="nickname">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-reg-password">Пароль</label>
+                        <input type="password" id="auth-reg-password" class="form-input" required placeholder="Минимум 6 символов" minlength="6" autocomplete="new-password">
+                    </div>
+                    <div class="auth-error" id="auth-reg-error"></div>
+                    <button type="submit" class="btn btn-primary" id="auth-reg-submit-btn" style="width: 100%; margin-top: 15px;">
+                        <span>Получить код подтверждения</span>
+                    </button>
+                    <div style="text-align: center; margin-top: 16px; font-size: 13px; color: var(--text-muted);">
+                        Уже есть аккаунт? <a href="javascript:void(0)" onclick="SkyrexAuth.goToStep('login')" style="color: #00ffcc; font-weight: 700; text-decoration: underline;">Войти</a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- STEP 3: Verify Registration OTP Code -->
+            <div class="auth-email-step" id="auth-step-confirm" style="display: none;">
+                <button type="button" class="auth-back-btn" onclick="SkyrexAuth.goToStep('register')" title="Изменить данные">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                    <span>Назад к данным</span>
+                </button>
+                <div class="auth-badge">Подтверждение почты</div>
+                <h3 class="modal-title" style="margin-bottom: 8px;">Код из письма</h3>
+                <p class="auth-subtitle">Мы отправили 6-значный код подтверждения на <strong id="auth-confirm-email-display" class="auth-highlight-email"></strong></p>
+                <form id="auth-confirm-form">
+                    <div class="form-group" style="text-align: center;">
+                        <input type="text" id="auth-confirm-code-input" class="form-input auth-otp-input" required maxlength="6" inputmode="numeric" placeholder="••••••" autocomplete="one-time-code">
+                    </div>
+                    <div class="auth-error" id="auth-confirm-error"></div>
+                    <button type="submit" class="btn btn-primary" id="auth-confirm-submit-btn" style="width: 100%; margin-top: 15px;">
                         <span>Подтвердить и войти</span>
                     </button>
                     <div class="auth-resend-box">
-                        <button type="button" id="auth-resend-btn" class="auth-resend-btn" disabled>
-                            Отправить повторно через <span id="auth-countdown">60</span>с
+                        <button type="button" id="auth-confirm-resend-btn" class="auth-resend-btn" disabled>
+                            Отправить повторно через <span id="auth-confirm-countdown">60</span>с
                         </button>
                     </div>
                 </form>
             </div>
 
-            <!-- Step 3: Password Login (For Admin) -->
-            <div class="auth-email-step" id="auth-step-password">
-                <button type="button" class="auth-back-btn" id="auth-back-to-email-btn"
-                    title="Вернуться ко входу по коду">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                        stroke-linecap="round" stroke-linejoin="round">
+            <!-- STEP 4: Password Reset Request -->
+            <div class="auth-email-step" id="auth-step-reset-request" style="display: none;">
+                <button type="button" class="auth-back-btn" onclick="SkyrexAuth.goToStep('login')" title="Вернуться ко входу">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="15 18 9 12 15 6"></polyline>
                     </svg>
-                    <span>Вход по коду</span>
+                    <span>Вход</span>
                 </button>
-                <div class="auth-badge">Администратор</div>
-                <h3 class="modal-title" style="margin-bottom: 8px;">Вход по паролю</h3>
-                <p class="auth-subtitle">Вход для администратора по постоянному паролю.</p>
-                <form id="auth-password-form">
+                <div class="auth-badge">Сброс пароля</div>
+                <h3 class="modal-title" style="margin-bottom: 8px;">Восстановление доступа</h3>
+                <p class="auth-subtitle">Введите email вашего аккаунта, мы пришлем код для установки нового пароля.</p>
+                <form id="auth-reset-req-form">
                     <div class="form-group">
-                        <label for="auth-pwd-email-input">Email или логин</label>
-                        <input type="text" id="auth-pwd-email-input" class="form-input" required
-                            placeholder="nicitachebotariow@yandex.ru" autocomplete="username">
+                        <label for="auth-reset-req-email">Электронная почта</label>
+                        <input type="email" id="auth-reset-req-email" class="form-input" required placeholder="name@mail.ru" autocomplete="email">
                     </div>
-                    <div class="form-group">
-                        <label for="auth-pwd-password-input">Пароль</label>
-                        <input type="password" id="auth-pwd-password-input" class="form-input" required
-                            placeholder="••••••••" autocomplete="current-password">
-                    </div>
-                    <div class="auth-error" id="auth-pwd-error"></div>
-                    <button type="submit" class="btn btn-primary" id="auth-pwd-submit-btn"
-                        style="width: 100%; margin-top: 15px;">
-                        <span>Войти</span>
+                    <div class="auth-error" id="auth-reset-req-error"></div>
+                    <button type="submit" class="btn btn-primary" id="auth-reset-req-submit-btn" style="width: 100%; margin-top: 15px;">
+                        <span>Получить код сброса</span>
                     </button>
                 </form>
             </div>
 
-            <!-- Step 3: Password Login (For Admin) -->
-            <div class="auth-email-step" id="auth-step-password">
-                <button type="button" class="auth-back-btn" id="auth-back-to-email-btn" title="Вернуться ко входу по коду">
+            <!-- STEP 5: Password Reset Confirm -->
+            <div class="auth-email-step" id="auth-step-reset-confirm" style="display: none;">
+                <button type="button" class="auth-back-btn" onclick="SkyrexAuth.goToStep('reset-request')" title="Назад">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="15 18 9 12 15 6"></polyline>
                     </svg>
-                    <span>Вход по коду</span>
+                    <span>Изменить email</span>
                 </button>
-                <div class="auth-badge">Администратор</div>
-                <h3 class="modal-title" style="margin-bottom: 8px;">Вход по паролю</h3>
-                <p class="auth-subtitle">Вход для администратора по постоянному паролю.</p>
-                <form id="auth-password-form">
-                    <div class="form-group">
-                        <label for="auth-pwd-email-input">Email или логин</label>
-                        <input type="text" id="auth-pwd-email-input" class="form-input" required
-                            placeholder="nicitachebotariow@yandex.ru" autocomplete="username">
+                <div class="auth-badge">Новый пароль</div>
+                <h3 class="modal-title" style="margin-bottom: 8px;">Установка пароля</h3>
+                <p class="auth-subtitle">Код отправлен на <strong id="auth-reset-email-display" class="auth-highlight-email"></strong></p>
+                <form id="auth-reset-confirm-form">
+                    <div class="form-group" style="text-align: center;">
+                        <label for="auth-reset-code-input" style="text-align: left; display: block; font-size: 12px; margin-bottom: 4px;">Код из письма</label>
+                        <input type="text" id="auth-reset-code-input" class="form-input auth-otp-input" required maxlength="6" inputmode="numeric" placeholder="••••••" autocomplete="one-time-code">
                     </div>
                     <div class="form-group">
-                        <label for="auth-pwd-password-input">Пароль</label>
-                        <input type="password" id="auth-pwd-password-input" class="form-input" required
-                            placeholder="••••••••" autocomplete="current-password">
+                        <label for="auth-reset-new-password">Новый пароль</label>
+                        <input type="password" id="auth-reset-new-password" class="form-input" required placeholder="Минимум 6 символов" minlength="6" autocomplete="new-password">
                     </div>
-                    <div class="auth-error" id="auth-pwd-error"></div>
-                    <button type="submit" class="btn btn-primary" id="auth-pwd-submit-btn" style="width: 100%; margin-top: 15px;">
-                        <span>Войти</span>
+                    <div class="auth-error" id="auth-reset-confirm-error"></div>
+                    <button type="submit" class="btn btn-primary" id="auth-reset-confirm-submit-btn" style="width: 100%; margin-top: 15px;">
+                        <span>Сохранить пароль и войти</span>
                     </button>
                 </form>
             </div>
@@ -902,10 +920,10 @@
     </div>
 
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=20261127-05"></script>
-    <script src="rig_visualizer.js?v=20261127-05"></script>
-    <script src="chat_bot.js?v=20261127-05"></script>
-    <script src="app.js?v=20261127-05"></script>
+    <script src="auth.js?v=20261127-06"></script>
+    <script src="rig_visualizer.js?v=20261127-06"></script>
+    <script src="chat_bot.js?v=20261127-06"></script>
+    <script src="app.js?v=20261127-06"></script>
 </body>
 
 
