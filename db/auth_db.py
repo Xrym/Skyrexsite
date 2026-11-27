@@ -1182,3 +1182,16 @@ def get_admin_users(limit: int = 50) -> List[Dict[str, Any]]:
             LIMIT ?
         """, (limit,)).fetchall()
         return [dict(r) for r in rows]
+
+def delete_user_by_id(user_id: int) -> bool:
+    """Deletes a user and all their tokens/sessions. Admin cannot delete themselves."""
+    try:
+        with get_auth_connection() as conn:
+            # Delete tokens first
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM users WHERE id = ? AND role != 'admin'", (user_id,))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"delete_user_by_id({user_id}) error: {e}")
+        return False

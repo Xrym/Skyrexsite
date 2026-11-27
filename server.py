@@ -153,7 +153,7 @@ from db.auth_db import (
     create_payment_record, update_payment_status, get_payment_record,
     add_support_message, get_support_messages, get_support_dialogs,
     mark_support_messages_read, send_support_reply_email,
-    get_admin_payments, get_admin_users, delete_support_dialog
+    get_admin_payments, get_admin_users, delete_support_dialog, delete_user_by_id
 )
 from scraper.scheduler import BackgroundPriceScheduler
 
@@ -2878,6 +2878,9 @@ async def handle_payment_create(request):
         return web.json_response({"success": False, "error": "Платежный шлюз временно недоступен."}, status=503)
 
     user_email = current_user.get("username", "").strip()
+    # Only include receipt if username is a valid email (required by YooKassa for fiscalization)
+    import re as _re
+    _is_email = bool(_re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', user_email))
     idempotence_key = str(uuid.uuid4())
 
     payload = {
@@ -2890,24 +2893,6 @@ async def handle_payment_create(request):
             "type": "redirect",
             "return_url": "https://skyrex.pro/?payment=success"
         },
-        "receipt": {
-            "customer": {
-                "email": user_email
-            },
-            "items": [
-                {
-                    "description": f"Премиум доступ Skyrex ({SUBSCRIPTION_DAYS} дней)",
-                    "quantity": "1.00",
-                    "amount": {
-                        "value": f"{SUBSCRIPTION_PRICE:.2f}",
-                        "currency": "RUB"
-                    },
-                    "vat_code": 1,
-                    "payment_subject": "service",
-                    "payment_mode": "full_prepayment"
-                }
-            ]
-        },
         "description": f"Оплата премиум подписки Skyrex Computers ({SUBSCRIPTION_DAYS} дней)",
         "metadata": {
             "user_id": str(current_user["id"]),
@@ -2915,6 +2900,21 @@ async def handle_payment_create(request):
             "days": str(SUBSCRIPTION_DAYS)
         }
     }
+
+    if _is_email:
+        payload["receipt"] = {
+            "customer": {"email": user_email},
+            "items": [
+                {
+                    "description": f"Премиум доступ Skyrex ({SUBSCRIPTION_DAYS} дней)",
+                    "quantity": "1.00",
+                    "amount": {"value": f"{SUBSCRIPTION_PRICE:.2f}", "currency": "RUB"},
+                    "vat_code": 1,
+                    "payment_subject": "service",
+                    "payment_mode": "full_prepayment"
+                }
+            ]
+        }
 
     try:
         auth = aiohttp.BasicAuth(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
@@ -2952,7 +2952,8 @@ async def handle_payment_create(request):
         return web.json_response({
             "success": True,
             "payment_id": payment_id,
-            "confirmation_url": confirmation_url
+            "confirmation_url": confirmation_url,
+            "payment_url": confirmation_url
         })
     except Exception as e:
         logger.error(f"Error in handle_payment_create: {e}")
@@ -3183,21 +3184,37 @@ async def handle_admin_catalog_list(request):
     limit = min(int(request.rel_url.query.get("limit", 300)), 1000)
 
     def _fetch():
-        with get_connection() as conn:
-            q = "SELECT id, name, category, price, shop, url, available FROM products WHERE 1=1"
-            params = []
-            if category:
-                q += " AND category = ?"
-                params.append(category)
-            if shop:
-                q += " AND shop LIKE ?"
-                params.append(f"%{shop}%")
-            q += " ORDER BY category, price ASC LIMIT ?"
-            params.append(limit)
-            rows = conn.execute(q, params).fetchall()
-            return [dict(r) for r in rows]
+        try:
+            with get_connection() as conn:
+                q = "SELECT id, name, category, price, shop, url FROM products WHERE 1=1"
+                params = []
+                if category:
+                    q += " AND category = ?"
+                    params.append(category)
+                if shop:
+                    q += " AND shop LIKE ?"
+                    params.append(f"%{shop}%")
+                q += " ORDER BY category, price ASC LIMIT ?"
+                params.append(limit)
+                rows = conn.execute(q, params).fetchall()
+                result = []
+                for r in rows:
+                    result.append({
+                        "id": str(r["id"]),
+                        "name": r["name"] or "",
+                        "category": r["category"] or "",
+                        "price": float(r["price"]) if r["price"] is not None else 0,
+                        "shop": r["shop"] or "",
+                        "url": r["url"] or ""
+                    })
+                return result, None
+        except Exception as ex:
+            return [], str(ex)
 
-    products = await asyncio.to_thread(_fetch)
+    products, err = await asyncio.to_thread(_fetch)
+    if err:
+        logger.error(f"handle_admin_catalog_list error: {err}")
+        return web.json_response({"success": False, "error": f"Ошибка базы данных: {err}"}, status=500)
     return web.json_response({"success": True, "products": products, "total": len(products)})
 
 async def handle_admin_components_add(request):
@@ -3282,6 +3299,23 @@ async def handle_admin_support_delete(request):
         return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
     email = str(data.get("email") or "").strip().lower()
     ok = await asyncio.to_thread(delete_support_dialog, email)
+    return web.json_response({"success": ok})
+
+async def handle_admin_user_delete(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
+    user_id = int(data.get("user_id") or 0)
+    if not user_id:
+        return web.json_response({"success": False, "error": "user_id обязателен."}, status=400)
+    # Prevent admin from deleting themselves
+    if user_id == admin.get("id"):
+        return web.json_response({"success": False, "error": "Нельзя удалить собственный аккаунт."}, status=400)
+    ok = await asyncio.to_thread(delete_user_by_id, user_id)
     return web.json_response({"success": ok})
 
 async def handle_chat(request):
@@ -3469,6 +3503,7 @@ async def init_app():
     app.router.add_post('/api/admin/subscriptions/activate', handle_admin_subscription_activate)
     app.router.add_get('/api/admin/stats', handle_admin_stats)
     app.router.add_post('/api/admin/support/delete', handle_admin_support_delete)
+    app.router.add_post('/api/admin/users/delete', handle_admin_user_delete)
     
     # Public API for expert catalog & rules (non-blocking)
     async def handle_expert_components(request):

@@ -1106,9 +1106,10 @@ const SkyrexAuth = {
                 }
             });
             const data = await res.json();
-            if (res.ok && data.success && data.payment_url) {
+            const checkoutUrl = data.confirmation_url || data.payment_url;
+            if (res.ok && data.success && checkoutUrl) {
                 // Redirect directly to YooKassa payment checkout
-                window.location.href = data.payment_url;
+                window.location.href = checkoutUrl;
             } else {
                 const errText = data.error || "Не удалось создать счет на оплату.";
                 const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
@@ -1773,6 +1774,10 @@ const SkyrexAuth = {
                 headers: { "Authorization": `Bearer ${this.getToken()}` }
             });
             const data = await res.json();
+            if (!res.ok || !data.success) {
+                container.innerHTML = `<div style="color:#ff3366; font-size:12px; padding:10px;">Ошибка загрузки каталога: ${this.escapeHtml(data.error || res.statusText)}</div>`;
+                return;
+            }
             let products = data.products || [];
             if (searchFilter) {
                 products = products.filter(p => (p.name || "").toLowerCase().includes(searchFilter));
@@ -1910,15 +1915,17 @@ const SkyrexAuth = {
             const data = await res.json();
             const list = data.users || [];
             if (list.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:16px;">Пользователей пока нет.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:16px;">Пользователей пока нет.</td></tr>`;
                 return;
             }
             tbody.innerHTML = list.map(u => {
                 const isSub = !!u.subscribed;
+                const isAdmin = u.role === 'admin';
                 const subBadge = isSub ? `<span style="color:#00ffcc; font-weight:700;">Активна</span>` : `<span style="color:var(--text-muted);">Базовый</span>`;
-                const roleBadge = u.role === 'admin' ? `<span style="color:#ffcc00; font-weight:700;">Админ</span>` : `Пользователь`;
+                const roleBadge = isAdmin ? `<span style="color:#ffcc00; font-weight:700;">Админ</span>` : `Пользователь`;
                 let expires = u.subscription_expires || '—';
                 if (expires && expires.startsWith('2099')) expires = 'Бессрочно';
+                const deleteBtn = !isAdmin ? `<button type="button" class="btn btn-secondary" style="padding:2px 8px; font-size:11px; color:#ff3366; white-space:nowrap;" onclick="SkyrexAuth.deleteAdminUser(${u.id}, '${this.escapeHtml(u.email || u.id)}')">🗑️ Удалить</button>` : `<span style="color:var(--text-muted); font-size:11px;">—</span>`;
                 return `
                     <tr>
                         <td style="color:var(--text-muted); font-size:11px;">#${u.id}</td>
@@ -1927,11 +1934,36 @@ const SkyrexAuth = {
                         <td>${roleBadge}</td>
                         <td>${subBadge}</td>
                         <td style="color:var(--text-muted); font-size:11px;">${this.escapeHtml(expires)}</td>
+                        <td>${deleteBtn}</td>
                     </tr>
                 `;
             }).join("");
         } catch (e) {
             console.error("loadAdminUsers error:", e);
+        }
+    },
+
+    async deleteAdminUser(userId, label) {
+        if (!confirm(`Удалить пользователя #${userId} (${label})? Это действие нельзя отменить.`)) return;
+        try {
+            const res = await fetch("/api/admin/users/delete", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                },
+                body: JSON.stringify({ user_id: userId })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.loadAdminUsers();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn(`Пользователь #${userId} удалён`, "success");
+            } else {
+                alert(data.error || "Ошибка удаления пользователя");
+            }
+        } catch (e) {
+            console.error("deleteAdminUser error:", e);
         }
     },
 
