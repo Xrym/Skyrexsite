@@ -32,6 +32,7 @@ const SkyrexAuth = {
         this.bindEvents();
         this.updateUI();
         this.checkSession();
+        this.initCookieBanner();
 
         // Handle return from YooKassa payment
         const urlParams = new URLSearchParams(window.location.search);
@@ -375,6 +376,8 @@ const SkyrexAuth = {
             paywallCheckoutBtn: document.getElementById("paywall-checkout-btn"),
             offerModal: document.getElementById("offer-modal"),
             offerCloseBtn: document.getElementById("offer-modal-close-btn"),
+            privacyModal: document.getElementById("privacy-modal"),
+            privacyCloseBtn: document.getElementById("privacy-modal-close-btn"),
 
             // Support Helpdesk Modal
             supportModal: document.getElementById("support-modal"),
@@ -442,6 +445,7 @@ const SkyrexAuth = {
         if (this.dom.profileModal) _makeOverlayCloseHandler(this.dom.profileModal, () => this.closeProfileModal());
         if (this.dom.paywallModal) _makeOverlayCloseHandler(this.dom.paywallModal, () => this.closePaywallModal());
         if (this.dom.offerModal) _makeOverlayCloseHandler(this.dom.offerModal, () => this.closeOfferModal());
+        if (this.dom.privacyModal) _makeOverlayCloseHandler(this.dom.privacyModal, () => this.closePrivacyModal());
         if (this.dom.supportModal) _makeOverlayCloseHandler(this.dom.supportModal, () => this.closeSupportModal());
         if (this.dom.adminPanelModal) _makeOverlayCloseHandler(this.dom.adminPanelModal, () => this.closeAdminPanel());
 
@@ -460,6 +464,7 @@ const SkyrexAuth = {
                 this.closeProfileModal();
                 this.closePaywallModal();
                 this.closeOfferModal();
+                this.closePrivacyModal();
                 this.closeSupportModal();
                 this.closeAdminPanel();
             }
@@ -588,6 +593,11 @@ const SkyrexAuth = {
                 }
                 if (password.length < 6) {
                     if (this.dom.regError) this.dom.regError.textContent = "Пароль должен быть не менее 6 символов.";
+                    return;
+                }
+                const consentEl = document.getElementById("auth-reg-consent");
+                if (consentEl && !consentEl.checked) {
+                    if (this.dom.regError) this.dom.regError.textContent = "Необходимо согласие на обработку персональных данных.";
                     return;
                 }
 
@@ -1077,6 +1087,41 @@ const SkyrexAuth = {
             modal.style.opacity = "0";
             modal.style.pointerEvents = "none";
         }
+    },
+
+    openPrivacyModal() {
+        if (!this.dom || !this.dom.privacyModal) {
+            this.setupDOM();
+        }
+        const modal = (this.dom && this.dom.privacyModal) || document.getElementById("privacy-modal");
+        if (modal) {
+            modal.classList.add("active");
+            modal.style.visibility = "visible";
+            modal.style.opacity = "1";
+            modal.style.pointerEvents = "auto";
+        }
+    },
+
+    closePrivacyModal() {
+        const modal = (this.dom && this.dom.privacyModal) || document.getElementById("privacy-modal");
+        if (modal) {
+            modal.classList.remove("active");
+            modal.style.visibility = "hidden";
+            modal.style.opacity = "0";
+            modal.style.pointerEvents = "none";
+        }
+    },
+
+    initCookieBanner() {
+        const banner = document.getElementById("cookie-consent-banner");
+        const btn = document.getElementById("cookie-consent-accept");
+        if (!banner || !btn) return;
+        if (localStorage.getItem("skyrex_cookie_accepted") === "1") return;
+        banner.style.display = "flex";
+        btn.addEventListener("click", () => {
+            localStorage.setItem("skyrex_cookie_accepted", "1");
+            banner.style.display = "none";
+        });
     },
 
     async startPayment() {

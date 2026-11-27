@@ -7,7 +7,7 @@
     <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
     <meta name="description"
         content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
-    <link rel="stylesheet" href="style.css?v=20261127-10">
+    <link rel="stylesheet" href="style.css?v=20261127-11">
 </head>
 
 <body>
@@ -198,7 +198,7 @@
                         <li><a href="javascript:void(0)"
                                 onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();">Публичная оферта</a></li>
                         <li><a href="javascript:void(0)"
-                                onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();">Политика
+                                onclick="if(window.SkyrexAuth) SkyrexAuth.openPrivacyModal();">Политика
                                 конфиденциальности</a></li>
                     </ul>
                 </div>
@@ -290,6 +290,12 @@
                     <div class="form-group">
                         <label for="auth-reg-password">Пароль</label>
                         <input type="password" id="auth-reg-password" class="form-input" required placeholder="Минимум 6 символов" minlength="6" autocomplete="new-password">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; margin-bottom: 6px;">
+                        <input type="checkbox" id="auth-reg-consent" required style="margin-top: 3px; width: 16px; height: 16px; accent-color: #00ffcc; cursor: pointer; flex-shrink: 0;">
+                        <label for="auth-reg-consent" style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.4; cursor: pointer; margin: 0;">
+                            Я даю согласие на обработку персональных данных в соответствии с <a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openPrivacyModal();" style="color: #00ffcc; text-decoration: underline;">Политикой конфиденциальности</a> и принимаю условия <a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();" style="color: #00ffcc; text-decoration: underline;">Публичной оферты</a>.
+                        </label>
                     </div>
                     <div class="auth-error" id="auth-reg-error"></div>
                     <button type="submit" class="btn btn-primary" id="auth-reg-submit-btn" style="width: 100%; margin-top: 15px;">
@@ -543,13 +549,27 @@
                     оператора платежей (сервис «ЮKassa»). Услуга считается оказанной в полном объеме с момента
                     предоставления доступа к функционалу ИИ-консультанта в личном кабинете Заказчика.</p>
 
-                <h4 style="color: #fff; margin-bottom: 6px;">4. Обработка персональных данных</h4>
-                <p style="margin-bottom: 12px;">В соответствии с Федеральным законом № 152-ФЗ «О персональных данных»,
-                    Заказчик дает согласие Исполнителю на обработку предоставленных персональных данных (адрес
-                    электронной почты, никнейм, данные платежных транзакций) исключительно в целях исполнения настоящего
-                    договора и направления электронных кассовых чеков (в соответствии с 54-ФЗ).</p>
+                <h4 style="color: #fff; margin-bottom: 6px;">4. Порядок возврата средств и техподдержка</h4>
+                <p style="margin-bottom: 12px;">В соответствии с Законом РФ «О защите прав потребителей» Заказчик вправе
+                    отказаться от исполнения договора и обратиться с заявлением о возврате денежных средств за неиспользованный
+                    период подписки, направив обращение на электронную почту <a href="mailto:skyrex.auth@mail.ru" style="color: #00ffcc;">skyrex.auth@mail.ru</a>
+                    или через онлайн-чат поддержки на сайте. Срок рассмотрения обращения составляет 1–3 рабочих дня,
+                    возврат денежных средств осуществляется тем же способом, которым производилась оплата, в срок до 10
+                    календарных дней.</p>
 
-                <h4 style="color: #fff; margin-bottom: 6px;">5. Реквизиты Исполнителя</h4>
+                <h4 style="color: #fff; margin-bottom: 6px;">5. Информационно-рекомендательный характер</h4>
+                <p style="margin-bottom: 12px;">Сервис Skyrex Computers носит исключительно информационно-консультационный
+                    характер и не является продавцом компьютерных комплектующих. Информация о ценах, характеристиках и наличии
+                    товаров на сторонних маркетплейсах (DNS, Wildberries, ОнлайнТрейд, Авито и др.) является справочной;
+                    договоры купли-продажи комплектующих Заказчик заключает напрямую с соответствующими продавцами.</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">6. Обработка персональных данных</h4>
+                <p style="margin-bottom: 12px;">В соответствии с Федеральным законом № 152-ФЗ «О персональных данных»,
+                    Заказчик дает согласие Исполнителю на обработку предоставленных персональных данных исключительно в целях
+                    исполнения настоящего договора и направления электронных кассовых чеков (54-ФЗ) на условиях
+                    <a href="javascript:void(0)" onclick="if(window.SkyrexAuth){SkyrexAuth.closeOfferModal();SkyrexAuth.openPrivacyModal();}" style="color: #00ffcc; text-decoration: underline;">Политики обработки персональных данных</a>.</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">7. Реквизиты Исполнителя</h4>
                 <p
                     style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 12px; border-radius: 10px;">
                     <strong>ИП Чеботарёв Никита Драгонович</strong><br>
@@ -558,6 +578,50 @@
                     Адрес: Краснодарский край, Апшеронский район, г. Хадыженск<br>
                     Электронная почта: skyrex.auth@mail.ru
                 </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Privacy Policy Modal (152-FZ) -->
+    <div class="modal-overlay" id="privacy-modal">
+        <div class="modal offer-modal-content"
+            style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
+            <button class="modal-close-btn" id="privacy-modal-close-btn" aria-label="Закрыть окно"
+                onclick="if(window.SkyrexAuth) SkyrexAuth.closePrivacyModal();">&times;</button>
+            <h3 class="modal-title" style="margin-bottom: 16px; flex-shrink: 0;">Политика обработки персональных данных</h3>
+            <div class="offer-scroll-body"
+                style="overflow-y: auto; padding-right: 10px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; flex: 1;">
+                <h4 style="color: #fff; margin-bottom: 6px;">1. Общие положения</h4>
+                <p style="margin-bottom: 12px;">Настоящая Политика разработана в соответствии с Федеральным законом от
+                    27.07.2006 № 152-ФЗ «О персональных данных» и определяет порядок обработки и защиты персональных данных
+                    пользователей сайта skyrex.pro. Оператором персональных данных является Индивидуальный предприниматель
+                    Чеботарёв Никита Драгонович (ОГРНИП 325237500199972, ИНН 232526637986, адрес: Краснодарский край,
+                    Апшеронский район, г. Хадыженск, email: skyrex.auth@mail.ru).</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">2. Какие данные мы собираем</h4>
+                <p style="margin-bottom: 12px;">Оператор обрабатывает следующие данные Пользователя: адрес электронной почты
+                    (email), отображаемый никнейм, пароль (хранится исключительно в виде криптографического хэша),
+                    историю обращений в поддержку, сведения о статусе оплаты и подписки (реквизиты банковских карт
+                    сайтом не собираются и не хранятся — оплата проходит на стороне защищённого шлюза ЮKassa), а также
+                    технические данные (IP-адрес, данные cookie и localStorage для поддержания сессии).</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">3. Цели и правовые основания обработки</h4>
+                <p style="margin-bottom: 12px;">Обработка осуществляется на основании согласия Пользователя и в целях
+                    исполнения договора публичной оферты: для регистрации и авторизации, предоставления доступа к ИИ-консультанту,
+                    направления электронных кассовых чеков (54-ФЗ), связи с Пользователем в техподдержке и защиты от
+                    злоупотреблений.</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">4. Порядок хранения, локализация и защита данных</h4>
+                <p style="margin-bottom: 12px;">Персональные данные хранятся на серверах, расположенных на территории
+                    Российской Федерации, с применением правовых, организационных и технических мер защиты от
+                    несанкционированного доступа в соответствии со ст. 19 ФЗ-152. Срок обработки — до момента достижения целей
+                    обработки, удаления учётной записи либо отзыва согласия Пользователем.</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">5. Права пользователя и отзыв согласия</h4>
+                <p style="margin-bottom: 12px;">Пользователь вправе запросить уточнение, блокирование или полное удаление
+                    своих персональных данных, а также отозвать согласие на их обработку, направив обращение на
+                    <a href="mailto:skyrex.auth@mail.ru" style="color: #00ffcc;">skyrex.auth@mail.ru</a>. Запрос
+                    рассматривается Оператором в срок до 10 рабочих дней с момента получения.</p>
             </div>
         </div>
     </div>
@@ -833,11 +897,19 @@
         </div>
     </div>
 
+    <!-- Cookie & Storage Notice Banner -->
+    <div id="cookie-consent-banner" style="display: none; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9999; background: rgba(15, 18, 30, 0.96); border: 1px solid rgba(0, 255, 204, 0.28); box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65); backdrop-filter: blur(12px); border-radius: 12px; padding: 12px 18px; width: min(92vw, 680px); align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;">
+        <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.45; flex: 1; min-width: 220px;">
+            Мы используем технические файлы cookie и localStorage для работы авторизации и сохранения настроек чата. Продолжая пользоваться сайтом, вы соглашаетесь с <a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openPrivacyModal();" style="color: #00ffcc; text-decoration: underline;">Политикой конфиденциальности</a>.
+        </div>
+        <button type="button" id="cookie-consent-accept" class="btn btn-primary" style="padding: 7px 16px; font-size: 12px; white-space: nowrap;">Понятно</button>
+    </div>
+
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=20261127-10"></script>
-    <script src="rig_visualizer.js?v=20261127-10"></script>
-    <script src="chat_bot.js?v=20261127-10"></script>
-    <script src="app.js?v=20261127-10"></script>
+    <script src="auth.js?v=20261127-11"></script>
+    <script src="rig_visualizer.js?v=20261127-11"></script>
+    <script src="chat_bot.js?v=20261127-11"></script>
+    <script src="app.js?v=20261127-11"></script>
 </body>
 
 
