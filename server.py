@@ -3173,6 +3173,33 @@ async def handle_admin_components_list(request):
     components = await asyncio.to_thread(get_expert_components, 200)
     return web.json_response({"success": True, "components": components})
 
+async def handle_admin_catalog_list(request):
+    """Read-only view of the main products table for admin panel."""
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    category = request.rel_url.query.get("category", "")
+    shop = request.rel_url.query.get("shop", "")
+    limit = min(int(request.rel_url.query.get("limit", 300)), 1000)
+
+    def _fetch():
+        with get_connection() as conn:
+            q = "SELECT id, name, category, price, shop, url, available FROM products WHERE 1=1"
+            params = []
+            if category:
+                q += " AND category = ?"
+                params.append(category)
+            if shop:
+                q += " AND shop LIKE ?"
+                params.append(f"%{shop}%")
+            q += " ORDER BY category, price ASC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(q, params).fetchall()
+            return [dict(r) for r in rows]
+
+    products = await asyncio.to_thread(_fetch)
+    return web.json_response({"success": True, "products": products, "total": len(products)})
+
 async def handle_admin_components_add(request):
     admin = await _check_admin(request)
     if not admin:
@@ -3436,6 +3463,7 @@ async def init_app():
     app.router.add_get('/api/admin/components', handle_admin_components_list)
     app.router.add_post('/api/admin/components/add', handle_admin_components_add)
     app.router.add_post('/api/admin/components/delete', handle_admin_components_delete)
+    app.router.add_get('/api/admin/catalog', handle_admin_catalog_list)
     app.router.add_get('/api/admin/payments', handle_admin_payments_list)
     app.router.add_get('/api/admin/users', handle_admin_users_list)
     app.router.add_post('/api/admin/subscriptions/activate', handle_admin_subscription_activate)

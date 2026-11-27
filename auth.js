@@ -25,7 +25,7 @@ const SkyrexAuth = {
             if (storedSession) {
                 try {
                     this.currentUser = JSON.parse(storedSession);
-                } catch (_) {}
+                } catch (_) { }
             }
         }
         this.setupDOM();
@@ -288,7 +288,7 @@ const SkyrexAuth = {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${this.token}` }
                 });
-            } catch (e) {}
+            } catch (e) { }
         }
 
         this.token = null;
@@ -431,37 +431,19 @@ const SkyrexAuth = {
             this.dom.adminPanelCloseBtn.addEventListener("click", () => this.closeAdminPanel());
         }
 
-        // Close on overlay click
-        if (this.dom.authModal) {
-            this.dom.authModal.addEventListener("click", (e) => {
-                if (e.target === this.dom.authModal) this.closeAuthModal();
-            });
-        }
-        if (this.dom.profileModal) {
-            this.dom.profileModal.addEventListener("click", (e) => {
-                if (e.target === this.dom.profileModal) this.closeProfileModal();
-            });
-        }
-        if (this.dom.paywallModal) {
-            this.dom.paywallModal.addEventListener("click", (e) => {
-                if (e.target === this.dom.paywallModal) this.closePaywallModal();
-            });
-        }
-        if (this.dom.offerModal) {
-            this.dom.offerModal.addEventListener("click", (e) => {
-                if (e.target === this.dom.offerModal) this.closeOfferModal();
-            });
-        }
-        if (this.dom.supportModal) {
-            this.dom.supportModal.addEventListener("click", (e) => {
-                if (e.target === this.dom.supportModal) this.closeSupportModal();
-            });
-        }
-        if (this.dom.adminPanelModal) {
-            this.dom.adminPanelModal.addEventListener("click", (e) => {
-                if (e.target === this.dom.adminPanelModal) this.closeAdminPanel();
-            });
-        }
+        // Close on overlay click — only when BOTH mousedown & mouseup happened on the overlay itself
+        // (prevents modal closing when user drag-selects text and mouse exits modal)
+        const _makeOverlayCloseHandler = (modal, closeFn) => {
+            let _mdOnOverlay = false;
+            modal.addEventListener("mousedown", (e) => { _mdOnOverlay = e.target === modal; });
+            modal.addEventListener("click", (e) => { if (e.target === modal && _mdOnOverlay) closeFn(); });
+        };
+        if (this.dom.authModal) _makeOverlayCloseHandler(this.dom.authModal, () => this.closeAuthModal());
+        if (this.dom.profileModal) _makeOverlayCloseHandler(this.dom.profileModal, () => this.closeProfileModal());
+        if (this.dom.paywallModal) _makeOverlayCloseHandler(this.dom.paywallModal, () => this.closePaywallModal());
+        if (this.dom.offerModal) _makeOverlayCloseHandler(this.dom.offerModal, () => this.closeOfferModal());
+        if (this.dom.supportModal) _makeOverlayCloseHandler(this.dom.supportModal, () => this.closeSupportModal());
+        if (this.dom.adminPanelModal) _makeOverlayCloseHandler(this.dom.adminPanelModal, () => this.closeAdminPanel());
 
         // Pay buttons
         if (this.dom.paywallCheckoutBtn) {
@@ -1779,35 +1761,57 @@ const SkyrexAuth = {
     async loadAdminComponents() {
         const container = document.getElementById("admin-components-list");
         if (!container) return;
+        // Read filter values
+        const catFilter = (document.getElementById("admin-cat-filter") || {}).value || "";
+        const shopFilter = (document.getElementById("admin-shop-filter") || {}).value || "";
+        const searchFilter = ((document.getElementById("admin-search-filter") || {}).value || "").trim().toLowerCase();
         try {
-            const res = await fetch("/api/admin/components", {
+            const params = new URLSearchParams({ limit: 300 });
+            if (catFilter) params.set("category", catFilter);
+            if (shopFilter) params.set("shop", shopFilter);
+            const res = await fetch(`/api/admin/catalog?${params}`, {
                 headers: { "Authorization": `Bearer ${this.getToken()}` }
             });
             const data = await res.json();
-            const comps = data.components || [];
-            if (comps.length === 0) {
-                container.innerHTML = `<div style="color:var(--text-muted); font-size:12px; padding:10px; background:rgba(255,255,255,0.02); border-radius:8px;">Экспертные комплектующие еще не добавлены. Добавьте первую деталь через форму выше.</div>`;
+            let products = data.products || [];
+            if (searchFilter) {
+                products = products.filter(p => (p.name || "").toLowerCase().includes(searchFilter));
+            }
+            if (products.length === 0) {
+                container.innerHTML = `<div style="color:var(--text-muted); font-size:13px; padding:16px; text-align:center;">Товары не найдены. Попробуйте изменить фильтры.</div>`;
                 return;
             }
-            container.innerHTML = comps.map(c => `
-                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                    <div style="flex:1;">
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                            <span style="font-size:10px; text-transform:uppercase; background:rgba(0,255,204,0.15); color:#00ffcc; padding:2px 6px; border-radius:4px; font-weight:700;">${this.escapeHtml(c.category)}</span>
-                            <span style="font-weight:700; color:#fff; font-size:13px;">${this.escapeHtml(c.name)}</span>
-                            <span style="color:#00ffcc; font-weight:700; font-size:13px;">${Number(c.price).toLocaleString('ru-RU')} ₽</span>
-                            <span style="font-size:11px; color:var(--text-muted);">(${this.escapeHtml(c.shop)})</span>
-                        </div>
-                        <div style="font-size:11px; color:#aaa; display:flex; gap:12px; align-items:center;">
-                            <a href="${this.escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer" style="color:#3399ff; text-decoration:underline;">Открыть ссылку ↗</a>
-                            ${c.comment ? `<span>${this.escapeHtml(c.comment)}</span>` : ''}
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:11px; color:#ff3366;" onclick="SkyrexAuth.deleteAdminComponent(${c.id})">Удалить</button>
-                </div>
-            `).join("");
+            const catNames = { cpu: "Процессор", gpu: "Видеокарта", motherboard: "Мат. плата", ram: "ОЗУ", ssd: "SSD", psu: "Блок питания", case: "Корпус", cooler: "Охлаждение" };
+            container.innerHTML = `
+                <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; text-align:right;">Показано: ${products.length} товаров</div>
+                <div style="overflow-x:auto; border-radius:10px; border:1px solid rgba(255,255,255,0.08);">
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead>
+                        <tr style="background:rgba(0,255,204,0.07); color:#00ffcc; font-weight:700; text-transform:uppercase; font-size:11px;">
+                            <th style="padding:8px 10px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.1);">Категория</th>
+                            <th style="padding:8px 10px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.1);">Название</th>
+                            <th style="padding:8px 10px; text-align:right; border-bottom:1px solid rgba(255,255,255,0.1);">Цена</th>
+                            <th style="padding:8px 10px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.1);">Магазин</th>
+                            <th style="padding:8px 10px; text-align:center; border-bottom:1px solid rgba(255,255,255,0.1);">Ссылка</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${products.map((p, i) => `
+                        <tr style="background:${i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent'}; border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.15s;" onmouseover="this.style.background='rgba(0,255,204,0.04)'" onmouseout="this.style.background='${i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent'}'">
+                            <td style="padding:7px 10px;">
+                                <span style="font-size:10px; text-transform:uppercase; background:rgba(0,255,204,0.12); color:#00ffcc; padding:2px 6px; border-radius:4px; white-space:nowrap;">${this.escapeHtml(catNames[p.category] || p.category || "—")}</span>
+                            </td>
+                            <td style="padding:7px 10px; color:#e8e8e8; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${this.escapeHtml(p.name || "")}">${this.escapeHtml(p.name || "—")}</td>
+                            <td style="padding:7px 10px; text-align:right; color:#00ffcc; font-weight:700; white-space:nowrap;">${p.price ? Number(p.price).toLocaleString('ru-RU') + ' ₽' : '—'}</td>
+                            <td style="padding:7px 10px; color:var(--text-muted); white-space:nowrap;">${this.escapeHtml(p.shop || "—")}</td>
+                            <td style="padding:7px 10px; text-align:center;">${p.url ? `<a href="${this.escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer" style="color:#3399ff; font-size:16px; text-decoration:none;" title="Открыть">↗</a>` : '—'}</td>
+                        </tr>`).join("")}
+                    </tbody>
+                </table>
+                </div>`;
         } catch (e) {
             console.error("loadAdminComponents error:", e);
+            container.innerHTML = `<div style="color:#ff3366; font-size:12px; padding:10px;">Ошибка загрузки каталога.</div>`;
         }
     },
 
@@ -2027,8 +2031,8 @@ const SkyrexAuth = {
         const isAdmin = this.currentUser && this.currentUser.role === "admin";
         const navAdminLink = document.getElementById("nav-admin-link");
         if (navAdminLink) {
-            navAdminLink.style.display = "inline-block";
-            navAdminLink.innerHTML = isAdmin ? "👑 Панель админа" : "🛠️ Панель админа";
+            navAdminLink.style.display = isAdmin ? "inline-block" : "none";
+            navAdminLink.innerHTML = "👑 Панель админа";
         }
         const profileAdminBtn = document.getElementById("profile-admin-btn");
         if (profileAdminBtn) {

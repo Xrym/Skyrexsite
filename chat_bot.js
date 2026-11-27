@@ -82,7 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
             container = document.createElement("div");
             container.id = "chat-toast-container";
             container.className = "chat-toast-container";
-            const parent = document.querySelector(".hero-chat-container") || chatBody || document.body;
+            const parent = document.body;
             parent.appendChild(container);
         }
 

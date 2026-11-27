@@ -7,7 +7,7 @@
     <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
     <meta name="description"
         content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
-    <link rel="stylesheet" href="style.css?v=20261127-07">
+    <link rel="stylesheet" href="style.css?v=20261127-08">
 </head>
 
 <body>
@@ -682,7 +682,7 @@
             <div class="admin-tabs-nav" style="display: flex; gap: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px; margin-bottom: 16px; flex-shrink: 0; overflow-x: auto;">
                 <button type="button" class="admin-tab-btn active" data-tab="support" onclick="SkyrexAuth.switchAdminTab('support')">💬 Техподдержка</button>
                 <button type="button" class="admin-tab-btn" data-tab="rules" onclick="SkyrexAuth.switchAdminTab('rules')">📜 Правила ИИ</button>
-                <button type="button" class="admin-tab-btn" data-tab="components" onclick="SkyrexAuth.switchAdminTab('components')">⚙️ Экспертные детали</button>
+                <button type="button" class="admin-tab-btn" data-tab="components" onclick="SkyrexAuth.switchAdminTab('components')">📦 Каталог товаров</button>
                 <button type="button" class="admin-tab-btn" data-tab="payments" onclick="SkyrexAuth.switchAdminTab('payments')">💳 Оплаты и пользователи</button>
                 <button type="button" class="admin-tab-btn" data-tab="stats" onclick="SkyrexAuth.switchAdminTab('stats')">📊 Статистика</button>
             </div>
@@ -749,45 +749,32 @@
                 </div>
             </div>
 
-            <!-- TAB 3: Expert Components -->
+            <!-- TAB 3: Product Catalog (read-only view of products table) -->
             <div class="admin-tab-pane" id="admin-tab-components" style="display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding-right: 6px;">
-                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #00ffcc;">➕ Добавить экспертную комплектующую (Б/У или эксклюзив)</h4>
-                    <form id="admin-add-comp-form">
-                        <div style="display: grid; grid-template-columns: 1fr 140px 140px; gap: 10px; margin-bottom: 10px;">
-                            <input type="text" id="admin-comp-name" class="form-input" placeholder="Название (например: Ryzen 5 7500F Tray)" style="font-size: 13px;" required>
-                            <select id="admin-comp-cat" class="form-input" style="font-size: 13px;" required>
-                                <option value="cpu">Процессор (CPU)</option>
-                                <option value="gpu">Видеокарта (GPU)</option>
-                                <option value="motherboard">Материнская плата</option>
-                                <option value="ram">Оперативная память</option>
-                                <option value="ssd">SSD накопитель</option>
-                                <option value="psu">Блок питания</option>
-                                <option value="case">Корпус</option>
-                                <option value="cooler">Охлаждение / Кулер</option>
-                            </select>
-                            <input type="number" id="admin-comp-price" class="form-input" placeholder="Цена (руб)" style="font-size: 13px;" required>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 160px 1fr; gap: 10px; margin-bottom: 10px;">
-                            <select id="admin-comp-shop" class="form-input" style="font-size: 13px;">
-                                <option value="Авито">Авито</option>
-                                <option value="ОнлайнТрейд">ОнлайнТрейд</option>
-                                <option value="DNS">DNS</option>
-                                <option value="Wildberries">Wildberries</option>
-                            </select>
-                            <input type="url" id="admin-comp-url" class="form-input" placeholder="Прямая ссылка на товар (https://...)" style="font-size: 13px;" required>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <input type="text" id="admin-comp-comment" class="form-input" placeholder="Комментарий эксперта (например: Проверенный продавец, гарантия)" style="font-size: 13px;">
-                        </div>
-                        <button type="submit" class="btn btn-primary" style="padding: 8px 18px; font-size: 13px;">
-                            <span>Добавить деталь в каталог</span>
-                        </button>
-                    </form>
+                <!-- Filter bar -->
+                <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center;">
+                    <select id="admin-cat-filter" class="form-input" style="font-size: 13px; width: 170px;" onchange="SkyrexAuth.loadAdminComponents()">
+                        <option value="">Все категории</option>
+                        <option value="cpu">Процессор (CPU)</option>
+                        <option value="gpu">Видеокарта (GPU)</option>
+                        <option value="motherboard">Материнская плата</option>
+                        <option value="ram">ОЗУ</option>
+                        <option value="ssd">SSD накопитель</option>
+                        <option value="psu">Блок питания</option>
+                        <option value="case">Корпус</option>
+                        <option value="cooler">Охлаждение / Кулер</option>
+                    </select>
+                    <select id="admin-shop-filter" class="form-input" style="font-size: 13px; width: 150px;" onchange="SkyrexAuth.loadAdminComponents()">
+                        <option value="">Все магазины</option>
+                        <option value="Авито">Авито</option>
+                        <option value="ОнлайнТрейд">ОнлайнТрейд</option>
+                        <option value="DNS">DNS</option>
+                        <option value="Wildberries">Wildberries</option>
+                    </select>
+                    <input type="text" id="admin-search-filter" class="form-input" placeholder="Поиск по названию..." style="font-size: 13px; flex: 1; min-width: 160px;" oninput="SkyrexAuth.loadAdminComponents()">
+                    <button type="button" class="btn btn-secondary" style="padding: 8px 14px; font-size: 12px; white-space: nowrap;" onclick="SkyrexAuth.loadAdminComponents()">🔄 Обновить</button>
                 </div>
-
-                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #fff;">Каталог экспертных деталей</h4>
-                <div id="admin-components-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                <div id="admin-components-list" style="flex: 1; min-height: 0;"></div>
             </div>
 
             <!-- TAB 4: Payments & Users -->
@@ -846,10 +833,10 @@
     </div>
 
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=20261127-07"></script>
-    <script src="rig_visualizer.js?v=20261127-07"></script>
-    <script src="chat_bot.js?v=20261127-07"></script>
-    <script src="app.js?v=20261127-07"></script>
+    <script src="auth.js?v=20261127-08"></script>
+    <script src="rig_visualizer.js?v=20261127-08"></script>
+    <script src="chat_bot.js?v=20261127-08"></script>
+    <script src="app.js?v=20261127-08"></script>
 </body>
 
 
