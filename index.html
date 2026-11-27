@@ -7,7 +7,7 @@
     <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
     <meta name="description"
         content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
-    <link rel="stylesheet" href="style.css?v=20261127-01">
+    <link rel="stylesheet" href="style.css?v=20261127-02">
 </head>
 
 <body>
@@ -21,6 +21,8 @@
             </a>
             <nav id="main-nav">
                 <a href="#hero">AI Консультант</a>
+                <a href="javascript:void(0)"
+                    onclick="if(window.SkyrexAuth) SkyrexAuth.openSupportModal();">Техподдержка</a>
                 <a href="#about">О нас</a>
                 <a href="#contacts">Контакты</a>
             </nav>
@@ -45,7 +47,8 @@
                 <div class="hero-header-banner">
                     <span class="hero-tagline">Интеллектуальный AI Конфигуратор</span>
                     <h1>Создайте идеальный ПК с <span class="gradient-text">SKYREX AI</span></h1>
-                    <p class="hero-subtitle">Интерактивный подбор комплектующих под ваш бюджет с актуальными ценами и прямыми ссылками на маркетплейсы.</p>
+                    <p class="hero-subtitle">Интерактивный подбор комплектующих под ваш бюджет с актуальными ценами и
+                        прямыми ссылками на маркетплейсы.</p>
                 </div>
 
                 <div class="hero-workspace-grid">
@@ -88,8 +91,11 @@
                             </div>
 
                             <!-- Scroll to bottom floating button -->
-                            <button class="chat-scroll-bottom-btn" id="chat-scroll-bottom-btn" title="Вниз к сообщениям" aria-label="Вниз к сообщениям">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <button class="chat-scroll-bottom-btn" id="chat-scroll-bottom-btn" title="Вниз к сообщениям"
+                                aria-label="Вниз к сообщениям">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                    stroke-linejoin="round">
                                     <polyline points="6 9 12 15 18 9"></polyline>
                                 </svg>
                                 <span class="unread-dot" id="chat-unread-dot"></span>
@@ -97,13 +103,15 @@
 
                             <div class="chat-footer">
                                 <!-- Dynamic Autocomplete Suggestions (appears while typing) -->
-                                <div class="chat-autocomplete" id="chat-autocomplete" style="display: none;" role="listbox" aria-label="Подсказки"></div>
+                                <div class="chat-autocomplete" id="chat-autocomplete" style="display: none;"
+                                    role="listbox" aria-label="Подсказки"></div>
                                 <div class="chat-input-row">
-                                    <textarea id="chat-input" placeholder="Задайте вопрос (например: сборка за 80к)..." rows="1" autocomplete="off"></textarea>
+                                    <textarea id="chat-input" placeholder="Задайте вопрос (например: сборка за 80к)..."
+                                        rows="1" autocomplete="off"></textarea>
                                     <button id="chat-send-btn" class="chat-send-btn" aria-label="Отправить">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
-                                            fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                                            stroke-linejoin="round">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                            stroke-linecap="round" stroke-linejoin="round">
                                             <line x1="22" y1="2" x2="11" y2="13"></line>
                                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                                         </svg>
@@ -177,30 +185,44 @@
                     <h4>Контакты</h4>
                     <ul>
                         <li>Telegram: <a href="https://t.me/skyrexic" target="_blank">https://t.me/skyrexic</a></li>
-                        <li>YouTube: <a href="https://www.youtube.com/@skyrexic/featured" target="_blank">https://www.youtube.com/@skyrexic/featured</a></li>
+                        <li>YouTube: <a href="https://www.youtube.com/@skyrexic/featured"
+                                target="_blank">https://www.youtube.com/@skyrexic/featured</a></li>
                         <li>Email: <a href="mailto:skyrex.auth@mail.ru">skyrex.auth@mail.ru</a></li>
-                        <li>Тел: <a href="tel:+79186920810">+7 (918) 692-08-10</a></li>
+                        <li>Тел: <a href="tel:+79180000000">+7 (918) 000-00-00</a></li>
                     </ul>
                 </div>
                 <div class="footer-links">
                     <h4>Документы</h4>
                     <ul>
                         <li><a href="#hero">AI Консультант</a></li>
-                        <li><a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();">Публичная оферта</a></li>
-                        <li><a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();">Политика конфиденциальности</a></li>
+                        <li><a href="javascript:void(0)"
+                                onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();">Публичная оферта</a></li>
+                        <li><a href="javascript:void(0)"
+                                onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();">Политика
+                                конфиденциальности</a></li>
                     </ul>
                 </div>
             </div>
 
-            <div class="footer-legal-bar" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+            <div class="footer-legal-bar"
+                style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
                 <p><strong>Индивидуальный предприниматель Чеботарёв Никита Драгонович</strong></p>
-                <p>ОГРНИП: 325237500199972 | ИНН: 232526637986 | Адрес: Краснодарский край, Апшеронский р-н, г. Хадыженск</p>
-                <div class="footer-payment-methods" style="margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                    <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Прием платежей через ЮKassa:</span>
-                    <span class="pay-badge" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #fff; font-size: 11px;">ЮKassa</span>
-                    <span class="pay-badge" style="background: rgba(0,255,204,0.08); border: 1px solid rgba(0,255,204,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #00ffcc; font-size: 11px;">МИР</span>
-                    <span class="pay-badge" style="background: rgba(0,210,255,0.08); border: 1px solid rgba(0,210,255,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #00d2ff; font-size: 11px;">СБП</span>
-                    <span class="pay-badge" style="background: rgba(255,187,0,0.08); border: 1px solid rgba(255,187,0,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #ffbb00; font-size: 11px;">Банковские карты</span>
+                <p>ОГРНИП: 325237500199972 | ИНН: 232526637986 | Адрес: Краснодарский край, Апшеронский р-н, г.
+                    Хадыженск</p>
+                <div class="footer-payment-methods"
+                    style="margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <span
+                        style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Прием
+                        платежей через ЮKassa:</span>
+                    <span class="pay-badge"
+                        style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #fff; font-size: 11px;">ЮKassa</span>
+                    <span class="pay-badge"
+                        style="background: rgba(0,255,204,0.08); border: 1px solid rgba(0,255,204,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #00ffcc; font-size: 11px;">МИР</span>
+                    <span class="pay-badge"
+                        style="background: rgba(0,210,255,0.08); border: 1px solid rgba(0,210,255,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #00d2ff; font-size: 11px;">СБП</span>
+                    <span class="pay-badge"
+                        style="background: rgba(255,187,0,0.08); border: 1px solid rgba(255,187,0,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #ffbb00; font-size: 11px;">Банковские
+                        карты</span>
                 </div>
             </div>
 
@@ -217,43 +239,53 @@
     <div class="modal-overlay" id="auth-modal">
         <div class="modal auth-modal-content">
             <button class="modal-close-btn" id="auth-modal-close-btn" aria-label="Закрыть окно">&times;</button>
-            
+
             <!-- Step 1: Request Email -->
             <div class="auth-email-step active" id="auth-step-email">
                 <div class="auth-badge">Вход / Регистрация</div>
                 <h3 class="modal-title" style="margin-bottom: 8px;">Вход по почте</h3>
-                <p class="auth-subtitle">Введите вашу электронную почту. Мы пришлем 6-значный код для моментального входа без пароля.</p>
+                <p class="auth-subtitle">Введите вашу электронную почту. Мы пришлем 6-значный код для моментального
+                    входа без пароля.</p>
                 <form id="auth-email-form">
                     <div class="form-group">
                         <label for="auth-email-input">Электронная почта</label>
-                        <input type="email" id="auth-email-input" class="form-input" required
-                            placeholder="name@mail.ru" autocomplete="email" autofocus>
+                        <input type="email" id="auth-email-input" class="form-input" required placeholder="name@mail.ru"
+                            autocomplete="email" autofocus>
                     </div>
                     <div class="auth-error" id="auth-email-error"></div>
-                    <button type="submit" class="btn btn-primary" id="auth-send-btn" style="width: 100%; margin-top: 15px;">
+                    <button type="submit" class="btn btn-primary" id="auth-send-btn"
+                        style="width: 100%; margin-top: 15px;">
                         <span>Получить код</span>
                     </button>
+                    <div style="text-align: center; margin-top: 14px;">
+                        <button type="button" id="auth-switch-pwd-btn"
+                            style="background: none; border: none; font-size: 12px; color: var(--text-muted); cursor: pointer; text-decoration: underline;">Вход
+                            по паролю (для администратора)</button>
+                    </div>
                 </form>
             </div>
 
             <!-- Step 2: Verify OTP Code -->
             <div class="auth-email-step" id="auth-step-code">
                 <button type="button" class="auth-back-btn" id="auth-back-btn" title="Изменить адрес почты">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="15 18 9 12 15 6"></polyline>
                     </svg>
                     <span>Изменить почту</span>
                 </button>
                 <div class="auth-badge">Подтверждение</div>
                 <h3 class="modal-title" style="margin-bottom: 8px;">Введите код из письма</h3>
-                <p class="auth-subtitle">Мы отправили одноразовый код на <strong id="auth-target-email-display" class="auth-highlight-email"></strong></p>
+                <p class="auth-subtitle">Мы отправили одноразовый код на <strong id="auth-target-email-display"
+                        class="auth-highlight-email"></strong></p>
                 <form id="auth-code-form">
                     <div class="form-group" style="text-align: center;">
-                        <input type="text" id="auth-code-input" class="form-input auth-otp-input" required
-                            maxlength="6" inputmode="numeric" placeholder="••••••" autocomplete="one-time-code">
+                        <input type="text" id="auth-code-input" class="form-input auth-otp-input" required maxlength="6"
+                            inputmode="numeric" placeholder="••••••" autocomplete="one-time-code">
                     </div>
                     <div class="auth-error" id="auth-code-error"></div>
-                    <button type="submit" class="btn btn-primary" id="auth-verify-btn" style="width: 100%; margin-top: 15px;">
+                    <button type="submit" class="btn btn-primary" id="auth-verify-btn"
+                        style="width: 100%; margin-top: 15px;">
                         <span>Подтвердить и войти</span>
                     </button>
                     <div class="auth-resend-box">
@@ -261,6 +293,38 @@
                             Отправить повторно через <span id="auth-countdown">60</span>с
                         </button>
                     </div>
+                </form>
+            </div>
+
+            <!-- Step 3: Password Login (For Admin) -->
+            <div class="auth-email-step" id="auth-step-password">
+                <button type="button" class="auth-back-btn" id="auth-back-to-email-btn"
+                    title="Вернуться ко входу по коду">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                    <span>Вход по коду</span>
+                </button>
+                <div class="auth-badge">Администратор</div>
+                <h3 class="modal-title" style="margin-bottom: 8px;">Вход по паролю</h3>
+                <p class="auth-subtitle">Вход для администратора по постоянному паролю.</p>
+                <form id="auth-password-form">
+                    <div class="form-group">
+                        <label for="auth-pwd-email-input">Email или логин</label>
+                        <input type="text" id="auth-pwd-email-input" class="form-input" required
+                            placeholder="nicitachebotariow@yandex.ru" autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-pwd-password-input">Пароль</label>
+                        <input type="password" id="auth-pwd-password-input" class="form-input" required
+                            placeholder="••••••••" autocomplete="current-password">
+                    </div>
+                    <div class="auth-error" id="auth-pwd-error"></div>
+                    <button type="submit" class="btn btn-primary" id="auth-pwd-submit-btn"
+                        style="width: 100%; margin-top: 15px;">
+                        <span>Войти</span>
+                    </button>
                 </form>
             </div>
         </div>
@@ -276,40 +340,56 @@
                 <div class="profile-avatar" id="profile-avatar-display">👤</div>
                 <div class="profile-details" style="flex: 1; min-width: 0;">
                     <div class="profile-nickname-row" style="display: flex; align-items: center; gap: 8px;">
-                        <span class="profile-nickname" id="profile-nickname-display" style="font-size: 18px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Пользователь</span>
-                        <button type="button" class="profile-edit-btn" id="profile-edit-nick-btn" title="Изменить никнейм" aria-label="Изменить никнейм">✏️</button>
+                        <span class="profile-nickname" id="profile-nickname-display"
+                            style="font-size: 18px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Пользователь</span>
+                        <button type="button" class="profile-edit-btn" id="profile-edit-nick-btn"
+                            title="Изменить никнейм" aria-label="Изменить никнейм">✏️</button>
                     </div>
-                    <span class="profile-email" id="profile-email-display" style="font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">user@mail.ru</span>
-                    <span class="profile-role" id="profile-role-display" style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; display: block;">Пользователь</span>
+                    <span class="profile-email" id="profile-email-display"
+                        style="font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">user@mail.ru</span>
+                    <span class="profile-role" id="profile-role-display"
+                        style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; display: block;">Пользователь</span>
                 </div>
             </div>
 
             <!-- Inline Nickname Edit Form -->
-            <form id="profile-nick-form" style="display: none; margin-bottom: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 14px; padding: 14px;">
-                <label for="profile-nick-input" style="font-size: 11px; color: #00ffcc; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; display: block; margin-bottom: 8px;">Изменить никнейм</label>
+            <form id="profile-nick-form"
+                style="display: none; margin-bottom: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 14px; padding: 14px;">
+                <label for="profile-nick-input"
+                    style="font-size: 11px; color: #00ffcc; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; display: block; margin-bottom: 8px;">Изменить
+                    никнейм</label>
                 <div style="display: flex; gap: 8px;">
-                    <input type="text" id="profile-nick-input" class="form-input" style="padding: 10px 14px; font-size: 14px; flex: 1;" maxlength="24" placeholder="Введите никнейм" required>
-                    <button type="submit" class="btn btn-primary" id="profile-save-nick-btn" style="padding: 8px 16px; font-size: 13px; white-space: nowrap;">
+                    <input type="text" id="profile-nick-input" class="form-input"
+                        style="padding: 10px 14px; font-size: 14px; flex: 1;" maxlength="24"
+                        placeholder="Введите никнейм" required>
+                    <button type="submit" class="btn btn-primary" id="profile-save-nick-btn"
+                        style="padding: 8px 16px; font-size: 13px; white-space: nowrap;">
                         <span>Сохранить</span>
                     </button>
-                    <button type="button" class="btn btn-secondary" id="profile-cancel-nick-btn" style="padding: 8px 12px; font-size: 13px;" title="Отмена">✕</button>
+                    <button type="button" class="btn btn-secondary" id="profile-cancel-nick-btn"
+                        style="padding: 8px 12px; font-size: 13px;" title="Отмена">✕</button>
                 </div>
                 <div class="auth-error" id="profile-nick-error" style="margin-top: 6px; font-size: 12px;"></div>
             </form>
 
-            <div class="profile-status-box" id="profile-sub-box" style="margin-bottom: 20px; padding: 16px; background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 12px; font-size: 13px;">
+            <div class="profile-status-box" id="profile-sub-box"
+                style="margin-bottom: 20px; padding: 16px; background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 12px; font-size: 13px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="color: var(--text-secondary);">Статус подписки:</span>
                     <span id="profile-sub-status" style="font-weight: 700; color: #00ffcc;">Базовый доступ</span>
                 </div>
-                <div id="profile-sub-expiry" style="font-size: 12px; color: var(--text-muted); display: none; margin-bottom: 12px;"></div>
-                <button type="button" class="btn btn-primary" id="profile-pay-btn" style="width: 100%; padding: 10px 16px; font-size: 13px; font-weight: 700;" onclick="if(window.SkyrexAuth) SkyrexAuth.startPayment();">
+                <div id="profile-sub-expiry"
+                    style="font-size: 12px; color: var(--text-muted); display: none; margin-bottom: 12px;"></div>
+                <button type="button" class="btn btn-primary" id="profile-pay-btn"
+                    style="width: 100%; padding: 10px 16px; font-size: 13px; font-weight: 700;"
+                    onclick="if(window.SkyrexAuth) SkyrexAuth.startPayment();">
                     <span>⚡ Оформить подписку (490 ₽ / 30 дней)</span>
                 </button>
             </div>
 
             <div class="profile-actions">
-                <button class="btn btn-secondary" id="profile-logout-btn" style="width: 100%;">Выйти из аккаунта</button>
+                <button class="btn btn-secondary" id="profile-logout-btn" style="width: 100%;">Выйти из
+                    аккаунта</button>
             </div>
         </div>
     </div>
@@ -317,33 +397,48 @@
     <!-- Paywall Modal (Subscription Required) -->
     <div class="modal-overlay" id="paywall-modal">
         <div class="modal paywall-modal-content" style="max-width: 480px;">
-            <button class="modal-close-btn" id="paywall-modal-close-btn" aria-label="Закрыть окно" onclick="if(window.SkyrexAuth) SkyrexAuth.closePaywallModal();">&times;</button>
-            <div class="paywall-badge" style="display: inline-block; padding: 4px 12px; border-radius: 20px; background: rgba(0, 255, 204, 0.15); border: 1px solid #00ffcc; color: #00ffcc; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.05em;">Премиум доступ</div>
+            <button class="modal-close-btn" id="paywall-modal-close-btn" aria-label="Закрыть окно"
+                onclick="if(window.SkyrexAuth) SkyrexAuth.closePaywallModal();">&times;</button>
+            <div class="paywall-badge"
+                style="display: inline-block; padding: 4px 12px; border-radius: 20px; background: rgba(0, 255, 204, 0.15); border: 1px solid #00ffcc; color: #00ffcc; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.05em;">
+                Премиум доступ</div>
             <h3 class="modal-title" style="margin-bottom: 8px; font-size: 22px;">Доступ к ИИ-эксперту Skyrex</h3>
-            <p class="auth-subtitle" style="margin-bottom: 20px;">Для подбора индивидуальных сборок и общения с консультантом оформите подписку.</p>
+            <p class="auth-subtitle" style="margin-bottom: 20px;">Для подбора индивидуальных сборок и общения с
+                консультантом оформите подписку.</p>
 
-            <div class="paywall-features" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px; margin-bottom: 20px;">
+            <div class="paywall-features"
+                style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px; margin-bottom: 20px;">
                 <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
                     <span style="font-size: 18px; line-height: 1;">⚡</span>
-                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Неограниченный ИИ-подбор:</strong> расчет сбалансированных сборок под любой бюджет и задачи.</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);"><strong
+                            style="color: #fff;">Неограниченный ИИ-подбор:</strong> расчет сбалансированных сборок под
+                        любой бюджет и задачи.</div>
                 </div>
                 <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
                     <span style="font-size: 18px; line-height: 1;">🔍</span>
-                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Прямые ссылки на магазины:</strong> актуальные цены с Wildberries, ОнлайнТрейд, DNS и Авито.</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Прямые
+                            ссылки на магазины:</strong> актуальные цены с Wildberries, ОнлайнТрейд, DNS и Авито.</div>
                 </div>
                 <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
                     <span style="font-size: 18px; line-height: 1;">🛡️</span>
-                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Интерактивный чертеж ПК:</strong> подсветка компонентов, проверка сокетов, TDP и габаритов корпуса.</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);"><strong
+                            style="color: #fff;">Интерактивный чертеж ПК:</strong> подсветка компонентов, проверка
+                        сокетов, TDP и габаритов корпуса.</div>
                 </div>
                 <div style="display: flex; gap: 12px; align-items: flex-start;">
                     <span style="font-size: 18px; line-height: 1;">🚀</span>
-                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Приоритетная скорость:</strong> быстрый стриминг ответов на базе флагманских нейросетей.</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);"><strong
+                            style="color: #fff;">Приоритетная скорость:</strong> быстрый стриминг ответов на базе
+                        флагманских нейросетей.</div>
                 </div>
             </div>
 
-            <div class="paywall-pricing-box" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(0, 255, 204, 0.12), rgba(0, 210, 255, 0.05)); border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 14px; padding: 16px 20px; margin-bottom: 20px;">
+            <div class="paywall-pricing-box"
+                style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(0, 255, 204, 0.12), rgba(0, 210, 255, 0.05)); border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 14px; padding: 16px 20px; margin-bottom: 20px;">
                 <div>
-                    <div style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase; font-weight: 600;">Период доступа</div>
+                    <div
+                        style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase; font-weight: 600;">
+                        Период доступа</div>
                     <div style="font-size: 16px; font-weight: 700; color: #fff;">30 дней подписки</div>
                 </div>
                 <div style="text-align: right;">
@@ -352,35 +447,56 @@
                 </div>
             </div>
 
-            <button type="button" class="btn btn-primary" id="paywall-checkout-btn" style="width: 100%; padding: 14px; font-size: 15px; font-weight: 700; margin-bottom: 12px;" onclick="if(window.SkyrexAuth) SkyrexAuth.startPayment();">
+            <button type="button" class="btn btn-primary" id="paywall-checkout-btn"
+                style="width: 100%; padding: 14px; font-size: 15px; font-weight: 700; margin-bottom: 12px;"
+                onclick="if(window.SkyrexAuth) SkyrexAuth.startPayment();">
                 <span>Оплатить 490 ₽ через ЮKassa</span>
             </button>
             <div style="text-align: center; font-size: 11px; color: var(--text-muted); line-height: 1.4;">
-                Нажимая кнопку, вы принимаете условия <a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();" style="color: #00ffcc; text-decoration: underline;">Публичной оферты</a>. Безопасная оплата через шлюз ЮKassa (СБП, банковские карты МИР, Visa, Mastercard).
+                Нажимая кнопку, вы принимаете условия <a href="javascript:void(0)"
+                    onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();"
+                    style="color: #00ffcc; text-decoration: underline;">Публичной оферты</a>. Безопасная оплата через
+                шлюз ЮKassa (СБП, банковские карты МИР, Visa, Mastercard).
             </div>
         </div>
     </div>
 
     <!-- Public Offer & Privacy Modal -->
     <div class="modal-overlay" id="offer-modal">
-        <div class="modal offer-modal-content" style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
-            <button class="modal-close-btn" id="offer-modal-close-btn" aria-label="Закрыть окно" onclick="if(window.SkyrexAuth) SkyrexAuth.closeOfferModal();">&times;</button>
+        <div class="modal offer-modal-content"
+            style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
+            <button class="modal-close-btn" id="offer-modal-close-btn" aria-label="Закрыть окно"
+                onclick="if(window.SkyrexAuth) SkyrexAuth.closeOfferModal();">&times;</button>
             <h3 class="modal-title" style="margin-bottom: 16px; flex-shrink: 0;">Публичная оферта и условия сервиса</h3>
-            <div class="offer-scroll-body" style="overflow-y: auto; padding-right: 10px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; flex: 1;">
+            <div class="offer-scroll-body"
+                style="overflow-y: auto; padding-right: 10px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; flex: 1;">
                 <h4 style="color: #fff; margin-bottom: 6px;">1. Общие положения</h4>
-                <p style="margin-bottom: 12px;">Настоящий документ является официальным предложением (публичной офертой в соответствии со ст. 437 Гражданского кодекса РФ) Индивидуального предпринимателя Чеботарёва Никиты Драгоновича (ОГРНИП 325237500199972, ИНН 232526637986), далее именуемого «Исполнитель», адресованным любому физическому или юридическому лицу («Заказчик»), заключить договор на оказание услуг платного доступа к веб-сервису Skyrex Computers (skyrex.pro).</p>
+                <p style="margin-bottom: 12px;">Настоящий документ является официальным предложением (публичной офертой
+                    в соответствии со ст. 437 Гражданского кодекса РФ) Индивидуального предпринимателя Чеботарёва Никиты
+                    Драгоновича (ОГРНИП 325237500199972, ИНН 232526637986), далее именуемого «Исполнитель», адресованным
+                    любому физическому или юридическому лицу («Заказчик»), заключить договор на оказание услуг платного
+                    доступа к веб-сервису Skyrex Computers (skyrex.pro).</p>
 
                 <h4 style="color: #fff; margin-bottom: 6px;">2. Предмет оферты</h4>
-                <p style="margin-bottom: 12px;">Исполнитель предоставляет Заказчику возмездный доступ к программному комплексу и ИИ-консультанту подбора компьютерных конфигураций на сайте skyrex.pro на условиях подписки сроком на 30 (тридцать) календарных дней.</p>
+                <p style="margin-bottom: 12px;">Исполнитель предоставляет Заказчику возмездный доступ к программному
+                    комплексу и ИИ-консультанту подбора компьютерных конфигураций на сайте skyrex.pro на условиях
+                    подписки сроком на 30 (тридцать) календарных дней.</p>
 
                 <h4 style="color: #fff; margin-bottom: 6px;">3. Стоимость услуг и порядок оплаты</h4>
-                <p style="margin-bottom: 12px;">Стоимость доступа составляет 490 (четыреста девяносто) рублей за период 30 календарных дней. Оплата производится Заказчиком в безналичном порядке через уполномоченного оператора платежей (сервис «ЮKassa»). Услуга считается оказанной в полном объеме с момента предоставления доступа к функционалу ИИ-консультанта в личном кабинете Заказчика.</p>
+                <p style="margin-bottom: 12px;">Стоимость доступа составляет 490 (четыреста девяносто) рублей за период
+                    30 календарных дней. Оплата производится Заказчиком в безналичном порядке через уполномоченного
+                    оператора платежей (сервис «ЮKassa»). Услуга считается оказанной в полном объеме с момента
+                    предоставления доступа к функционалу ИИ-консультанта в личном кабинете Заказчика.</p>
 
                 <h4 style="color: #fff; margin-bottom: 6px;">4. Обработка персональных данных</h4>
-                <p style="margin-bottom: 12px;">В соответствии с Федеральным законом № 152-ФЗ «О персональных данных», Заказчик дает согласие Исполнителю на обработку предоставленных персональных данных (адрес электронной почты, никнейм, данные платежных транзакций) исключительно в целях исполнения настоящего договора и направления электронных кассовых чеков (в соответствии с 54-ФЗ).</p>
+                <p style="margin-bottom: 12px;">В соответствии с Федеральным законом № 152-ФЗ «О персональных данных»,
+                    Заказчик дает согласие Исполнителю на обработку предоставленных персональных данных (адрес
+                    электронной почты, никнейм, данные платежных транзакций) исключительно в целях исполнения настоящего
+                    договора и направления электронных кассовых чеков (в соответствии с 54-ФЗ).</p>
 
                 <h4 style="color: #fff; margin-bottom: 6px;">5. Реквизиты Исполнителя</h4>
-                <p style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 12px; border-radius: 10px;">
+                <p
+                    style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 12px; border-radius: 10px;">
                     <strong>ИП Чеботарёв Никита Драгонович</strong><br>
                     ОГРНИП: 325237500199972<br>
                     ИНН: 232526637986<br>
@@ -392,11 +508,111 @@
         </div>
     </div>
 
+    <!-- Floating Support Button -->
+    <button id="support-floating-btn" class="support-floating-btn"
+        onclick="if(window.SkyrexAuth) SkyrexAuth.openSupportModal();" aria-label="Техподдержка">
+        <span class="support-btn-icon">💬</span>
+        <span class="support-btn-text">Поддержка</span>
+        <span class="support-badge" id="support-unread-badge" style="display: none;">0</span>
+    </button>
+
+    <!-- Support & Helpdesk Modal -->
+    <div class="modal-overlay" id="support-modal">
+        <div class="modal support-modal-content"
+            style="max-width: 680px; height: 580px; max-height: 85vh; display: flex; flex-direction: column; padding: 24px;">
+            <button class="modal-close-btn" id="support-modal-close-btn" aria-label="Закрыть окно"
+                onclick="if(window.SkyrexAuth) SkyrexAuth.closeSupportModal();">&times;</button>
+
+            <!-- Modal Header -->
+            <div class="support-modal-header"
+                style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px; margin-bottom: 14px; flex-shrink: 0;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <h3 class="modal-title" style="margin: 0; font-size: 20px;">Служба поддержки Skyrex</h3>
+                        <span
+                            style="font-size: 11px; background: rgba(0, 255, 204, 0.15); color: #00ffcc; border: 1px solid rgba(0, 255, 204, 0.3); padding: 2px 8px; border-radius: 12px; font-weight: 600;">Онлайн
+                            🟢</span>
+                    </div>
+                    <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);" id="support-header-sub">
+                        Задайте вопрос по сборке, оплате или гарантии — администратор ответит вам здесь.</p>
+                </div>
+            </div>
+
+            <!-- Client Mode View (Single dialogue between client and support) -->
+            <div id="support-client-view" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                <!-- If client not logged in, ask for contact email -->
+                <div id="support-guest-email-box" style="margin-bottom: 10px; display: none;">
+                    <input type="email" id="support-guest-email" class="form-input"
+                        style="padding: 8px 12px; font-size: 13px;"
+                        placeholder="Ваш email для связи (куда придет ответ)" required>
+                </div>
+
+                <!-- Messages container -->
+                <div id="support-messages-container" class="support-messages-list"
+                    style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin: auto;">Загрузка
+                        сообщений...</div>
+                </div>
+
+                <!-- Input & Send -->
+                <form id="support-send-form" style="display: flex; gap: 8px; margin-top: 14px; flex-shrink: 0;">
+                    <input type="text" id="support-input" class="form-input"
+                        style="flex: 1; padding: 10px 14px; font-size: 13px;" placeholder="Напишите ваш вопрос..."
+                        autocomplete="off" required>
+                    <button type="submit" class="btn btn-primary" id="support-send-btn"
+                        style="padding: 10px 20px; font-size: 13px; white-space: nowrap;">
+                        <span>Отправить</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Admin Mode View (Two-panel: Dialogues list on left, active chat on right) -->
+            <div id="support-admin-view" style="display: none; flex: 1; min-height: 0; gap: 14px;">
+                <!-- Left panel: Dialogues list -->
+                <div class="support-admin-sidebar"
+                    style="width: 220px; border-right: 1px solid rgba(255, 255, 255, 0.08); padding-right: 12px; display: flex; flex-direction: column; min-height: 0;">
+                    <div
+                        style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 8px;">
+                        Диалоги с клиентами</div>
+                    <div id="support-admin-dialogs-list"
+                        style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+                        <!-- Injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Right panel: Active chat with selected user -->
+                <div class="support-admin-chat" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                    <div id="support-admin-target-bar"
+                        style="font-size: 12px; color: #00ffcc; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between;">
+                        <span>Диалог: <span id="support-admin-target-email">Выберите клиента</span></span>
+                    </div>
+                    <div id="support-admin-messages-container" class="support-messages-list"
+                        style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 10px;">
+                        <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin: auto;">
+                            Выберите диалог слева для ответа клиенту</div>
+                    </div>
+                    <form id="support-admin-send-form"
+                        style="display: flex; gap: 8px; margin-top: 14px; flex-shrink: 0;">
+                        <input type="text" id="support-admin-input" class="form-input"
+                            style="flex: 1; padding: 10px 14px; font-size: 13px;"
+                            placeholder="Ответить клиенту (ответ также придет ему на почту)..." autocomplete="off"
+                            required disabled>
+                        <button type="submit" class="btn btn-primary" id="support-admin-send-btn"
+                            style="padding: 10px 20px; font-size: 13px; white-space: nowrap;" disabled>
+                            <span>Ответить</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=20261127-01"></script>
-    <script src="rig_visualizer.js?v=20261127-01"></script>
-    <script src="chat_bot.js?v=20261127-01"></script>
-    <script src="app.js?v=20261127-01"></script>
+    <script src="auth.js?v=20261127-02"></script>
+    <script src="rig_visualizer.js?v=20261127-02"></script>
+    <script src="chat_bot.js?v=20261127-02"></script>
+    <script src="app.js?v=20261127-02"></script>
 </body>
 
 

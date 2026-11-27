@@ -142,7 +142,9 @@ from db.auth_db import (
     get_user_by_token, logout_token,
     create_verification_code, verify_code_and_login, send_otp_email,
     update_user_nickname, activate_subscription,
-    create_payment_record, update_payment_status, get_payment_record
+    create_payment_record, update_payment_status, get_payment_record,
+    add_support_message, get_support_messages, get_support_dialogs,
+    mark_support_messages_read, send_support_reply_email
 )
 from scraper.scheduler import BackgroundPriceScheduler
 
@@ -2920,6 +2922,106 @@ async def handle_payment_check(request):
         "role": current_user.get("role")
     })
 
+async def handle_support_send(request):
+    """Handles sending a support message (from client to admin or admin replying to client)."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
+    current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный формат данных."}, status=400)
+
+    raw_msg = str(data.get("message") or "").strip()
+    if not raw_msg:
+        return web.json_response({"success": False, "error": "Текст сообщения не может быть пустым."}, status=400)
+
+    is_admin = current_user and current_user.get("role") == "admin"
+
+    if is_admin:
+        # Admin is replying to a specific customer thread
+        target_email = str(data.get("email") or "").strip().lower()
+        if not target_email or "@" not in target_email:
+            return web.json_response({"success": False, "error": "Не указан корректный email получателя."}, status=400)
+
+        res = await asyncio.to_thread(add_support_message, target_email, raw_msg, "admin", current_user["id"])
+        await asyncio.to_thread(mark_support_messages_read, target_email, "admin")
+
+        # Send email notification to customer via Mail.ru SMTP in worker thread
+        asyncio.create_task(asyncio.to_thread(send_support_reply_email, target_email, raw_msg))
+        return web.json_response({"success": True, "message": res.get("message")})
+    else:
+        # Client sending message to support
+        user_email = (current_user.get("username") if current_user else str(data.get("email") or "")).strip().lower()
+        if not user_email or "@" not in user_email:
+            return web.json_response({"success": False, "error": "Пожалуйста, укажите ваш email для получения ответа."}, status=400)
+
+        user_id = current_user["id"] if current_user else None
+        res = await asyncio.to_thread(add_support_message, user_email, raw_msg, "user", user_id)
+
+        # Notify admin via Telegram Bot immediately
+        tg_token = os.getenv("TG_BOT_TOKEN")
+        tg_admins = os.getenv("TG_ADMIN_IDS", "").split(",")
+        if tg_token and tg_admins:
+            nick = (current_user.get("nickname") if current_user else "") or user_email.split("@")[0]
+            tg_text = (
+                f"💬 <b>НОВОЕ ОБРАЩЕНИЕ В ТЕХПОДДЕРЖКУ SKYREX!</b>\n\n"
+                f"👤 <b>Клиент:</b> {html.escape(nick)} (<code>{html.escape(user_email)}</code>)\n"
+                f"📝 <b>Вопрос:</b>\n<i>{html.escape(raw_msg)}</i>\n\n"
+                f"👉 Ответить можно на сайте https://skyrex.pro из вашего аккаунта администратора."
+            )
+            for aid in tg_admins:
+                aid = aid.strip()
+                if aid:
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            await session.post(
+                                f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                                json={"chat_id": aid, "text": tg_text, "parse_mode": "HTML"}
+                            )
+                    except Exception as te:
+                        logger.warning(f"Failed to send TG support notification: {te}")
+
+        return web.json_response({"success": True, "message": res.get("message")})
+
+async def handle_support_messages(request):
+    """Returns conversation history for client or admin."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
+    current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
+
+    is_admin = current_user and current_user.get("role") == "admin"
+    query_email = request.query.get("email", "").strip().lower()
+
+    if is_admin:
+        email = query_email or (current_user["username"] if current_user else "")
+    else:
+        email = (current_user["username"] if current_user else query_email)
+
+    if not email:
+        return web.json_response({"messages": [], "email": ""})
+
+    messages = await asyncio.to_thread(get_support_messages, email)
+    if is_admin:
+        await asyncio.to_thread(mark_support_messages_read, email, "admin")
+    else:
+        await asyncio.to_thread(mark_support_messages_read, email, "user")
+
+    return web.json_response({"messages": messages, "email": email})
+
+async def handle_support_dialogs(request):
+    """Admin-only: returns all active client conversations with unread counters."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
+    current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
+
+    if not current_user or current_user.get("role") != "admin":
+        return web.json_response({"error": "Доступ разрешен только администраторам."}, status=403)
+
+    dialogs = await asyncio.to_thread(get_support_dialogs)
+    return web.json_response({"dialogs": dialogs})
+
 async def handle_chat(request):
     try:
         # Rate limit per IP address
@@ -3078,6 +3180,11 @@ async def init_app():
     app.router.add_post('/api/payments/create', handle_payment_create)
     app.router.add_post('/api/payments/webhook', handle_payment_webhook)
     app.router.add_get('/api/payments/check', handle_payment_check)
+
+    # Customer Support & Helpdesk API
+    app.router.add_post('/api/support/send', handle_support_send)
+    app.router.add_get('/api/support/messages', handle_support_messages)
+    app.router.add_get('/api/support/dialogs', handle_support_dialogs)
     
     # Public API for expert catalog & rules (non-blocking)
     async def handle_expert_components(request):

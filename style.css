@@ -3723,3 +3723,117 @@ footer {
         width: 100% !important;
     }
 }
+
+/* ==========================================================================
+   Support & Helpdesk Widget Styles
+   ========================================================================== */
+.support-floating-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: linear-gradient(135deg, #00ffcc 0%, #00b4d8 100%);
+    color: #0b0f19;
+    font-weight: 700;
+    font-size: 13px;
+    border: none;
+    border-radius: 30px;
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 255, 204, 0.4);
+    z-index: 9998;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.support-floating-btn:hover {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 6px 25px rgba(0, 255, 204, 0.65);
+}
+
+.support-badge {
+    background: #ff3366;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 2px;
+}
+
+.support-msg {
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    position: relative;
+    word-break: break-word;
+}
+
+.support-msg-user {
+    align-self: flex-end;
+    background: linear-gradient(135deg, rgba(0, 255, 204, 0.2), rgba(0, 210, 255, 0.15));
+    border: 1px solid rgba(0, 255, 204, 0.35);
+    color: #f1f5f9;
+    border-bottom-right-radius: 4px;
+}
+
+.support-msg-admin {
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #e2e8f0;
+    border-bottom-left-radius: 4px;
+}
+
+.support-msg-sender {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    color: #00ffcc;
+    letter-spacing: 0.04em;
+}
+
+.support-msg-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-align: right;
+}
+
+.support-dialog-item {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    font-size: 12px;
+}
+
+.support-dialog-item:hover, .support-dialog-item.active {
+    background: rgba(0, 255, 204, 0.12);
+    border-color: rgba(0, 255, 204, 0.3);
+}
+
+@media (max-width: 600px) {
+    .support-floating-btn {
+        bottom: 16px;
+        right: 16px;
+        padding: 8px 14px;
+        font-size: 12px;
+    }
+    #support-admin-view {
+        flex-direction: column !important;
+    }
+    .support-admin-sidebar {
+        width: 100% !important;
+        max-height: 140px;
+        border-right: none !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 8px;
+    }
+}

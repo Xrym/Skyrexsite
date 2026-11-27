@@ -130,10 +130,26 @@ def init_auth_db(force: bool = False):
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);")
+
+        # 5. Support messages table for client-admin helpdesk
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS support_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                email TEXT NOT NULL,
+                sender TEXT NOT NULL, -- 'user' or 'admin'
+                message TEXT NOT NULL,
+                is_read INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_support_email ON support_messages(email);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_support_is_read ON support_messages(is_read);")
         
-        # 4. Create or update admin user if configured via environment variables
-        admin_login = (os.getenv("ADMIN_LOGIN") or os.getenv("ADMIN_USERNAME") or os.getenv("ADMIN_EMAIL") or "").strip()
-        admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+        # 6. Create or update lifetime admin user
+        admin_login = (os.getenv("ADMIN_LOGIN") or os.getenv("ADMIN_USERNAME") or os.getenv("ADMIN_EMAIL") or "nicitachebotariow@yandex.ru").strip().lower()
+        admin_password = os.getenv("ADMIN_PASSWORD", "Nikita97639244").strip()
         
         # Remove legacy insecure test users if present
         cursor.execute("DELETE FROM users WHERE username = 'admin@skyrex.ru' AND password_hash = ?", 
@@ -143,16 +159,19 @@ def init_auth_db(force: bool = False):
             existing = cursor.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (admin_login,)).fetchone()
             salt = secrets.token_hex(16)
             pwd_hash = hash_password(admin_password, salt)
+            lifetime_exp = "2099-12-31T23:59:59Z"
             if existing:
                 cursor.execute("""
-                    UPDATE users SET password_hash = ?, salt = ?, role = 'admin' WHERE id = ?
-                """, (pwd_hash, salt, existing["id"]))
+                    UPDATE users 
+                    SET password_hash = ?, salt = ?, role = 'admin', subscribed = 1, subscription_expires = ?, nickname = 'Никита (Skyrex)'
+                    WHERE id = ?
+                """, (pwd_hash, salt, lifetime_exp, existing["id"]))
             else:
                 cursor.execute("""
-                    INSERT INTO users (username, password_hash, salt, role, subscribed)
-                    VALUES (?, ?, ?, 'admin', 1)
-                """, (admin_login, pwd_hash, salt))
-            logger.info(f"Configured admin account for {admin_login}")
+                    INSERT INTO users (username, nickname, password_hash, salt, role, subscribed, subscription_expires)
+                    VALUES (?, 'Никита (Skyrex)', ?, ?, 'admin', 1, ?)
+                """, (admin_login, pwd_hash, salt, lifetime_exp))
+            logger.info(f"Configured permanent lifetime admin account for {admin_login}")
             
         conn.commit()
     _AUTH_DB_INITIALIZED = True
@@ -237,7 +256,9 @@ def login_user(username: str, password: str) -> Dict[str, Any]:
 
         is_sub = bool(user["subscribed"])
         sub_exp = user["subscription_expires"]
-        if is_sub and sub_exp:
+        if user["role"] == "admin" or user["username"].lower() == "nicitachebotariow@yandex.ru":
+            is_sub = True
+        elif is_sub and sub_exp:
             try:
                 exp_dt = datetime.datetime.fromisoformat(sub_exp.replace("Z", "+00:00"))
                 if datetime.datetime.now(datetime.timezone.utc) > exp_dt:
@@ -309,7 +330,9 @@ def get_user_by_token(token: str) -> Optional[Dict[str, Any]]:
 
         is_sub = bool(row["subscribed"])
         sub_exp = row["subscription_expires"]
-        if is_sub and sub_exp:
+        if row["role"] == "admin" or row["username"].lower() == "nicitachebotariow@yandex.ru":
+            is_sub = True
+        elif is_sub and sub_exp:
             try:
                 sub_dt = datetime.datetime.fromisoformat(sub_exp.replace("Z", "+00:00"))
                 if datetime.datetime.now(datetime.timezone.utc) > sub_dt:
@@ -613,6 +636,10 @@ def verify_code_and_login(email: str, code: str) -> Dict[str, Any]:
             subscribed = bool(user["subscribed"])
             sub_exp = user["subscription_expires"]
 
+            if role == "admin" or email == "nicitachebotariow@yandex.ru":
+                role = "admin"
+                subscribed = True
+
         conn.commit()
 
     token = create_session(user_id)
@@ -669,3 +696,153 @@ def update_user_nickname(user_id: int, new_nickname: str) -> Dict[str, Any]:
                 "subscriptionExpires": user["subscription_expires"]
             }
         }
+
+# ==========================================
+# 5. Helpdesk & Support Messaging System
+# ==========================================
+
+def add_support_message(email: str, message: str, sender: str = "user", user_id: Optional[int] = None) -> Dict[str, Any]:
+    """Adds a new message to support dialogue (from customer or admin)."""
+    email = (email or "").strip().lower()
+    message = (message or "").strip()
+    if not email or not message:
+        return {"success": False, "error": "Email и текст сообщения обязательны."}
+    if len(message) > 4000:
+        return {"success": False, "error": "Текст сообщения превышает лимит (4000 символов)."}
+
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO support_messages (user_id, email, sender, message, is_read)
+            VALUES (?, ?, ?, ?, 0)
+        """, (user_id, email, sender, message))
+        conn.commit()
+        msg_id = cursor.lastrowid
+        row = cursor.execute("SELECT id, user_id, email, sender, message, is_read, created_at FROM support_messages WHERE id = ?", (msg_id,)).fetchone()
+        return {"success": True, "message": dict(row) if row else {}}
+
+def get_support_messages(email: str) -> List[Dict[str, Any]]:
+    """Returns conversation history between a specific user and support."""
+    email = (email or "").strip().lower()
+    if not email:
+        return []
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        rows = cursor.execute("""
+            SELECT id, user_id, email, sender, message, is_read, created_at
+            FROM support_messages
+            WHERE email = ? COLLATE NOCASE
+            ORDER BY created_at ASC
+        """, (email,)).fetchall()
+        return [dict(r) for r in rows]
+
+def get_support_dialogs() -> List[Dict[str, Any]]:
+    """Returns list of distinct user dialogues for admin support panel."""
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        rows = cursor.execute("""
+            SELECT 
+                sm.email,
+                sm.user_id,
+                MAX(sm.created_at) as last_time,
+                (SELECT message FROM support_messages WHERE email = sm.email ORDER BY created_at DESC LIMIT 1) as last_message,
+                (SELECT sender FROM support_messages WHERE email = sm.email ORDER BY created_at DESC LIMIT 1) as last_sender,
+                SUM(CASE WHEN sm.sender = 'user' AND sm.is_read = 0 THEN 1 ELSE 0 END) as unread_count
+            FROM support_messages sm
+            GROUP BY sm.email
+            ORDER BY last_time DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+def mark_support_messages_read(email: str, by_sender: str = "admin"):
+    """Marks messages as read for a given email thread."""
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    target_sender = "user" if by_sender == "admin" else "admin"
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE support_messages 
+            SET is_read = 1 
+            WHERE email = ? COLLATE NOCASE AND sender = ? AND is_read = 0
+        """, (email, target_sender))
+        conn.commit()
+
+def send_support_reply_email(to_email: str, reply_text: str) -> Tuple[bool, Optional[str]]:
+    """Sends notification to customer when admin replies to their support ticket."""
+    smtp_host = os.getenv("SMTP_HOST", "smtp.mail.ru").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "465"))
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
+    smtp_from = os.getenv("SMTP_FROM", "").strip() or f"Skyrex Computers <{smtp_user}>"
+
+    if not smtp_user or not smtp_pass:
+        return False, "SMTP credentials missing"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Ответ службы поддержки Skyrex Computers"
+    msg["From"] = smtp_from
+    msg["To"] = to_email
+
+    text_content = (
+        f"Здравствуйте!\n\n"
+        f"Администратор службы поддержки Skyrex ответил на ваше обращение:\n\n"
+        f"{reply_text}\n\n"
+        f"Вы можете продолжить общение в онлайн-чате на сайте: https://skyrex.pro\n\n"
+        f"С уважением,\nКоманда Skyrex Computers"
+    )
+
+    clean_reply_html = html.escape(reply_text).replace("\n", "<br>")
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ margin: 0; padding: 0; background-color: #0c1017; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e2e8f0; }}
+    .container {{ max-width: 540px; margin: 30px auto; background: #131923; border: 1px solid #1f2937; border-radius: 14px; overflow: hidden; }}
+    .header {{ background: linear-gradient(135deg, #0a0f1d 0%, #1e1b4b 100%); padding: 24px; text-align: center; border-bottom: 2px solid #00ffcc44; }}
+    .logo {{ font-size: 24px; font-weight: 800; letter-spacing: 3px; color: #00ffcc; text-transform: uppercase; margin: 0; }}
+    .body {{ padding: 30px 25px; }}
+    .title {{ font-size: 18px; font-weight: 600; color: #ffffff; margin-bottom: 16px; }}
+    .reply-box {{ background: rgba(0, 255, 204, 0.05); border-left: 4px solid #00ffcc; border-radius: 6px; padding: 16px; margin: 20px 0; color: #f1f5f9; font-size: 14px; line-height: 1.6; }}
+    .btn {{ display: inline-block; background: #00ffcc; color: #000; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 8px; margin-top: 15px; font-size: 14px; }}
+    .footer {{ background: #080d14; padding: 16px; text-align: center; font-size: 11px; color: #475569; border-top: 1px solid #1e293b; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">SKYREX</div>
+      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-top: 4px;">Служба поддержки клиентов</div>
+    </div>
+    <div class="body">
+      <div class="title">Новый ответ по вашему обращению</div>
+      <p style="font-size: 14px; color: #94a3b8; margin: 0 0 10px 0;">Здравствуйте! Администратор Skyrex ответил на ваш вопрос:</p>
+      <div class="reply-box">{clean_reply_html}</div>
+      <div style="text-align: center; margin-top: 25px;">
+        <a href="https://skyrex.pro" class="btn" target="_blank">Перейти на сайт Skyrex</a>
+      </div>
+    </div>
+    <div class="footer">
+      ИП Чеботарёв Н.Д. | Skyrex Computers &bull; https://skyrex.pro
+    </div>
+  </div>
+</body>
+</html>"""
+
+    part1 = MIMEText(text_content, "plain", "utf-8")
+    part2 = MIMEText(html_content, "html", "utf-8")
+    msg.attach(part1)
+    msg.attach(part2)
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=15) as server:
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, [to_email], msg.as_string())
+        logger.info(f"Support reply email sent successfully to {to_email}")
+        return True, None
+    except Exception as e:
+        logger.error(f"Failed to send support reply email to {to_email}: {e}")
+        return False, str(e)
