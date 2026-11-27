@@ -1044,6 +1044,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
+            // Handle subscription required / paywall (403)
+            if (response.status === 403) {
+                rollbackUserMessage("🔒 Для доступа к ИИ-консультанту требуется активная подписка (490 ₽).");
+                if (typeof SkyrexAuth !== "undefined" && SkyrexAuth.openPaywallModal) {
+                    SkyrexAuth.openPaywallModal();
+                }
+                return;
+            }
+
             // Handle rate limit (429)
             if (response.status === 429) {
                 rollbackUserMessage("⏳ Слишком много запросов. Текст возвращен в поле ввода — подождите немного и нажмите Enter.");

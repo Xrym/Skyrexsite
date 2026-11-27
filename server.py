@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import uuid
 import socket
 import sqlite3
 import logging
@@ -22,6 +23,12 @@ AUTH_REGISTER_LIMITS = defaultdict(list)
 AUTH_CODE_LIMITS = defaultdict(list)
 AUTH_VERIFY_LIMITS = defaultdict(list)
 CHAT_MAX_REQUESTS_PER_MINUTE = 25
+
+# YooKassa payment gateway configuration
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "1196149").strip()
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "live_uhejMIgMudC6mPo4jRXD5hG-dRNFG8cYXvVDJEf5WVE").strip()
+SUBSCRIPTION_PRICE = int(os.getenv("SUBSCRIPTION_PRICE", "490"))
+SUBSCRIPTION_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
 
 def get_client_ip(request: web.Request) -> str:
     """Securely resolves real client IP, prioritizing X-Real-IP from trusted reverse proxy (Nginx)."""
@@ -134,7 +141,8 @@ from db.auth_db import (
     init_auth_db, login_user, register_user,
     get_user_by_token, logout_token,
     create_verification_code, verify_code_and_login, send_otp_email,
-    update_user_nickname
+    update_user_nickname, activate_subscription,
+    create_payment_record, update_payment_status, get_payment_record
 )
 from scraper.scheduler import BackgroundPriceScheduler
 
@@ -2741,6 +2749,177 @@ async def handle_auth_update_nickname(request):
     status = 200 if result.get("success") else 400
     return web.json_response(result, status=status)
 
+async def handle_payment_create(request):
+    """Creates a payment in YooKassa for user subscription."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
+    current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
+
+    if not current_user:
+        return web.json_response({"success": False, "error": "Необходима авторизация."}, status=401)
+
+    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+        logger.error("YooKassa credentials are not configured in environment.")
+        return web.json_response({"success": False, "error": "Платежный шлюз временно недоступен."}, status=503)
+
+    user_email = current_user.get("username", "").strip()
+    idempotence_key = str(uuid.uuid4())
+
+    payload = {
+        "amount": {
+            "value": f"{SUBSCRIPTION_PRICE:.2f}",
+            "currency": "RUB"
+        },
+        "capture": True,
+        "confirmation": {
+            "type": "redirect",
+            "return_url": "https://skyrex.pro/?payment=success"
+        },
+        "receipt": {
+            "customer": {
+                "email": user_email
+            },
+            "items": [
+                {
+                    "description": f"Премиум доступ Skyrex ({SUBSCRIPTION_DAYS} дней)",
+                    "quantity": "1.00",
+                    "amount": {
+                        "value": f"{SUBSCRIPTION_PRICE:.2f}",
+                        "currency": "RUB"
+                    },
+                    "vat_code": 1,
+                    "payment_subject": "service",
+                    "payment_mode": "full_prepayment"
+                }
+            ]
+        },
+        "description": f"Оплата премиум подписки Skyrex Computers ({SUBSCRIPTION_DAYS} дней)",
+        "metadata": {
+            "user_id": str(current_user["id"]),
+            "email": user_email,
+            "days": str(SUBSCRIPTION_DAYS)
+        }
+    }
+
+    try:
+        auth = aiohttp.BasicAuth(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+        headers = {
+            "Idempotence-Key": idempotence_key,
+            "Content-Type": "application/json"
+        }
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
+            async with session.post("https://api.yookassa.ru/v3/payments", json=payload, auth=auth, headers=headers) as resp:
+                resp_data = await resp.json()
+                if resp.status not in (200, 201):
+                    logger.error(f"YooKassa error response: {resp_data}")
+                    err_msg = resp_data.get("description") or "Ошибка создания платежа в ЮKassa."
+                    return web.json_response({"success": False, "error": err_msg}, status=400)
+
+        payment_id = resp_data.get("id")
+        confirmation = resp_data.get("confirmation", {})
+        confirmation_url = confirmation.get("confirmation_url")
+        status = resp_data.get("status", "pending")
+
+        if not confirmation_url or not payment_id:
+            return web.json_response({"success": False, "error": "Не удалось получить ссылку на оплату."}, status=500)
+
+        await asyncio.to_thread(
+            create_payment_record,
+            payment_id,
+            current_user["id"],
+            SUBSCRIPTION_PRICE,
+            "RUB",
+            status,
+            confirmation_url,
+            payload["description"]
+        )
+
+        return web.json_response({
+            "success": True,
+            "payment_id": payment_id,
+            "confirmation_url": confirmation_url
+        })
+    except Exception as e:
+        logger.error(f"Error in handle_payment_create: {e}")
+        return web.json_response({"success": False, "error": f"Ошибка соединения с платежным шлюзом: {str(e)}"}, status=500)
+
+async def handle_payment_webhook(request):
+    """Receives and processes notifications from YooKassa."""
+    try:
+        data = await request.json()
+    except Exception:
+        return web.Response(text="Bad Request", status=400)
+
+    event_type = data.get("event")
+    payment_obj = data.get("object", {})
+
+    if event_type == "payment.succeeded":
+        payment_id = payment_obj.get("id")
+        metadata = payment_obj.get("metadata", {})
+        user_id_str = metadata.get("user_id")
+        days = int(metadata.get("days") or SUBSCRIPTION_DAYS)
+        amount_info = payment_obj.get("amount", {})
+        amount_val = amount_info.get("value", str(SUBSCRIPTION_PRICE))
+
+        if payment_id and user_id_str:
+            try:
+                user_id = int(user_id_str)
+                await asyncio.to_thread(update_payment_status, payment_id, "succeeded")
+                user_profile = await asyncio.to_thread(activate_subscription, user_id, days)
+
+                # Send Telegram notification to admin
+                tg_token = os.getenv("TG_BOT_TOKEN")
+                tg_admins = os.getenv("TG_ADMIN_IDS", "").split(",")
+                if tg_token and tg_admins:
+                    user_nick = user_profile.get("nickname") or user_profile.get("username", f"ID {user_id}")
+                    user_email = user_profile.get("username", "")
+                    exp_date = user_profile.get("subscription_expires", "")
+                    tg_msg = (
+                        f"💰 <b>НОВАЯ ОПЛАТА ПОДПИСКИ ЮKASSA!</b>\n\n"
+                        f"👤 <b>Пользователь:</b> {user_nick}\n"
+                        f"📧 <b>Email:</b> {user_email}\n"
+                        f"💳 <b>Сумма:</b> {amount_val} ₽ ({days} дней)\n"
+                        f"🆔 <b>ID платежа:</b> <code>{payment_id}</code>\n"
+                        f"📅 <b>Премиум активен до:</b> {exp_date[:10] if exp_date else ''}\n\n"
+                        f"✅ Подписка мгновенно активирована!"
+                    )
+                    for admin_id in tg_admins:
+                        admin_id = admin_id.strip()
+                        if admin_id:
+                            try:
+                                async with aiohttp.ClientSession() as session:
+                                    await session.post(
+                                        f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                                        json={"chat_id": admin_id, "text": tg_msg, "parse_mode": "HTML"}
+                                    )
+                            except Exception as tg_err:
+                                logger.warning(f"Telegram notification error: {tg_err}")
+            except Exception as ex:
+                logger.error(f"Error activating subscription from webhook: {ex}")
+
+    elif event_type == "payment.canceled":
+        payment_id = payment_obj.get("id")
+        if payment_id:
+            await asyncio.to_thread(update_payment_status, payment_id, "canceled")
+
+    return web.json_response({"status": "ok"})
+
+async def handle_payment_check(request):
+    """Checks user subscription and recent payment status."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
+    current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
+
+    if not current_user:
+        return web.json_response({"success": False, "error": "Необходима авторизация."}, status=401)
+
+    return web.json_response({
+        "success": True,
+        "subscribed": bool(current_user.get("subscribed")),
+        "subscriptionExpires": current_user.get("subscriptionExpires"),
+        "role": current_user.get("role")
+    })
+
 async def handle_chat(request):
     try:
         # Rate limit per IP address
@@ -2763,6 +2942,19 @@ async def handle_chat(request):
                     "error": "unauthorized"
                 },
                 status=401
+            )
+
+        # Check subscription status (Option A: mandatory paid subscription, admin exempt)
+        is_admin = current_user.get("role") == "admin"
+        is_subscribed = bool(current_user.get("subscribed"))
+        if not is_admin and not is_subscribed:
+            return web.json_response(
+                {
+                    "response": f"🔒 Для общения с ИИ-консультантом и подбора ПК необходима активная подписка ({SUBSCRIPTION_PRICE} ₽ / 30 дней). Оформите подписку для продолжения.",
+                    "error": "subscription_required",
+                    "price": SUBSCRIPTION_PRICE
+                },
+                status=403
             )
 
         try:
@@ -2881,6 +3073,11 @@ async def init_app():
     app.router.add_post('/api/auth/login', handle_auth_login)
     app.router.add_get('/api/auth/me', handle_auth_me)
     app.router.add_post('/api/auth/logout', handle_auth_logout)
+
+    # YooKassa Payment API
+    app.router.add_post('/api/payments/create', handle_payment_create)
+    app.router.add_post('/api/payments/webhook', handle_payment_webhook)
+    app.router.add_get('/api/payments/check', handle_payment_check)
     
     # Public API for expert catalog & rules (non-blocking)
     async def handle_expert_components(request):

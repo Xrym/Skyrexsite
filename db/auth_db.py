@@ -112,6 +112,24 @@ def init_auth_db(force: bool = False):
             );
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_verif_email ON verification_codes(email);")
+
+        # 4. Payments table for YooKassa transactions
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                amount INTEGER NOT NULL,
+                currency TEXT DEFAULT 'RUB',
+                status TEXT NOT NULL,
+                payment_url TEXT,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);")
         
         # 4. Create or update admin user if configured via environment variables
         admin_login = (os.getenv("ADMIN_LOGIN") or os.getenv("ADMIN_USERNAME") or os.getenv("ADMIN_EMAIL") or "").strip()
@@ -323,14 +341,84 @@ def logout_token(token: str):
         conn.commit()
 
 def activate_subscription(user_id: int, days: int = 30) -> Dict[str, Any]:
-    """Activates/extends premium subscription for user."""
-    expires = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)).isoformat()
+    """Activates/extends premium subscription for user (stacks with remaining days)."""
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
     with get_auth_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE users SET subscribed = 1, subscription_expires = ? WHERE id = ?", (expires, user_id))
+        existing = cursor.execute("SELECT subscription_expires FROM users WHERE id = ?", (user_id,)).fetchone()
+        base_dt = now_dt
+        if existing and existing["subscription_expires"]:
+            try:
+                curr_exp = datetime.datetime.fromisoformat(existing["subscription_expires"].replace("Z", "+00:00"))
+                if curr_exp > now_dt:
+                    base_dt = curr_exp
+            except Exception:
+                pass
+
+        new_expires = (base_dt + datetime.timedelta(days=days)).isoformat()
+        cursor.execute("UPDATE users SET subscribed = 1, subscription_expires = ? WHERE id = ?", (new_expires, user_id))
         conn.commit()
-        user = cursor.execute("SELECT id, username, role, subscribed, subscription_expires FROM users WHERE id = ?", (user_id,)).fetchone()
-        return dict(user)
+
+        # Invalidate in-memory session cache for this user so changes apply immediately
+        for t, val in list(_TOKEN_CACHE.items()):
+            if val.get("user", {}).get("id") == user_id:
+                val["user"]["subscribed"] = True
+                val["user"]["subscriptionExpires"] = new_expires
+
+        user = cursor.execute("SELECT id, username, nickname, role, subscribed, subscription_expires FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(user) if user else {}
+
+def create_payment_record(
+    payment_id: str,
+    user_id: int,
+    amount: int,
+    currency: str = "RUB",
+    status: str = "pending",
+    payment_url: str = "",
+    description: str = ""
+) -> bool:
+    """Creates a new payment transaction record."""
+    try:
+        with get_auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO payments (id, user_id, amount, currency, status, payment_url, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (payment_id, user_id, amount, currency, status, payment_url, description))
+            conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Error creating payment record: {e}")
+        return False
+
+def update_payment_status(payment_id: str, status: str) -> Optional[Dict[str, Any]]:
+    """Updates status of a payment record and returns updated payment data."""
+    try:
+        with get_auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE payments 
+                SET status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (status, payment_id))
+            conn.commit()
+
+            row = cursor.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+            return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error updating payment status: {e}")
+        return None
+
+def get_payment_record(payment_id: str) -> Optional[Dict[str, Any]]:
+    """Fetches payment details by YooKassa payment id."""
+    try:
+        with get_auth_connection() as conn:
+            cursor = conn.cursor()
+            row = cursor.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+            return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error fetching payment record: {e}")
+        return None
 
 def send_otp_email(to_email: str, code: str) -> Tuple[bool, Optional[str]]:
     """Sends 6-digit OTP code to user via Mail.ru SMTP."""

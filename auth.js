@@ -29,6 +29,21 @@ const SkyrexAuth = {
         this.bindEvents();
         this.updateUI();
         this.checkSession();
+
+        // Handle return from YooKassa payment
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get("payment") === "success") {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setTimeout(() => {
+                this.checkSession();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) {
+                    toastFn("🎉 Оплата прошла успешно! Премиум подписка активирована на 30 дней.", "success", 8000);
+                } else {
+                    alert("🎉 Оплата прошла успешно! Премиум подписка активирована на 30 дней.");
+                }
+            }, 800);
+        }
     },
 
     async checkSession() {
@@ -232,7 +247,15 @@ const SkyrexAuth = {
             profileCancelNickBtn: document.getElementById("profile-cancel-nick-btn"),
             profileSubStatus: document.getElementById("profile-sub-status"),
             profileSubExpiry: document.getElementById("profile-sub-expiry"),
+            profilePayBtn: document.getElementById("profile-pay-btn"),
             profileLogoutBtn: document.getElementById("profile-logout-btn"),
+
+            // Paywall & Offer Modals
+            paywallModal: document.getElementById("paywall-modal"),
+            paywallCloseBtn: document.getElementById("paywall-modal-close-btn"),
+            paywallCheckoutBtn: document.getElementById("paywall-checkout-btn"),
+            offerModal: document.getElementById("offer-modal"),
+            offerCloseBtn: document.getElementById("offer-modal-close-btn"),
         };
     },
 
@@ -255,6 +278,12 @@ const SkyrexAuth = {
         if (this.dom.profileCloseBtn) {
             this.dom.profileCloseBtn.addEventListener("click", () => this.closeProfileModal());
         }
+        if (this.dom.paywallCloseBtn) {
+            this.dom.paywallCloseBtn.addEventListener("click", () => this.closePaywallModal());
+        }
+        if (this.dom.offerCloseBtn) {
+            this.dom.offerCloseBtn.addEventListener("click", () => this.closeOfferModal());
+        }
 
         // Close on overlay click
         if (this.dom.authModal) {
@@ -267,12 +296,32 @@ const SkyrexAuth = {
                 if (e.target === this.dom.profileModal) this.closeProfileModal();
             });
         }
+        if (this.dom.paywallModal) {
+            this.dom.paywallModal.addEventListener("click", (e) => {
+                if (e.target === this.dom.paywallModal) this.closePaywallModal();
+            });
+        }
+        if (this.dom.offerModal) {
+            this.dom.offerModal.addEventListener("click", (e) => {
+                if (e.target === this.dom.offerModal) this.closeOfferModal();
+            });
+        }
+
+        // Pay buttons
+        if (this.dom.paywallCheckoutBtn) {
+            this.dom.paywallCheckoutBtn.addEventListener("click", () => this.startPayment());
+        }
+        if (this.dom.profilePayBtn) {
+            this.dom.profilePayBtn.addEventListener("click", () => this.startPayment());
+        }
 
         // Close on Escape key
         document.addEventListener("keydown", (e) => {
             if (e.key === "Escape") {
                 this.closeAuthModal();
                 this.closeProfileModal();
+                this.closePaywallModal();
+                this.closeOfferModal();
             }
         });
 
@@ -611,6 +660,115 @@ const SkyrexAuth = {
                 }
             } else {
                 this.dom.profileSubExpiry.style.display = "none";
+            }
+        }
+        if (this.dom.profilePayBtn) {
+            if (this.currentUser.subscribed) {
+                this.dom.profilePayBtn.innerHTML = `<span>⚡ Продлить подписку (+30 дней за 490 ₽)</span>`;
+            } else {
+                this.dom.profilePayBtn.innerHTML = `<span>⚡ Оформить подписку (490 ₽ / 30 дней)</span>`;
+            }
+        }
+    },
+
+    openPaywallModal() {
+        if (!this.dom || !this.dom.paywallModal) {
+            this.setupDOM();
+        }
+        const modal = this.dom.paywallModal || document.getElementById("paywall-modal");
+        if (modal) {
+            modal.classList.add("active");
+            modal.style.visibility = "visible";
+            modal.style.opacity = "1";
+            modal.style.pointerEvents = "auto";
+        }
+    },
+
+    closePaywallModal() {
+        const modal = (this.dom && this.dom.paywallModal) || document.getElementById("paywall-modal");
+        if (modal) {
+            modal.classList.remove("active");
+            modal.style.visibility = "hidden";
+            modal.style.opacity = "0";
+            modal.style.pointerEvents = "none";
+        }
+    },
+
+    openOfferModal() {
+        if (!this.dom || !this.dom.offerModal) {
+            this.setupDOM();
+        }
+        const modal = this.dom.offerModal || document.getElementById("offer-modal");
+        if (modal) {
+            modal.classList.add("active");
+            modal.style.visibility = "visible";
+            modal.style.opacity = "1";
+            modal.style.pointerEvents = "auto";
+        }
+    },
+
+    closeOfferModal() {
+        const modal = (this.dom && this.dom.offerModal) || document.getElementById("offer-modal");
+        if (modal) {
+            modal.classList.remove("active");
+            modal.style.visibility = "hidden";
+            modal.style.opacity = "0";
+            modal.style.pointerEvents = "none";
+        }
+    },
+
+    async startPayment() {
+        if (!this.currentUser || !this.getToken()) {
+            this.closePaywallModal();
+            this.openAuthModal();
+            const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+            if (toastFn) {
+                toastFn("Сначала войдите по почте, чтобы привязать подписку к вашему аккаунту.", "info", 5000);
+            }
+            return;
+        }
+
+        const payBtn = this.dom.paywallCheckoutBtn || document.getElementById("paywall-checkout-btn");
+        const origText = payBtn ? payBtn.innerHTML : "";
+        if (payBtn) {
+            payBtn.disabled = true;
+            payBtn.innerHTML = `<span>⏳ Создаем платеж ЮKassa...</span>`;
+        }
+
+        try {
+            const res = await fetch("/api/payments/create", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                }
+            });
+            const data = await res.json();
+            if (res.ok && data.success && data.payment_url) {
+                // Redirect directly to YooKassa payment checkout
+                window.location.href = data.payment_url;
+            } else {
+                const errText = data.error || "Не удалось создать счет на оплату.";
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) {
+                    toastFn(`⚠️ ${errText}`, "error", 6000);
+                } else {
+                    alert(errText);
+                }
+                if (payBtn) {
+                    payBtn.disabled = false;
+                    payBtn.innerHTML = origText;
+                }
+            }
+        } catch (err) {
+            console.error("Payment initiation error:", err);
+            const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+            if (toastFn) {
+                toastFn("⚠️ Ошибка связи с платежным сервисом.", "error", 5000);
+            }
+            if (payBtn) {
+                payBtn.disabled = false;
+                payBtn.innerHTML = origText;
             }
         }
     },

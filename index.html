@@ -7,7 +7,7 @@
     <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
     <meta name="description"
         content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
-    <link rel="stylesheet" href="style.css?v=20261126-02">
+    <link rel="stylesheet" href="style.css?v=20261127-01">
 </head>
 
 <body>
@@ -178,17 +178,33 @@
                     <ul>
                         <li>Telegram: <a href="https://t.me/skyrexic" target="_blank">https://t.me/skyrexic</a></li>
                         <li>YouTube: <a href="https://www.youtube.com/@skyrexic/featured" target="_blank">https://www.youtube.com/@skyrexic/featured</a></li>
+                        <li>Email: <a href="mailto:skyrex.auth@mail.ru">skyrex.auth@mail.ru</a></li>
+                        <li>Тел: <a href="tel:+79186920810">+7 (918) 692-08-10</a></li>
                     </ul>
                 </div>
                 <div class="footer-links">
-                    <h4>Навигация</h4>
+                    <h4>Документы</h4>
                     <ul>
-                        <li><a href="#hero">AI Помощник</a></li>
-                        <li><a href="#">Политика конфиденциальности</a></li>
+                        <li><a href="#hero">AI Консультант</a></li>
+                        <li><a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();">Публичная оферта</a></li>
+                        <li><a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();">Политика конфиденциальности</a></li>
                     </ul>
                 </div>
             </div>
-            <div class="footer-bottom">
+
+            <div class="footer-legal-bar" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+                <p><strong>Индивидуальный предприниматель Чеботарёв Никита Драгонович</strong></p>
+                <p>ОГРНИП: 325237500199972 | ИНН: 232526637986 | Адрес: Краснодарский край, Апшеронский р-н, г. Хадыженск</p>
+                <div class="footer-payment-methods" style="margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Прием платежей через ЮKassa:</span>
+                    <span class="pay-badge" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #fff; font-size: 11px;">ЮKassa</span>
+                    <span class="pay-badge" style="background: rgba(0,255,204,0.08); border: 1px solid rgba(0,255,204,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #00ffcc; font-size: 11px;">МИР</span>
+                    <span class="pay-badge" style="background: rgba(0,210,255,0.08); border: 1px solid rgba(0,210,255,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #00d2ff; font-size: 11px;">СБП</span>
+                    <span class="pay-badge" style="background: rgba(255,187,0,0.08); border: 1px solid rgba(255,187,0,0.25); padding: 4px 10px; border-radius: 6px; font-weight: 700; color: #ffbb00; font-size: 11px;">Банковские карты</span>
+                </div>
+            </div>
+
+            <div class="footer-bottom" style="margin-top: 20px;">
                 <p>&copy; 2026 SKYREX Computers. Все права защищены.</p>
                 <p>Дизайн и сборка премиум класса</p>
             </div>
@@ -281,12 +297,15 @@
                 <div class="auth-error" id="profile-nick-error" style="margin-top: 6px; font-size: 12px;"></div>
             </form>
 
-            <div class="profile-status-box" id="profile-sub-box" style="margin-bottom: 20px; padding: 14px; background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 12px; font-size: 13px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div class="profile-status-box" id="profile-sub-box" style="margin-bottom: 20px; padding: 16px; background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 12px; font-size: 13px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="color: var(--text-secondary);">Статус подписки:</span>
                     <span id="profile-sub-status" style="font-weight: 700; color: #00ffcc;">Базовый доступ</span>
                 </div>
-                <div id="profile-sub-expiry" style="font-size: 12px; color: var(--text-muted); display: none;"></div>
+                <div id="profile-sub-expiry" style="font-size: 12px; color: var(--text-muted); display: none; margin-bottom: 12px;"></div>
+                <button type="button" class="btn btn-primary" id="profile-pay-btn" style="width: 100%; padding: 10px 16px; font-size: 13px; font-weight: 700;" onclick="if(window.SkyrexAuth) SkyrexAuth.startPayment();">
+                    <span>⚡ Оформить подписку (490 ₽ / 30 дней)</span>
+                </button>
             </div>
 
             <div class="profile-actions">
@@ -295,11 +314,89 @@
         </div>
     </div>
 
+    <!-- Paywall Modal (Subscription Required) -->
+    <div class="modal-overlay" id="paywall-modal">
+        <div class="modal paywall-modal-content" style="max-width: 480px;">
+            <button class="modal-close-btn" id="paywall-modal-close-btn" aria-label="Закрыть окно" onclick="if(window.SkyrexAuth) SkyrexAuth.closePaywallModal();">&times;</button>
+            <div class="paywall-badge" style="display: inline-block; padding: 4px 12px; border-radius: 20px; background: rgba(0, 255, 204, 0.15); border: 1px solid #00ffcc; color: #00ffcc; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.05em;">Премиум доступ</div>
+            <h3 class="modal-title" style="margin-bottom: 8px; font-size: 22px;">Доступ к ИИ-эксперту Skyrex</h3>
+            <p class="auth-subtitle" style="margin-bottom: 20px;">Для подбора индивидуальных сборок и общения с консультантом оформите подписку.</p>
+
+            <div class="paywall-features" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px; margin-bottom: 20px;">
+                <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
+                    <span style="font-size: 18px; line-height: 1;">⚡</span>
+                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Неограниченный ИИ-подбор:</strong> расчет сбалансированных сборок под любой бюджет и задачи.</div>
+                </div>
+                <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
+                    <span style="font-size: 18px; line-height: 1;">🔍</span>
+                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Прямые ссылки на магазины:</strong> актуальные цены с Wildberries, ОнлайнТрейд, DNS и Авито.</div>
+                </div>
+                <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
+                    <span style="font-size: 18px; line-height: 1;">🛡️</span>
+                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Интерактивный чертеж ПК:</strong> подсветка компонентов, проверка сокетов, TDP и габаритов корпуса.</div>
+                </div>
+                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                    <span style="font-size: 18px; line-height: 1;">🚀</span>
+                    <div style="font-size: 13px; color: var(--text-secondary);"><strong style="color: #fff;">Приоритетная скорость:</strong> быстрый стриминг ответов на базе флагманских нейросетей.</div>
+                </div>
+            </div>
+
+            <div class="paywall-pricing-box" style="display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, rgba(0, 255, 204, 0.12), rgba(0, 210, 255, 0.05)); border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 14px; padding: 16px 20px; margin-bottom: 20px;">
+                <div>
+                    <div style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase; font-weight: 600;">Период доступа</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #fff;">30 дней подписки</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 26px; font-weight: 800; color: #00ffcc; line-height: 1;">490 ₽</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">разовый платеж</div>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-primary" id="paywall-checkout-btn" style="width: 100%; padding: 14px; font-size: 15px; font-weight: 700; margin-bottom: 12px;" onclick="if(window.SkyrexAuth) SkyrexAuth.startPayment();">
+                <span>Оплатить 490 ₽ через ЮKassa</span>
+            </button>
+            <div style="text-align: center; font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+                Нажимая кнопку, вы принимаете условия <a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openOfferModal();" style="color: #00ffcc; text-decoration: underline;">Публичной оферты</a>. Безопасная оплата через шлюз ЮKassa (СБП, банковские карты МИР, Visa, Mastercard).
+            </div>
+        </div>
+    </div>
+
+    <!-- Public Offer & Privacy Modal -->
+    <div class="modal-overlay" id="offer-modal">
+        <div class="modal offer-modal-content" style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
+            <button class="modal-close-btn" id="offer-modal-close-btn" aria-label="Закрыть окно" onclick="if(window.SkyrexAuth) SkyrexAuth.closeOfferModal();">&times;</button>
+            <h3 class="modal-title" style="margin-bottom: 16px; flex-shrink: 0;">Публичная оферта и условия сервиса</h3>
+            <div class="offer-scroll-body" style="overflow-y: auto; padding-right: 10px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; flex: 1;">
+                <h4 style="color: #fff; margin-bottom: 6px;">1. Общие положения</h4>
+                <p style="margin-bottom: 12px;">Настоящий документ является официальным предложением (публичной офертой в соответствии со ст. 437 Гражданского кодекса РФ) Индивидуального предпринимателя Чеботарёва Никиты Драгоновича (ОГРНИП 325237500199972, ИНН 232526637986), далее именуемого «Исполнитель», адресованным любому физическому или юридическому лицу («Заказчик»), заключить договор на оказание услуг платного доступа к веб-сервису Skyrex Computers (skyrex.pro).</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">2. Предмет оферты</h4>
+                <p style="margin-bottom: 12px;">Исполнитель предоставляет Заказчику возмездный доступ к программному комплексу и ИИ-консультанту подбора компьютерных конфигураций на сайте skyrex.pro на условиях подписки сроком на 30 (тридцать) календарных дней.</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">3. Стоимость услуг и порядок оплаты</h4>
+                <p style="margin-bottom: 12px;">Стоимость доступа составляет 490 (четыреста девяносто) рублей за период 30 календарных дней. Оплата производится Заказчиком в безналичном порядке через уполномоченного оператора платежей (сервис «ЮKassa»). Услуга считается оказанной в полном объеме с момента предоставления доступа к функционалу ИИ-консультанта в личном кабинете Заказчика.</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">4. Обработка персональных данных</h4>
+                <p style="margin-bottom: 12px;">В соответствии с Федеральным законом № 152-ФЗ «О персональных данных», Заказчик дает согласие Исполнителю на обработку предоставленных персональных данных (адрес электронной почты, никнейм, данные платежных транзакций) исключительно в целях исполнения настоящего договора и направления электронных кассовых чеков (в соответствии с 54-ФЗ).</p>
+
+                <h4 style="color: #fff; margin-bottom: 6px;">5. Реквизиты Исполнителя</h4>
+                <p style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 12px; border-radius: 10px;">
+                    <strong>ИП Чеботарёв Никита Драгонович</strong><br>
+                    ОГРНИП: 325237500199972<br>
+                    ИНН: 232526637986<br>
+                    Адрес: Краснодарский край, Апшеронский район, г. Хадыженск<br>
+                    Телефон: +7 (918) 692-08-10<br>
+                    Электронная почта: skyrex.auth@mail.ru
+                </p>
+            </div>
+        </div>
+    </div>
+
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=20261126-02"></script>
-    <script src="rig_visualizer.js?v=20261126-02"></script>
-    <script src="chat_bot.js?v=20261126-02"></script>
-    <script src="app.js?v=20261126-02"></script>
+    <script src="auth.js?v=20261127-01"></script>
+    <script src="rig_visualizer.js?v=20261127-01"></script>
+    <script src="chat_bot.js?v=20261127-01"></script>
+    <script src="app.js?v=20261127-01"></script>
 </body>
 
 
