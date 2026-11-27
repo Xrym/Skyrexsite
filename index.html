@@ -7,7 +7,7 @@
     <title>Skyrex Computers | Премиальные игровые компьютеры и рабочие станции</title>
     <meta name="description"
         content="Skyrex Computers — ваш проводник в мир высокой производительности. Игровые ПК, профессиональные рабочие станции и гибкий онлайн-конструктор компьютеров с гарантией 2 года.">
-    <link rel="stylesheet" href="style.css?v=20261127-03">
+    <link rel="stylesheet" href="style.css?v=20261127-05">
 </head>
 
 <body>
@@ -21,9 +21,8 @@
             </a>
             <nav id="main-nav">
                 <a href="#hero">AI Консультант</a>
-                <a href="javascript:void(0)"
-                    onclick="if(window.SkyrexAuth) SkyrexAuth.openSupportModal();">Техподдержка</a>
                 <a href="javascript:void(0)" onclick="if(window.SkyrexAuth) SkyrexAuth.openSupportModal();">Техподдержка</a>
+                <a href="javascript:void(0)" id="nav-admin-link" style="display: none; color: #ff3366; font-weight: 700;" onclick="if(window.SkyrexAuth) SkyrexAuth.openAdminPanel();">🛠️ Панель админа</a>
                 <a href="#about">О нас</a>
                 <a href="#contacts">Контакты</a>
             </nav>
@@ -421,6 +420,11 @@
             </div>
 
             <div class="profile-actions">
+                <button type="button" class="btn btn-primary" id="profile-admin-btn"
+                    style="display: none; width: 100%; margin-bottom: 12px; background: linear-gradient(135deg, #ff3366, #ff6b35); border-color: #ff3366;"
+                    onclick="if(window.SkyrexAuth) { SkyrexAuth.closeProfileModal(); SkyrexAuth.openAdminPanel(); }">
+                    <span>🛠️ Панель администратора</span>
+                </button>
                 <button class="btn btn-secondary" id="profile-logout-btn" style="width: 100%;">Выйти из
                     аккаунта</button>
             </div>
@@ -714,11 +718,194 @@
         </div>
     </div>
 
+    <!-- Complete Web Admin Panel Modal (100% On-Site Administration) -->
+    <div class="modal-overlay" id="admin-panel-modal">
+        <div class="modal admin-panel-modal-content" style="max-width: 960px; width: 95%; height: 750px; max-height: 90vh; display: flex; flex-direction: column; padding: 24px;">
+            <button class="modal-close-btn" id="admin-panel-close-btn" aria-label="Закрыть панель" onclick="if(window.SkyrexAuth) SkyrexAuth.closeAdminPanel();">&times;</button>
+            
+            <!-- Admin Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px; margin-bottom: 14px; flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(255, 51, 102, 0.15); border: 1px solid #ff3366; display: flex; align-items: center; justify-content: center; font-size: 16px;">👑</div>
+                    <div>
+                        <h3 class="modal-title" style="margin: 0; font-size: 20px;">Панель администратора Skyrex</h3>
+                        <p style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-muted);">Управление правилами ИИ, поддержкой клиентов, деталями и подписками</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Tabs Navigation -->
+            <div class="admin-tabs-nav" style="display: flex; gap: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px; margin-bottom: 16px; flex-shrink: 0; overflow-x: auto;">
+                <button type="button" class="admin-tab-btn active" data-tab="support" onclick="SkyrexAuth.switchAdminTab('support')">💬 Техподдержка</button>
+                <button type="button" class="admin-tab-btn" data-tab="rules" onclick="SkyrexAuth.switchAdminTab('rules')">📜 Правила ИИ</button>
+                <button type="button" class="admin-tab-btn" data-tab="components" onclick="SkyrexAuth.switchAdminTab('components')">⚙️ Экспертные детали</button>
+                <button type="button" class="admin-tab-btn" data-tab="payments" onclick="SkyrexAuth.switchAdminTab('payments')">💳 Оплаты и пользователи</button>
+                <button type="button" class="admin-tab-btn" data-tab="stats" onclick="SkyrexAuth.switchAdminTab('stats')">📊 Статистика</button>
+            </div>
+
+            <!-- TAB 1: Support Helpdesk -->
+            <div class="admin-tab-pane active" id="admin-tab-support" style="flex: 1; min-height: 0; display: flex; gap: 16px;">
+                <div style="width: 260px; border-right: 1px solid rgba(255, 255, 255, 0.08); padding-right: 12px; display: flex; flex-direction: column; min-height: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Обращения</span>
+                        <button type="button" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px;" onclick="SkyrexAuth.loadAdminSupportDialogs()">🔄</button>
+                    </div>
+                    <div id="admin-panel-dialogs-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;"></div>
+                </div>
+
+                <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                    <div style="font-size: 12px; color: #00ffcc; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Клиент: <span id="admin-panel-target-email">Выберите обращение слева</span></span>
+                        <button type="button" id="admin-panel-delete-dialog-btn" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px; color: #ff3366; display: none;" onclick="SkyrexAuth.deleteSelectedDialog()">🗑️ Удалить диалог</button>
+                    </div>
+                    <div id="admin-panel-messages-container" class="support-messages-list" style="flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 10px;">
+                        <div style="text-align: center; color: var(--text-muted); font-size: 13px; margin: auto;">Выберите диалог слева для просмотра и ответа</div>
+                    </div>
+                    <form id="admin-panel-reply-form" style="display: flex; gap: 8px; margin-top: 14px; flex-shrink: 0;">
+                        <input type="text" id="admin-panel-reply-input" class="form-input" style="flex: 1; padding: 10px 14px; font-size: 13px;" placeholder="Введите ответ клиенту (продублируется на email)..." autocomplete="off" required disabled>
+                        <button type="submit" class="btn btn-primary" id="admin-panel-reply-btn" style="padding: 10px 20px; font-size: 13px; white-space: nowrap;" disabled>
+                            <span>Отправить ответ</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- TAB 2: AI Rules & Prompt -->
+            <div class="admin-tab-pane" id="admin-tab-rules" style="display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding-right: 6px;">
+                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #00ffcc;">➕ Добавить оперативное правило для ИИ</h4>
+                    <form id="admin-add-rule-form">
+                        <div style="margin-bottom: 10px;">
+                            <input type="text" id="admin-rule-title" class="form-input" placeholder="Краткое название правила (например: Ограничение кулеров)" style="font-size: 13px;" required>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <textarea id="admin-rule-text" class="form-input" placeholder="Текст правила для ИИ (например: Для процессоров Ryzen 5600 всегда предлагать кулер ID-Cooling SE-214-XT)..." rows="2" style="font-size: 13px; resize: vertical;" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="padding: 8px 18px; font-size: 13px;">
+                            <span>Сохранить правило</span>
+                        </button>
+                    </form>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4 style="margin: 0; font-size: 14px; color: #fff;">Активные правила эксперта</h4>
+                    <button type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; color: #ff3366;" onclick="SkyrexAuth.resetAdminRules()">Сбросить все правила</button>
+                </div>
+                <div id="admin-rules-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px;"></div>
+
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0; font-size: 14px; color: #fff;">Системный промпт ИИ (assistant_system)</h4>
+                        <button type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="SkyrexAuth.resetAdminPrompt()">Восстановить эталонный</button>
+                    </div>
+                    <textarea id="admin-prompt-editor" class="form-input" rows="8" style="font-family: monospace; font-size: 12px; line-height: 1.4; resize: vertical; margin-bottom: 10px;"></textarea>
+                    <button type="button" class="btn btn-primary" style="padding: 8px 18px; font-size: 13px;" onclick="SkyrexAuth.saveAdminPrompt()">
+                        <span>Обновить системный промпт</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- TAB 3: Expert Components -->
+            <div class="admin-tab-pane" id="admin-tab-components" style="display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding-right: 6px;">
+                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(0, 255, 204, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #00ffcc;">➕ Добавить экспертную комплектующую (Б/У или эксклюзив)</h4>
+                    <form id="admin-add-comp-form">
+                        <div style="display: grid; grid-template-columns: 1fr 140px 140px; gap: 10px; margin-bottom: 10px;">
+                            <input type="text" id="admin-comp-name" class="form-input" placeholder="Название (например: Ryzen 5 7500F Tray)" style="font-size: 13px;" required>
+                            <select id="admin-comp-cat" class="form-input" style="font-size: 13px;" required>
+                                <option value="cpu">Процессор (CPU)</option>
+                                <option value="gpu">Видеокарта (GPU)</option>
+                                <option value="motherboard">Материнская плата</option>
+                                <option value="ram">Оперативная память</option>
+                                <option value="ssd">SSD накопитель</option>
+                                <option value="psu">Блок питания</option>
+                                <option value="case">Корпус</option>
+                                <option value="cooler">Охлаждение / Кулер</option>
+                            </select>
+                            <input type="number" id="admin-comp-price" class="form-input" placeholder="Цена (руб)" style="font-size: 13px;" required>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 160px 1fr; gap: 10px; margin-bottom: 10px;">
+                            <select id="admin-comp-shop" class="form-input" style="font-size: 13px;">
+                                <option value="Авито">Авито</option>
+                                <option value="ОнлайнТрейд">ОнлайнТрейд</option>
+                                <option value="DNS">DNS</option>
+                                <option value="Wildberries">Wildberries</option>
+                            </select>
+                            <input type="url" id="admin-comp-url" class="form-input" placeholder="Прямая ссылка на товар (https://...)" style="font-size: 13px;" required>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <input type="text" id="admin-comp-comment" class="form-input" placeholder="Комментарий эксперта (например: Проверенный продавец, гарантия)" style="font-size: 13px;">
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="padding: 8px 18px; font-size: 13px;">
+                            <span>Добавить деталь в каталог</span>
+                        </button>
+                    </form>
+                </div>
+
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #fff;">Каталог экспертных деталей</h4>
+                <div id="admin-components-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+
+            <!-- TAB 4: Payments & Users -->
+            <div class="admin-tab-pane" id="admin-tab-payments" style="display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding-right: 6px;">
+                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #00ffcc;">⚡ Ручная активация подписки</h4>
+                    <form id="admin-manual-sub-form" style="display: flex; gap: 10px; align-items: center;">
+                        <input type="number" id="admin-sub-userid" class="form-input" placeholder="ID пользователя" style="width: 140px; font-size: 13px;" required>
+                        <input type="number" id="admin-sub-days" class="form-input" placeholder="Дней (30)" value="30" style="width: 120px; font-size: 13px;" required>
+                        <button type="submit" class="btn btn-primary" style="padding: 8px 18px; font-size: 13px; white-space: nowrap;">
+                            <span>Активировать доступ</span>
+                        </button>
+                    </form>
+                </div>
+
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #fff;">Транзакции ЮKassa</h4>
+                <div id="admin-payments-table-box" style="overflow-x: auto; margin-bottom: 24px;">
+                    <table class="admin-data-table">
+                        <thead>
+                            <tr>
+                                <th>ID платежа</th>
+                                <th>Email</th>
+                                <th>Сумма</th>
+                                <th>Статус</th>
+                                <th>Дата</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-payments-tbody"></tbody>
+                    </table>
+                </div>
+
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #fff;">Пользователи сервиса</h4>
+                <div id="admin-users-table-box" style="overflow-x: auto;">
+                    <table class="admin-data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Email</th>
+                                <th>Никнейм</th>
+                                <th>Роль</th>
+                                <th>Подписка</th>
+                                <th>Действует до</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-users-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 5: Stats -->
+            <div class="admin-tab-pane" id="admin-tab-stats" style="display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px;" id="admin-stats-cards"></div>
+            </div>
+
+        </div>
+    </div>
+
     <!-- Application Logic Scripts -->
-    <script src="auth.js?v=20261127-03"></script>
-    <script src="rig_visualizer.js?v=20261127-03"></script>
-    <script src="chat_bot.js?v=20261127-03"></script>
-    <script src="app.js?v=20261127-03"></script>
+    <script src="auth.js?v=20261127-05"></script>
+    <script src="rig_visualizer.js?v=20261127-05"></script>
+    <script src="chat_bot.js?v=20261127-05"></script>
+    <script src="app.js?v=20261127-05"></script>
 </body>
 
 

@@ -137,7 +137,12 @@ BOT_DB = load_bot_db()
 
 from bot_tools import search_price, format_price_results
 from bot_tools.hardware_matcher import match_expert_assessment, enrich_and_rank_products, extract_chipset
-from db.database import seed_from_bot_db, get_stats, get_connection, get_expert_components
+from db.database import (
+    seed_from_bot_db, get_stats, get_connection, get_expert_components,
+    add_expert_component, delete_expert_component,
+    add_ai_rule, get_ai_rules, delete_ai_rule, reset_ai_rules,
+    get_prompt_template, update_prompt_template, reset_prompt_template
+)
 from db.auth_db import (
     init_auth_db, login_user, register_user,
     get_user_by_token, logout_token,
@@ -145,7 +150,8 @@ from db.auth_db import (
     update_user_nickname, activate_subscription,
     create_payment_record, update_payment_status, get_payment_record,
     add_support_message, get_support_messages, get_support_dialogs,
-    mark_support_messages_read, send_support_reply_email
+    mark_support_messages_read, send_support_reply_email,
+    get_admin_payments, get_admin_users, delete_support_dialog
 )
 from scraper.scheduler import BackgroundPriceScheduler
 
@@ -2869,34 +2875,7 @@ async def handle_payment_webhook(request):
                 user_id = int(user_id_str)
                 await asyncio.to_thread(update_payment_status, payment_id, "succeeded")
                 user_profile = await asyncio.to_thread(activate_subscription, user_id, days)
-
-                # Send Telegram notification to admin
-                tg_token = os.getenv("TG_BOT_TOKEN")
-                tg_admins = os.getenv("TG_ADMIN_IDS", "").split(",")
-                if tg_token and tg_admins:
-                    user_nick = user_profile.get("nickname") or user_profile.get("username", f"ID {user_id}")
-                    user_email = user_profile.get("username", "")
-                    exp_date = user_profile.get("subscription_expires", "")
-                    tg_msg = (
-                        f"💰 <b>НОВАЯ ОПЛАТА ПОДПИСКИ ЮKASSA!</b>\n\n"
-                        f"👤 <b>Пользователь:</b> {user_nick}\n"
-                        f"📧 <b>Email:</b> {user_email}\n"
-                        f"💳 <b>Сумма:</b> {amount_val} ₽ ({days} дней)\n"
-                        f"🆔 <b>ID платежа:</b> <code>{payment_id}</code>\n"
-                        f"📅 <b>Премиум активен до:</b> {exp_date[:10] if exp_date else ''}\n\n"
-                        f"✅ Подписка мгновенно активирована!"
-                    )
-                    for admin_id in tg_admins:
-                        admin_id = admin_id.strip()
-                        if admin_id:
-                            try:
-                                async with aiohttp.ClientSession() as session:
-                                    await session.post(
-                                        f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                                        json={"chat_id": admin_id, "text": tg_msg, "parse_mode": "HTML"}
-                                    )
-                            except Exception as tg_err:
-                                logger.warning(f"Telegram notification error: {tg_err}")
+                logger.info(f"Subscription activated for user {user_id} ({days} days) via YooKassa payment {payment_id}")
             except Exception as ex:
                 logger.error(f"Error activating subscription from webhook: {ex}")
 
@@ -2960,30 +2939,6 @@ async def handle_support_send(request):
 
         user_id = current_user["id"] if current_user else None
         res = await asyncio.to_thread(add_support_message, user_email, raw_msg, "user", user_id)
-
-        # Notify admin via Telegram Bot immediately
-        tg_token = os.getenv("TG_BOT_TOKEN")
-        tg_admins = os.getenv("TG_ADMIN_IDS", "").split(",")
-        if tg_token and tg_admins:
-            nick = (current_user.get("nickname") if current_user else "") or user_email.split("@")[0]
-            tg_text = (
-                f"💬 <b>НОВОЕ ОБРАЩЕНИЕ В ТЕХПОДДЕРЖКУ SKYREX!</b>\n\n"
-                f"👤 <b>Клиент:</b> {html.escape(nick)} (<code>{html.escape(user_email)}</code>)\n"
-                f"📝 <b>Вопрос:</b>\n<i>{html.escape(raw_msg)}</i>\n\n"
-                f"👉 Ответить можно на сайте https://skyrex.pro из вашего аккаунта администратора."
-            )
-            for aid in tg_admins:
-                aid = aid.strip()
-                if aid:
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            await session.post(
-                                f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                                json={"chat_id": aid, "text": tg_text, "parse_mode": "HTML"}
-                            )
-                    except Exception as te:
-                        logger.warning(f"Failed to send TG support notification: {te}")
-
         return web.json_response({"success": True, "message": res.get("message")})
 
 async def handle_support_messages(request):
@@ -3022,6 +2977,179 @@ async def handle_support_dialogs(request):
 
     dialogs = await asyncio.to_thread(get_support_dialogs)
     return web.json_response({"dialogs": dialogs})
+
+# ==========================================
+# Web Admin Panel Endpoints (100% on-site)
+# ==========================================
+
+async def _check_admin(request):
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if "Bearer " in auth_header else ""
+    current_user = await asyncio.to_thread(get_user_by_token, token) if token else None
+    if not current_user or current_user.get("role") != "admin":
+        return None
+    return current_user
+
+async def handle_admin_rules_list(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    rules = await asyncio.to_thread(get_ai_rules, False)
+    return web.json_response({"success": True, "rules": rules})
+
+async def handle_admin_rules_add(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
+    rule_text = str(data.get("rule_text") or "").strip()
+    title = str(data.get("title") or "").strip()
+    if not rule_text:
+        return web.json_response({"success": False, "error": "Текст правила обязателен."}, status=400)
+    rule_id = await asyncio.to_thread(add_ai_rule, rule_text, title, admin.get("username", "admin"))
+    return web.json_response({"success": True, "rule_id": rule_id})
+
+async def handle_admin_rules_delete(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
+    rule_id = int(data.get("rule_id") or 0)
+    ok = await asyncio.to_thread(delete_ai_rule, rule_id)
+    return web.json_response({"success": ok})
+
+async def handle_admin_rules_reset(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    count = await asyncio.to_thread(reset_ai_rules)
+    return web.json_response({"success": True, "deleted_count": count})
+
+async def handle_admin_prompt_get(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    prompt = await asyncio.to_thread(get_prompt_template, "assistant_system")
+    return web.json_response({"success": True, "prompt": prompt})
+
+async def handle_admin_prompt_update(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
+    new_prompt = str(data.get("prompt") or "").strip()
+    if not new_prompt:
+        return web.json_response({"success": False, "error": "Текст промпта не может быть пустым."}, status=400)
+    await asyncio.to_thread(update_prompt_template, "assistant_system", new_prompt)
+    return web.json_response({"success": True})
+
+async def handle_admin_prompt_reset(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    await asyncio.to_thread(reset_prompt_template, "assistant_system")
+    prompt = await asyncio.to_thread(get_prompt_template, "assistant_system")
+    return web.json_response({"success": True, "prompt": prompt})
+
+async def handle_admin_components_list(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    components = await asyncio.to_thread(get_expert_components, 200)
+    return web.json_response({"success": True, "components": components})
+
+async def handle_admin_components_add(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
+    comp_id = await asyncio.to_thread(add_expert_component, data)
+    return web.json_response({"success": True, "component_id": comp_id})
+
+async def handle_admin_components_delete(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
+    comp_id = int(data.get("component_id") or 0)
+    ok = await asyncio.to_thread(delete_expert_component, comp_id)
+    return web.json_response({"success": ok})
+
+async def handle_admin_payments_list(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    payments = await asyncio.to_thread(get_admin_payments, 50)
+    return web.json_response({"success": True, "payments": payments})
+
+async def handle_admin_users_list(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    users = await asyncio.to_thread(get_admin_users, 50)
+    return web.json_response({"success": True, "users": users})
+
+async def handle_admin_subscription_activate(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
+    user_id = int(data.get("user_id") or 0)
+    days = int(data.get("days") or 30)
+    if not user_id:
+        return web.json_response({"success": False, "error": "ID пользователя обязателен."}, status=400)
+    user_profile = await asyncio.to_thread(activate_subscription, user_id, days)
+    return web.json_response({"success": True, "user": user_profile})
+
+async def handle_admin_stats(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    db_stats = await asyncio.to_thread(get_stats)
+    payments = await asyncio.to_thread(get_admin_payments, 100)
+    users = await asyncio.to_thread(get_admin_users, 500)
+    dialogs = await asyncio.to_thread(get_support_dialogs)
+    active_sub_count = sum(1 for u in users if u.get("subscribed"))
+    total_rev = sum(int(p["amount"]) for p in payments if p.get("status") == "succeeded")
+    return web.json_response({
+        "success": True,
+        "catalog_stats": db_stats,
+        "users_count": len(users),
+        "active_subscribers": active_sub_count,
+        "dialogs_count": len(dialogs),
+        "total_revenue": total_rev,
+        "payments_count": len(payments)
+    })
+
+async def handle_admin_support_delete(request):
+    admin = await _check_admin(request)
+    if not admin:
+        return web.json_response({"success": False, "error": "Доступ запрещен."}, status=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Некорректный JSON."}, status=400)
+    email = str(data.get("email") or "").strip().lower()
+    ok = await asyncio.to_thread(delete_support_dialog, email)
+    return web.json_response({"success": ok})
 
 async def handle_chat(request):
     try:
@@ -3186,6 +3314,23 @@ async def init_app():
     app.router.add_post('/api/support/send', handle_support_send)
     app.router.add_get('/api/support/messages', handle_support_messages)
     app.router.add_get('/api/support/dialogs', handle_support_dialogs)
+
+    # Full Web Admin Panel API (100% On-Site Administration)
+    app.router.add_get('/api/admin/rules', handle_admin_rules_list)
+    app.router.add_post('/api/admin/rules/add', handle_admin_rules_add)
+    app.router.add_post('/api/admin/rules/delete', handle_admin_rules_delete)
+    app.router.add_post('/api/admin/rules/reset', handle_admin_rules_reset)
+    app.router.add_get('/api/admin/prompt', handle_admin_prompt_get)
+    app.router.add_post('/api/admin/prompt/update', handle_admin_prompt_update)
+    app.router.add_post('/api/admin/prompt/reset', handle_admin_prompt_reset)
+    app.router.add_get('/api/admin/components', handle_admin_components_list)
+    app.router.add_post('/api/admin/components/add', handle_admin_components_add)
+    app.router.add_post('/api/admin/components/delete', handle_admin_components_delete)
+    app.router.add_get('/api/admin/payments', handle_admin_payments_list)
+    app.router.add_get('/api/admin/users', handle_admin_users_list)
+    app.router.add_post('/api/admin/subscriptions/activate', handle_admin_subscription_activate)
+    app.router.add_get('/api/admin/stats', handle_admin_stats)
+    app.router.add_post('/api/admin/support/delete', handle_admin_support_delete)
     
     # Public API for expert catalog & rules (non-blocking)
     async def handle_expert_components(request):
@@ -3221,8 +3366,8 @@ async def init_app():
 
     app.on_cleanup.append(cleanup_shared_session)
 
-    # Background Telegram Admin Bot (can be disabled via RUN_TG_BOT_IN_SERVER=false for multi-worker setups)
-    run_tg = os.getenv("RUN_TG_BOT_IN_SERVER", "true").lower() in ("true", "1", "yes")
+    # Background Telegram Admin Bot (disabled in favor of on-site web admin panel)
+    run_tg = os.getenv("RUN_TG_BOT_IN_SERVER", "false").lower() in ("true", "1", "yes")
     tg_token = os.getenv("TG_BOT_TOKEN", "").strip()
     if tg_token and run_tg:
         tg_bot = TelegramAdminBot(token=tg_token)

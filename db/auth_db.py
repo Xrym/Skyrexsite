@@ -846,3 +846,39 @@ def send_support_reply_email(to_email: str, reply_text: str) -> Tuple[bool, Opti
     except Exception as e:
         logger.error(f"Failed to send support reply email to {to_email}: {e}")
         return False, str(e)
+
+def delete_support_dialog(email: str) -> bool:
+    """Deletes all messages for a specific email dialogue."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM support_messages WHERE email = ? COLLATE NOCASE", (email,))
+        conn.commit()
+        return True
+
+def get_admin_payments(limit: int = 50) -> List[Dict[str, Any]]:
+    """Returns recent payments with customer email and details for admin panel."""
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        rows = cursor.execute("""
+            SELECT p.id, p.user_id, u.username as email, u.nickname, p.amount, p.currency, p.status, p.description, p.created_at
+            FROM payments p
+            LEFT JOIN users u ON p.user_id = u.id
+            ORDER BY p.created_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+def get_admin_users(limit: int = 50) -> List[Dict[str, Any]]:
+    """Returns users list with subscription status for admin panel."""
+    with get_auth_connection() as conn:
+        cursor = conn.cursor()
+        rows = cursor.execute("""
+            SELECT id, username as email, nickname, role, subscribed, subscription_expires, created_at
+            FROM users
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(r) for r in rows]

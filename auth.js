@@ -272,6 +272,19 @@ const SkyrexAuth = {
             supportInput: document.getElementById("support-input"),
             supportAdminSendForm: document.getElementById("support-admin-send-form"),
             supportAdminInput: document.getElementById("support-admin-input"),
+
+            // On-site Web Admin Panel Modal
+            adminPanelModal: document.getElementById("admin-panel-modal"),
+            adminPanelCloseBtn: document.getElementById("admin-panel-close-btn"),
+            navAdminLink: document.getElementById("nav-admin-link"),
+            profileAdminBtn: document.getElementById("profile-admin-btn"),
+            adminAddRuleForm: document.getElementById("admin-add-rule-form"),
+            adminAddCompForm: document.getElementById("admin-add-comp-form"),
+            adminManualSubForm: document.getElementById("admin-manual-sub-form"),
+            adminPanelReplyForm: document.getElementById("admin-panel-reply-form"),
+            adminPanelReplyInput: document.getElementById("admin-panel-reply-input"),
+            adminPanelReplyBtn: document.getElementById("admin-panel-reply-btn"),
+            adminPanelDeleteDialogBtn: document.getElementById("admin-panel-delete-dialog-btn"),
         };
     },
 
@@ -303,6 +316,9 @@ const SkyrexAuth = {
         if (this.dom.supportCloseBtn) {
             this.dom.supportCloseBtn.addEventListener("click", () => this.closeSupportModal());
         }
+        if (this.dom.adminPanelCloseBtn) {
+            this.dom.adminPanelCloseBtn.addEventListener("click", () => this.closeAdminPanel());
+        }
 
         // Close on overlay click
         if (this.dom.authModal) {
@@ -330,6 +346,11 @@ const SkyrexAuth = {
                 if (e.target === this.dom.supportModal) this.closeSupportModal();
             });
         }
+        if (this.dom.adminPanelModal) {
+            this.dom.adminPanelModal.addEventListener("click", (e) => {
+                if (e.target === this.dom.adminPanelModal) this.closeAdminPanel();
+            });
+        }
 
         // Pay buttons
         if (this.dom.paywallCheckoutBtn) {
@@ -347,6 +368,7 @@ const SkyrexAuth = {
                 this.closePaywallModal();
                 this.closeOfferModal();
                 this.closeSupportModal();
+                this.closeAdminPanel();
             }
         });
 
@@ -406,12 +428,63 @@ const SkyrexAuth = {
             });
         }
 
-        // Support Admin Send Form
+        // Support Admin Send Form (Support Modal)
         if (this.dom.supportAdminSendForm) {
             this.dom.supportAdminSendForm.addEventListener("submit", (e) => {
                 e.preventDefault();
                 const text = this.dom.supportAdminInput ? this.dom.supportAdminInput.value : "";
                 this.sendAdminSupportReply(text);
+            });
+        }
+
+        // Support Admin Reply Form (Admin Panel Modal)
+        if (this.dom.adminPanelReplyForm) {
+            this.dom.adminPanelReplyForm.addEventListener("submit", (e) => {
+                e.preventDefault();
+                const text = this.dom.adminPanelReplyInput ? this.dom.adminPanelReplyInput.value : "";
+                this.sendAdminSupportReply(text);
+            });
+        }
+
+        // Admin Panel: Add AI Rule Form
+        if (this.dom.adminAddRuleForm) {
+            this.dom.adminAddRuleForm.addEventListener("submit", (e) => {
+                e.preventDefault();
+                const titleEl = document.getElementById("admin-rule-title");
+                const textEl = document.getElementById("admin-rule-text");
+                const title = titleEl ? titleEl.value.trim() : "";
+                const text = textEl ? textEl.value.trim() : "";
+                if (title && text) {
+                    this.addAdminRule(title, text);
+                }
+            });
+        }
+
+        // Admin Panel: Add Expert Component Form
+        if (this.dom.adminAddCompForm) {
+            this.dom.adminAddCompForm.addEventListener("submit", (e) => {
+                e.preventDefault();
+                const name = (document.getElementById("admin-comp-name")?.value || "").trim();
+                const category = document.getElementById("admin-comp-cat")?.value || "cpu";
+                const price = parseFloat(document.getElementById("admin-comp-price")?.value || "0");
+                const shop = document.getElementById("admin-comp-shop")?.value || "Авито";
+                const url = (document.getElementById("admin-comp-url")?.value || "").trim();
+                const comment = (document.getElementById("admin-comp-comment")?.value || "").trim();
+                if (name && price && url) {
+                    this.addAdminComponent({ name, category, price, shop, url, comment });
+                }
+            });
+        }
+
+        // Admin Panel: Manual Subscription Form
+        if (this.dom.adminManualSubForm) {
+            this.dom.adminManualSubForm.addEventListener("submit", (e) => {
+                e.preventDefault();
+                const userId = parseInt(document.getElementById("admin-sub-userid")?.value || "0", 10);
+                const days = parseInt(document.getElementById("admin-sub-days")?.value || "30", 10);
+                if (userId && days) {
+                    this.activateAdminUserSub(userId, days);
+                }
             });
         }
 
@@ -1065,15 +1138,18 @@ const SkyrexAuth = {
             });
             const data = await res.json();
             const listEl = document.getElementById("support-admin-dialogs-list");
-            if (!listEl) return;
+            const panelListEl = document.getElementById("admin-panel-dialogs-list");
+            if (!listEl && !panelListEl) return;
 
             const dialogs = data.dialogs || [];
             if (dialogs.length === 0) {
-                listEl.innerHTML = `<div style="color:var(--text-muted); font-size:12px; padding:10px;">Обращений пока нет.</div>`;
+                const emptyHtml = `<div style="color:var(--text-muted); font-size:12px; padding:10px;">Обращений пока нет.</div>`;
+                if (listEl) listEl.innerHTML = emptyHtml;
+                if (panelListEl) panelListEl.innerHTML = emptyHtml;
                 return;
             }
 
-            listEl.innerHTML = dialogs.map(d => {
+            const html = dialogs.map(d => {
                 const activeCls = (d.email === this.activeAdminCustomerEmail) ? "active" : "";
                 const unreadBadge = d.unread_count > 0 ? `<span class="support-badge" style="float:right;">+${d.unread_count}</span>` : "";
                 const lastSnippet = this.escapeHtml((d.last_message || "").slice(0, 30));
@@ -1090,6 +1166,9 @@ const SkyrexAuth = {
                 `;
             }).join("");
 
+            if (listEl) listEl.innerHTML = html;
+            if (panelListEl) panelListEl.innerHTML = html;
+
             if (!this.activeAdminCustomerEmail && dialogs.length > 0) {
                 this.selectSupportDialog(dialogs[0].email);
             }
@@ -1102,13 +1181,22 @@ const SkyrexAuth = {
         this.activeAdminCustomerEmail = email;
         const targetEmailEl = document.getElementById("support-admin-target-email");
         if (targetEmailEl) targetEmailEl.textContent = email;
+        const panelTargetEmailEl = document.getElementById("admin-panel-target-email");
+        if (panelTargetEmailEl) panelTargetEmailEl.textContent = email;
 
         const input = document.getElementById("support-admin-input");
         const btn = document.getElementById("support-admin-send-btn");
         if (input) input.disabled = false;
         if (btn) btn.disabled = false;
 
-        // Highlight active item in sidebar
+        const panelInput = document.getElementById("admin-panel-reply-input");
+        const panelBtn = document.getElementById("admin-panel-reply-btn");
+        const panelDelBtn = document.getElementById("admin-panel-delete-dialog-btn");
+        if (panelInput) panelInput.disabled = false;
+        if (panelBtn) panelBtn.disabled = false;
+        if (panelDelBtn) panelDelBtn.style.display = "inline-block";
+
+        // Highlight active item in sidebars
         const items = document.querySelectorAll(".support-dialog-item");
         items.forEach(el => {
             if (el.textContent.includes(email)) el.classList.add("active");
@@ -1121,14 +1209,17 @@ const SkyrexAuth = {
     async loadAdminActiveChat() {
         if (!this.activeAdminCustomerEmail) return;
         const container = document.getElementById("support-admin-messages-container");
-        if (!container) return;
+        const panelContainer = document.getElementById("admin-panel-messages-container");
+        if (!container && !panelContainer) return;
 
         try {
             const res = await fetch(`/api/support/messages?email=${encodeURIComponent(this.activeAdminCustomerEmail)}`, {
                 headers: { "Authorization": `Bearer ${this.getToken()}` }
             });
             const data = await res.json();
-            this.renderSupportMessagesList(container, data.messages || []);
+            const msgs = data.messages || [];
+            if (container) this.renderSupportMessagesList(container, msgs);
+            if (panelContainer) this.renderSupportMessagesList(panelContainer, msgs);
         } catch (e) {
             console.warn("Could not load admin chat messages:", e);
         }
@@ -1139,7 +1230,9 @@ const SkyrexAuth = {
         if (!text || !this.activeAdminCustomerEmail) return;
 
         const btn = document.getElementById("support-admin-send-btn");
+        const panelBtn = document.getElementById("admin-panel-reply-btn");
         if (btn) btn.disabled = true;
+        if (panelBtn) panelBtn.disabled = true;
 
         try {
             const res = await fetch("/api/support/send", {
@@ -1154,6 +1247,8 @@ const SkyrexAuth = {
             if (res.ok && data.success) {
                 const input = document.getElementById("support-admin-input");
                 if (input) input.value = "";
+                const panelInput = document.getElementById("admin-panel-reply-input");
+                if (panelInput) panelInput.value = "";
                 await this.loadAdminActiveChat();
                 this.loadSupportDialogs();
                 const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
@@ -1166,6 +1261,47 @@ const SkyrexAuth = {
             console.error("Admin support send error:", e);
         } finally {
             if (btn) btn.disabled = false;
+            if (panelBtn) panelBtn.disabled = false;
+        }
+    },
+
+    async deleteSelectedDialog() {
+        if (!this.activeAdminCustomerEmail) return;
+        if (!confirm(`Удалить диалог с ${this.activeAdminCustomerEmail}? История сообщений будет очищена.`)) return;
+
+        try {
+            const res = await fetch("/api/admin/support/delete", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                },
+                body: JSON.stringify({ email: this.activeAdminCustomerEmail })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.activeAdminCustomerEmail = "";
+                const targetEmailEl = document.getElementById("support-admin-target-email");
+                if (targetEmailEl) targetEmailEl.textContent = "Выберите клиента";
+                const panelTargetEmailEl = document.getElementById("admin-panel-target-email");
+                if (panelTargetEmailEl) panelTargetEmailEl.textContent = "Выберите обращение слева";
+
+                const container = document.getElementById("support-admin-messages-container");
+                if (container) container.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 12px; margin: auto;">Диалог удален</div>`;
+                const panelContainer = document.getElementById("admin-panel-messages-container");
+                if (panelContainer) panelContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 12px; margin: auto;">Диалог удален</div>`;
+
+                const delBtn = document.getElementById("admin-panel-delete-dialog-btn");
+                if (delBtn) delBtn.style.display = "none";
+
+                this.loadSupportDialogs();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn("Диалог успешно удален", "success");
+            } else {
+                alert(data.error || "Ошибка удаления");
+            }
+        } catch (e) {
+            console.error("deleteSelectedDialog error:", e);
         }
     },
 
@@ -1186,6 +1322,466 @@ const SkyrexAuth = {
         if (this.supportPollTimer) {
             clearInterval(this.supportPollTimer);
             this.supportPollTimer = null;
+        }
+    },
+
+    // ==========================================
+    // On-site Web Admin Panel
+    // ==========================================
+    openAdminPanel(tab = "support") {
+        if (!this.currentUser || this.currentUser.role !== "admin") {
+            const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+            if (toastFn) toastFn("Доступ разрешен только администраторам.", "error");
+            else alert("Доступ разрешен только администраторам.");
+            return;
+        }
+        const modal = document.getElementById("admin-panel-modal");
+        if (modal) {
+            modal.classList.add("active");
+            modal.style.visibility = "visible";
+            modal.style.opacity = "1";
+            modal.style.pointerEvents = "auto";
+        }
+        this.switchAdminTab(tab);
+    },
+
+    closeAdminPanel() {
+        const modal = document.getElementById("admin-panel-modal");
+        if (modal) {
+            modal.classList.remove("active");
+            modal.style.visibility = "hidden";
+            modal.style.opacity = "0";
+            modal.style.pointerEvents = "none";
+        }
+        this.stopSupportPolling();
+    },
+
+    switchAdminTab(tab) {
+        // Toggle tab buttons
+        document.querySelectorAll(".admin-tab-btn").forEach(btn => {
+            if (btn.getAttribute("data-tab") === tab) {
+                btn.classList.add("active");
+            } else {
+                btn.classList.remove("active");
+            }
+        });
+
+        // Toggle tab panes
+        document.querySelectorAll(".admin-tab-pane").forEach(pane => {
+            if (pane.id === `admin-tab-${tab}`) {
+                pane.classList.add("active");
+                pane.style.display = "flex";
+            } else {
+                pane.classList.remove("active");
+                pane.style.display = "none";
+            }
+        });
+
+        // Trigger loader for specific tab
+        if (tab === "support") {
+            this.loadSupportDialogs();
+            this.startSupportPolling();
+        } else {
+            this.stopSupportPolling();
+            if (tab === "rules") {
+                this.loadAdminRules();
+                this.loadAdminPrompt();
+            } else if (tab === "components") {
+                this.loadAdminComponents();
+            } else if (tab === "payments") {
+                this.loadAdminPayments();
+                this.loadAdminUsers();
+            } else if (tab === "stats") {
+                this.loadAdminStats();
+            }
+        }
+    },
+
+    // --- TAB: Rules & System Prompt ---
+    async loadAdminRules() {
+        const container = document.getElementById("admin-rules-list");
+        if (!container) return;
+        try {
+            const res = await fetch("/api/admin/rules", {
+                headers: { "Authorization": `Bearer ${this.getToken()}` }
+            });
+            const data = await res.json();
+            const rules = data.rules || [];
+            if (rules.length === 0) {
+                container.innerHTML = `<div style="color:var(--text-muted); font-size:12px; padding:10px; background:rgba(255,255,255,0.02); border-radius:8px;">Оперативных правил пока нет. Все правила регулируются эталонным системным промптом.</div>`;
+                return;
+            }
+            container.innerHTML = rules.map(r => `
+                <div class="admin-rule-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:700; color:#00ffcc; font-size:13px; margin-bottom:4px;">${this.escapeHtml(r.title || 'Правило #' + r.id)}</div>
+                        <div style="color:#ddd; font-size:12px; line-height:1.4;">${this.escapeHtml(r.rule_text)}</div>
+                        <div style="color:var(--text-muted); font-size:10px; margin-top:6px;">Автор: ${this.escapeHtml(r.author || 'admin')} • ${this.escapeHtml(r.created_at || '')}</div>
+                    </div>
+                    <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:11px; color:#ff3366;" onclick="SkyrexAuth.deleteAdminRule(${r.id})">Удалить</button>
+                </div>
+            `).join("");
+        } catch (e) {
+            console.error("loadAdminRules error:", e);
+        }
+    },
+
+    async addAdminRule(title, rule_text) {
+        try {
+            const res = await fetch("/api/admin/rules/add", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                },
+                body: JSON.stringify({ title, rule_text })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                const titleInp = document.getElementById("admin-rule-title");
+                const textInp = document.getElementById("admin-rule-text");
+                if (titleInp) titleInp.value = "";
+                if (textInp) textInp.value = "";
+                this.loadAdminRules();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn("Правило успешно добавлено!", "success");
+            } else {
+                alert(data.error || "Ошибка добавления правила");
+            }
+        } catch (e) {
+            console.error("addAdminRule error:", e);
+        }
+    },
+
+    async deleteAdminRule(ruleId) {
+        if (!confirm("Удалить это оперативное правило?")) return;
+        try {
+            const res = await fetch("/api/admin/rules/delete", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                },
+                body: JSON.stringify({ rule_id: ruleId })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.loadAdminRules();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn("Правило удалено", "success");
+            }
+        } catch (e) {
+            console.error("deleteAdminRule error:", e);
+        }
+    },
+
+    async resetAdminRules() {
+        if (!confirm("Сбросить ВСЕ оперативные правила ИИ? Базовый системный промпт останется неизменным.")) return;
+        try {
+            const res = await fetch("/api/admin/rules/reset", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.loadAdminRules();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn(`Все правила сброшены (${data.deleted_count || 0})`, "success");
+            }
+        } catch (e) {
+            console.error("resetAdminRules error:", e);
+        }
+    },
+
+    async loadAdminPrompt() {
+        const textarea = document.getElementById("admin-prompt-editor");
+        if (!textarea) return;
+        try {
+            const res = await fetch("/api/admin/prompt", {
+                headers: { "Authorization": `Bearer ${this.getToken()}` }
+            });
+            const data = await res.json();
+            if (data.prompt) {
+                textarea.value = data.prompt;
+            }
+        } catch (e) {
+            console.error("loadAdminPrompt error:", e);
+        }
+    },
+
+    async saveAdminPrompt() {
+        const textarea = document.getElementById("admin-prompt-editor");
+        if (!textarea) return;
+        const text = textarea.value.trim();
+        if (!text) {
+            alert("Промпт не может быть пустым");
+            return;
+        }
+        try {
+            const res = await fetch("/api/admin/prompt/update", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                },
+                body: JSON.stringify({ prompt: text })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn("Системный промпт ИИ успешно обновлен!", "success");
+            } else {
+                alert(data.error || "Ошибка сохранения промпта");
+            }
+        } catch (e) {
+            console.error("saveAdminPrompt error:", e);
+        }
+    },
+
+    async resetAdminPrompt() {
+        if (!confirm("Восстановить системный промпт к исходному эталонному коду?")) return;
+        try {
+            const res = await fetch("/api/admin/prompt/reset", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                const textarea = document.getElementById("admin-prompt-editor");
+                if (textarea && data.prompt) textarea.value = data.prompt;
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn("Системный промпт восстановлен к эталону!", "success");
+            }
+        } catch (e) {
+            console.error("resetAdminPrompt error:", e);
+        }
+    },
+
+    // --- TAB: Expert Components ---
+    async loadAdminComponents() {
+        const container = document.getElementById("admin-components-list");
+        if (!container) return;
+        try {
+            const res = await fetch("/api/admin/components", {
+                headers: { "Authorization": `Bearer ${this.getToken()}` }
+            });
+            const data = await res.json();
+            const comps = data.components || [];
+            if (comps.length === 0) {
+                container.innerHTML = `<div style="color:var(--text-muted); font-size:12px; padding:10px; background:rgba(255,255,255,0.02); border-radius:8px;">Экспертные комплектующие еще не добавлены. Добавьте первую деталь через форму выше.</div>`;
+                return;
+            }
+            container.innerHTML = comps.map(c => `
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                    <div style="flex:1;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                            <span style="font-size:10px; text-transform:uppercase; background:rgba(0,255,204,0.15); color:#00ffcc; padding:2px 6px; border-radius:4px; font-weight:700;">${this.escapeHtml(c.category)}</span>
+                            <span style="font-weight:700; color:#fff; font-size:13px;">${this.escapeHtml(c.name)}</span>
+                            <span style="color:#00ffcc; font-weight:700; font-size:13px;">${Number(c.price).toLocaleString('ru-RU')} ₽</span>
+                            <span style="font-size:11px; color:var(--text-muted);">(${this.escapeHtml(c.shop)})</span>
+                        </div>
+                        <div style="font-size:11px; color:#aaa; display:flex; gap:12px; align-items:center;">
+                            <a href="${this.escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer" style="color:#3399ff; text-decoration:underline;">Открыть ссылку ↗</a>
+                            ${c.comment ? `<span>${this.escapeHtml(c.comment)}</span>` : ''}
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary" style="padding:4px 10px; font-size:11px; color:#ff3366;" onclick="SkyrexAuth.deleteAdminComponent(${c.id})">Удалить</button>
+                </div>
+            `).join("");
+        } catch (e) {
+            console.error("loadAdminComponents error:", e);
+        }
+    },
+
+    async addAdminComponent(data) {
+        try {
+            const res = await fetch("/api/admin/components/add", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                },
+                body: JSON.stringify(data)
+            });
+            const resData = await res.json();
+            if (res.ok && resData.success) {
+                const nameInp = document.getElementById("admin-comp-name");
+                const priceInp = document.getElementById("admin-comp-price");
+                const urlInp = document.getElementById("admin-comp-url");
+                const commentInp = document.getElementById("admin-comp-comment");
+                if (nameInp) nameInp.value = "";
+                if (priceInp) priceInp.value = "";
+                if (urlInp) urlInp.value = "";
+                if (commentInp) commentInp.value = "";
+                this.loadAdminComponents();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn("Комплектующая добавлена в каталог!", "success");
+            } else {
+                alert(resData.error || "Ошибка добавления детали");
+            }
+        } catch (e) {
+            console.error("addAdminComponent error:", e);
+        }
+    },
+
+    async deleteAdminComponent(compId) {
+        if (!confirm("Удалить деталь из каталога?")) return;
+        try {
+            const res = await fetch("/api/admin/components/delete", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                },
+                body: JSON.stringify({ component_id: compId })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.loadAdminComponents();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn("Деталь удалена", "success");
+            }
+        } catch (e) {
+            console.error("deleteAdminComponent error:", e);
+        }
+    },
+
+    // --- TAB: Payments & Users ---
+    async loadAdminPayments() {
+        const tbody = document.getElementById("admin-payments-tbody");
+        if (!tbody) return;
+        try {
+            const res = await fetch("/api/admin/payments", {
+                headers: { "Authorization": `Bearer ${this.getToken()}` }
+            });
+            const data = await res.json();
+            const list = data.payments || [];
+            if (list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:16px;">Транзакций пока нет.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = list.map(p => {
+                const statusColor = p.status === 'succeeded' ? '#00ffcc' : (p.status === 'pending' ? '#ffaa00' : '#ff3366');
+                const statusLabel = p.status === 'succeeded' ? 'Оплачено' : (p.status === 'pending' ? 'Ожидает' : p.status);
+                return `
+                    <tr>
+                        <td style="font-family:monospace; font-size:11px;">${this.escapeHtml((p.payment_id || '').slice(0, 16))}...</td>
+                        <td>${this.escapeHtml(p.email || '—')}</td>
+                        <td style="font-weight:700; color:#fff;">${Number(p.amount || 0).toLocaleString('ru-RU')} ₽</td>
+                        <td><span style="color:${statusColor}; font-weight:700; font-size:11px;">${statusLabel}</span></td>
+                        <td style="color:var(--text-muted); font-size:11px;">${this.escapeHtml(p.created_at || '—')}</td>
+                    </tr>
+                `;
+            }).join("");
+        } catch (e) {
+            console.error("loadAdminPayments error:", e);
+        }
+    },
+
+    async loadAdminUsers() {
+        const tbody = document.getElementById("admin-users-tbody");
+        if (!tbody) return;
+        try {
+            const res = await fetch("/api/admin/users", {
+                headers: { "Authorization": `Bearer ${this.getToken()}` }
+            });
+            const data = await res.json();
+            const list = data.users || [];
+            if (list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:16px;">Пользователей пока нет.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = list.map(u => {
+                const isSub = !!u.subscribed;
+                const subBadge = isSub ? `<span style="color:#00ffcc; font-weight:700;">Активна</span>` : `<span style="color:var(--text-muted);">Базовый</span>`;
+                const roleBadge = u.role === 'admin' ? `<span style="color:#ffcc00; font-weight:700;">Админ</span>` : `Пользователь`;
+                let expires = u.subscription_expires || '—';
+                if (expires && expires.startsWith('2099')) expires = 'Бессрочно';
+                return `
+                    <tr>
+                        <td style="color:var(--text-muted); font-size:11px;">#${u.id}</td>
+                        <td style="font-weight:700; color:#fff;">${this.escapeHtml(u.email || '')}</td>
+                        <td>${this.escapeHtml(u.nickname || '—')}</td>
+                        <td>${roleBadge}</td>
+                        <td>${subBadge}</td>
+                        <td style="color:var(--text-muted); font-size:11px;">${this.escapeHtml(expires)}</td>
+                    </tr>
+                `;
+            }).join("");
+        } catch (e) {
+            console.error("loadAdminUsers error:", e);
+        }
+    },
+
+    async activateAdminUserSub(userId, days) {
+        try {
+            const res = await fetch("/api/admin/subscriptions/activate", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${this.getToken()}`
+                },
+                body: JSON.stringify({ user_id: userId, days: days })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.loadAdminUsers();
+                const toastFn = (typeof showToast === "function") ? showToast : (window.showChatToast || null);
+                if (toastFn) toastFn(`Подписка активирована для пользователя #${userId} на ${days} дней!`, "success");
+            } else {
+                alert(data.error || "Ошибка активации подписки");
+            }
+        } catch (e) {
+            console.error("activateAdminUserSub error:", e);
+        }
+    },
+
+    // --- TAB: System Stats ---
+    async loadAdminStats() {
+        const container = document.getElementById("admin-stats-cards");
+        if (!container) return;
+        try {
+            const res = await fetch("/api/admin/stats", {
+                headers: { "Authorization": `Bearer ${this.getToken()}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                const cs = data.catalog_stats || {};
+                container.innerHTML = `
+                    <div class="admin-stat-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(0,255,204,0.2); border-radius:12px; padding:16px;">
+                        <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Всего пользователей</div>
+                        <div style="font-size:24px; font-weight:800; color:#fff;">${data.users_count || 0}</div>
+                    </div>
+                    <div class="admin-stat-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(0,255,204,0.2); border-radius:12px; padding:16px;">
+                        <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Активных премиум-подписок</div>
+                        <div style="font-size:24px; font-weight:800; color:#00ffcc;">${data.active_subscribers || 0}</div>
+                    </div>
+                    <div class="admin-stat-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(0,255,204,0.2); border-radius:12px; padding:16px;">
+                        <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Общая выручка</div>
+                        <div style="font-size:24px; font-weight:800; color:#ffcc00;">${Number(data.total_revenue || 0).toLocaleString('ru-RU')} ₽</div>
+                    </div>
+                    <div class="admin-stat-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+                        <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Успешных оплат</div>
+                        <div style="font-size:24px; font-weight:800; color:#fff;">${data.payments_count || 0}</div>
+                    </div>
+                    <div class="admin-stat-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+                        <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Диалогов в техподдержке</div>
+                        <div style="font-size:24px; font-weight:800; color:#00ffcc;">${data.dialogs_count || 0}</div>
+                    </div>
+                    <div class="admin-stat-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+                        <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Комплектующих в базе</div>
+                        <div style="font-size:24px; font-weight:800; color:#fff;">${cs.total_components || 0}</div>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            console.error("loadAdminStats error:", e);
         }
     },
 
@@ -1214,6 +1810,16 @@ const SkyrexAuth = {
             } else {
                 this.dom.authStatusDot.className = "auth-status-dot";
             }
+        }
+
+        const isAdmin = this.currentUser && this.currentUser.role === "admin";
+        const navAdminLink = document.getElementById("nav-admin-link");
+        if (navAdminLink) {
+            navAdminLink.style.display = isAdmin ? "inline-block" : "none";
+        }
+        const profileAdminBtn = document.getElementById("profile-admin-btn");
+        if (profileAdminBtn) {
+            profileAdminBtn.style.display = isAdmin ? "block" : "none";
         }
     }
 };
