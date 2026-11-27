@@ -3447,7 +3447,12 @@ async def handle_safe_static(request):
         'auth.js': 'auth.js',
         'chat_bot.js': 'chat_bot.js',
         'rig_visualizer.js': 'rig_visualizer.js',
-        'favicon.svg': 'favicon.svg'
+        'favicon.svg': 'favicon.svg',
+        'favicon.ico': 'favicon.ico',
+        'favicon-96x96.png': 'favicon-96x96.png',
+        'apple-touch-icon.png': 'apple-touch-icon.png',
+        'robots.txt': 'robots.txt',
+        'sitemap.xml': 'sitemap.xml'
     }
     if filename not in allowed_files:
         return web.Response(text="404 Not Found", status=404)
@@ -3526,7 +3531,7 @@ async def init_app():
     app.router.add_get('/index.html', handle_index)
     
     # Explicitly whitelisted assets ONLY (Never expose project root!)
-    app.router.add_get(r'/{filename:(?:style\.css|app\.js|auth\.js|chat_bot\.js|rig_visualizer\.js|favicon\.svg)}', handle_safe_static)
+    app.router.add_get(r'/{filename:(?:style\.css|app\.js|auth\.js|chat_bot\.js|rig_visualizer\.js|favicon\.svg|favicon\.ico|favicon-96x96\.png|apple-touch-icon\.png|robots\.txt|sitemap\.xml)}', handle_safe_static)
     assets_dir = os.path.join(PROJECT_ROOT, 'assets')
     if os.path.exists(assets_dir):
         app.router.add_static('/assets/', path=assets_dir)
